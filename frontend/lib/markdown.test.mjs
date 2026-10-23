@@ -35,6 +35,11 @@ test('lists, ordered lists and quotes', () => {
   assert.equal(q.blocks[0].type, 'paragraph');
 });
 
+test('deeply nested quotes stop recursing instead of overflowing the stack', () => {
+  const deep = '> '.repeat(5000) + 'boom';
+  assert.doesNotThrow(() => parseMarkdown(deep));
+});
+
 test('tables need a delimiter row and pad short rows', () => {
   const [t] = parseMarkdown('| a | b |\n|:--|--:|\n| 1 |\n| 2 | 3 |');
   assert.equal(t.type, 'table');
