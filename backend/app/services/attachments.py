@@ -169,8 +169,8 @@ def save(thread_id: int, filename: str | None, declared_mime: str | None, data: 
             507, "attachments_full", "This conversation already holds 200 MB of attachments."
         )
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    os.chmod(folder.parent, 0o700)
-    os.chmod(folder, 0o700)
+    os.chmod(folder.parent, 0o700)  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
+    os.chmod(folder, 0o700)  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
     attachment = Attachment(
         id=uuid.uuid4().hex,
         name=name,

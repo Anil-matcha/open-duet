@@ -93,7 +93,8 @@ def _next_id() -> str:
 def _owner_only_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
-        os.chmod(path, 0o700)
+        # 0o700 is owner-only, stricter than semgrep's generic 0o644 suggestion.
+        os.chmod(path, 0o700)  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
     except OSError:
         pass
 
