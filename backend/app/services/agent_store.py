@@ -12,10 +12,9 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Agent, Thread
+from app.db.models import Agent, Room, Team, TeamEvent, Thread
 from app.db.models.agent import APPROVAL_MODES
 from app.db.transactions import begin_write
-
 # The longest name the API and an agent file accept.
 NAME_MAX_CHARS = 80
 
@@ -257,7 +256,16 @@ async def _leave_team(db: AsyncSession, agent: Agent) -> None:
 async def delete_agent(db: AsyncSession, agent_id: int) -> None:
     """Remove the agent. Its threads keep their whole conversation and simply
     stop being linked: later turns use the thread's own provider and model.
-    Raises AgentNotFound."""
+    Raises AgentNotFound.
+
+    Nothing is a foreign key to `agent`, so the delete would otherwise leave
+    bare ids pointing at a row that is gone. The nullable references are nulled
+    here -- in particular a team lead of this agent, so a deleted agent is never
+    still named as the lead (change_member refuses to remove a lead for the same
+    reason). Non-null references (a computer, a routine, a job, a room member)
+    are removed by their own code, and SQLite no longer reuses the id (the
+    AUTOINCREMENT migration), so none of them can quietly come to mean a new
+    agent."""
     await begin_write(db)
     agent = await db.get(Agent, agent_id, with_for_update=True)
     if agent is None:
@@ -265,9 +273,33 @@ async def delete_agent(db: AsyncSession, agent_id: int) -> None:
         raise AgentNotFound(agent_id)
     await _leave_team(db, agent)
     await db.execute(
+        update(Team)
+        .where(Team.lead_agent_id == agent_id)
+        .values(lead_agent_id=None, updated_at=Team.updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
         update(Thread)
         .where(Thread.agent_id == agent_id)
         .values(agent_id=None, updated_at=Thread.updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(TeamEvent)
+        .where(TeamEvent.agent_id == agent_id)
+        .values(agent_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(Room)
+        .where(Room.default_responder_agent_id == agent_id)
+        .values(default_responder_agent_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(Agent)
+        .where(Agent.created_by_agent_id == agent_id)
+        .values(created_by_agent_id=None)
         .execution_options(synchronize_session=False)
     )
     await db.delete(agent)
