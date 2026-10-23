@@ -50,6 +50,24 @@ def test_rules_are_validated():
     allow.validate_rule(EXACT, "ls; echo done")  # an exact rule may be a compound command
 
 
+@pytest.mark.parametrize(
+    "command",
+    ["env", "sudo rm", "xargs", "find /", "sh", "bash -c", "tmux", "screen", "time", "stdbuf -o L"],
+)
+def test_a_wrapper_or_multiplexer_cannot_be_a_prefix_rule(command):
+    with pytest.raises(InvalidRule):
+        allow.validate_rule(PREFIX, command)
+
+
+@pytest.mark.parametrize("command", ["env rm -rf /", "sudo rm -rf /", "xargs sh -c x", "find / -delete"])
+def test_a_prefix_rule_saved_for_a_wrapper_stops_matching(command):
+    # A rule saved before this guard must not silently allow the wrapper.
+    assert not command_matches(PREFIX, "env", command)
+    assert not command_matches(PREFIX, "sudo", command)
+    assert not command_matches(PREFIX, "xargs", command)
+    assert not command_matches(PREFIX, "find", command)
+
+
 async def test_rules_are_saved_listed_matched_and_deleted(db_session):
     owner = "rule-owner"
     rule = await allow.add_rule(db_session, owner, PREFIX, "git status")

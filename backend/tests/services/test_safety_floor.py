@@ -187,3 +187,49 @@ def test_newlines_inside_quotes_and_harmless_lines_still_clear() -> None:
     assert clears_floor("echo 'a\nb'") is True
     assert clears_floor("ls\n") is True
     assert clears_floor("echo hi\n\n\nls -la") is True
+
+
+@pytest.mark.parametrize(
+    "command,rule",
+    [
+        # A wrapper's value option no longer eats the command after it, and the
+        # commands that run another command are read too.
+        ("stdbuf -o L rm -rf ~", "delete-home"),
+        ("time -p rm -rf ~", "delete-home"),
+        ("exec -a x rm -rf ~", "delete-home"),
+        ("command -p rm -rf ~", "delete-home"),
+        ("nohup -p rm -rf ~", "delete-home"),
+        ("nice -n 5 rm -rf /", "delete-root"),
+        ("sudo -u root rm -rf /", "delete-root"),
+        ("env -S 'rm -rf ~'", "delete-home"),
+        ("env --split-string='rm -rf ~'", "delete-home"),
+        ("env -S 'git push --force'", "force-push"),
+        ("find / -delete", "delete-root"),
+        ("find / -exec rm -rf {} +", "delete-root"),
+        ("find /etc -exec chmod -R 777 {} +", "permission-change-root"),
+        ("xargs rm -rf ~", "delete-home"),
+        ("xargs -0 rm -rf /", "delete-root"),
+    ],
+)
+def test_a_wrapper_hiding_the_command_does_not_clear_the_floor(command, rule):
+    assert rule_of(command) == rule
+    assert not clears_floor(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "time -p ls",
+        "command -p ls",
+        "nohup -p ls",
+        "nice -n 5 ls",
+        "sudo -u root ls",
+        "stdbuf -o L echo hi",
+        "env FOO=1 ls",
+        "xargs echo hi",
+        "find . -name x",
+        "find . -exec echo {} +",
+    ],
+)
+def test_a_harmless_wrapped_command_still_clears(command):
+    assert clears_floor(command) is True
