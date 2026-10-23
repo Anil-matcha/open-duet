@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models.task import Tasks
+from app.auth.routes import require_identity
 from app.db.session import get_db
 from app.routers.task import router
 from app.services import user_credential_service
@@ -109,6 +110,7 @@ async def test_reply_uses_existing_remote_session_only(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     request = {
         "user_id": user_id, "provider": "claude", "box_id": "bx_abcdefgh",
         "prompt_text": "first report",

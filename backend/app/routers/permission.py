@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,7 +72,10 @@ async def check_permission(
     shape Claude Code expects either way.
     """
     # An empty HOOK_TOKEN (Boat not configured) must never match "Bearer ".
-    if not settings.HOOK_TOKEN or request.headers.get("authorization") != f"Bearer {settings.HOOK_TOKEN}":
+    # Constant-time comparison so the token cannot be guessed byte by byte.
+    presented = request.headers.get("authorization", "")
+    expected = f"Bearer {settings.HOOK_TOKEN}"
+    if not settings.HOOK_TOKEN or not hmac.compare_digest(presented, expected):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     body = await request.json()

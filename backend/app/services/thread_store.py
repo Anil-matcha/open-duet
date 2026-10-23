@@ -168,6 +168,46 @@ async def set_archived(db: AsyncSession, thread_id: int, archived: bool) -> Thre
     return await _change_quietly(db, thread_id, archived_at=utcnow() if archived else None)
 
 
+async def update_thread_fields(
+    db: AsyncSession,
+    thread_id: int,
+    *,
+    title: str | None = None,
+    model: str | None = None,
+    model_set: bool = False,
+    archived: bool | None = None,
+) -> Thread:
+    """Rename, change the model and/or archive a thread in one transaction, so
+    a failure in any part leaves none of them applied (audit finding M-4).
+    Validation is done by the caller before this runs; here the row is locked,
+    the archive check is made, and every change is committed together.
+    Raises ThreadNotFound, or ThreadBusy when archiving a thread whose turn is
+    running."""
+    await _locked_thread(db, thread_id)
+    if archived and await _has_running_turn(db, thread_id):
+        await db.rollback()
+        raise ThreadBusy(thread_id)
+
+    values: dict = {"updated_at": Thread.updated_at}
+    if archived is not None:
+        values["archived_at"] = utcnow() if archived else None
+    if title is not None:
+        values["title"] = title
+    if model_set:
+        values["model"] = model
+
+    if len(values) > 1:  # something other than the updated_at passthrough
+        await db.execute(
+            update(Thread)
+            .where(Thread.id == thread_id)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+
+    return await db.get(Thread, thread_id, populate_existing=True)
+
+
 async def delete_thread(db: AsyncSession, thread_id: int) -> None:
     """Remove a thread with its turns, events and approvals, in one transaction.
     Raises ThreadNotFound, or ThreadBusy while a turn is running (stop it

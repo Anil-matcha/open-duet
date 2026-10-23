@@ -13,6 +13,7 @@ from app import telegram_bot
 from app.core.config import settings
 from app.db.models.user_sandbox import UserSandbox
 from app.db.session import get_db
+from app.auth.routes import require_identity
 from app.routers.sandbox import router
 from app.services import user_sandbox_service
 
@@ -114,6 +115,7 @@ async def test_ensure_handles_missing_sandbox(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://owned"
     ) as client:
@@ -150,6 +152,7 @@ async def test_failed_replacement_rolls_back_then_retry_succeeds(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://owned"
     ) as client:

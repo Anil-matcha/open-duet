@@ -154,7 +154,7 @@ class CursorAdapter(PresetAdapter):
     credential_names = ("CURSOR_API_KEY", "CURSOR_AUTH_TOKEN")
     state_dirs = ("~/.cursor", "~/.config/cursor")
     models = [ModelOption("auto", "Auto")]
-    setup = {"install": "curl https://cursor.com/install -fsS | bash", "sign_in": "cursor-agent login", "docs_url": "https://cursor.com/docs/cli", "credential": "either", "notes": ["Cursor's own allow rules can skip approval requests. Review its CLI configuration.", "Interactive Cursor question cards and Windows presets are not supported yet."]}
+    setup = {"install": "See https://cursor.com/docs/cli for Cursor's official install steps, then run cursor-agent login.", "sign_in": "cursor-agent login", "docs_url": "https://cursor.com/docs/cli", "credential": "either", "notes": ["Cursor's own allow rules can skip approval requests. Review its CLI configuration.", "Interactive Cursor question cards and Windows presets are not supported yet."]}
 
     def mode_args(self, ctx, config):
         return ["acp"]
