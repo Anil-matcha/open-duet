@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.routes import require_identity
 from app.db.session import get_db
 from app.schemas.task import TaskCreateRequest, TaskResponse
 from app.services import task_execution_service
@@ -19,7 +20,9 @@ router = APIRouter(
 
 
 @router.get("", response_model=list[TaskResponse])
-async def list_tasks(user_id: str, db: AsyncSession = Depends(get_db)):
+async def list_tasks(
+    db: AsyncSession = Depends(get_db), user_id: str = Depends(require_identity)
+):
     return await task_execution_service.list_tasks_for_user(db, user_id)
 
 
@@ -27,11 +30,12 @@ async def list_tasks(user_id: str, db: AsyncSession = Depends(get_db)):
 async def create_task(
     payload: TaskCreateRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
 ):
     try:
         return await task_execution_service.execute_task(
             db,
-            user_id=payload.user_id,
+            user_id=user_id,
             provider=payload.provider,
             box_id=payload.box_id,
             prompt_text=payload.prompt_text,
@@ -50,9 +54,13 @@ async def create_task(
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def get_task(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
+):
     task = await task_execution_service.get_task(db, task_id)
-    if task is None:
+    if task is None or task.user_id != user_id:
         raise HTTPException(status_code=404, detail="Task not found")
 
     return await task_execution_service.sync_task_status(db, task)

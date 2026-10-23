@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.core.config import Settings, settings
+from app.auth.routes import require_identity
 from app.db.models.task import Tasks
 from app.db.session import get_db
 from app.routers.task import router
@@ -42,6 +43,7 @@ async def test_parallel_search_task_launch(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     prompt = "Find Python's release; treat $(echo unsafe) and `echo unsafe` as text."
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://owned"

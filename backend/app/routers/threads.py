@@ -164,17 +164,17 @@ async def update_thread(
         except EngineModelInvalid as exc:
             raise _error(422, "unknown_model", str(exc)) from None
     try:
-        thread = None
-        # Archiving first: if it is refused, nothing has been renamed either.
-        if payload.archived is not None:
-            async with rt.session() as db:
-                thread = await store.set_archived(db, thread_id, payload.archived)
-        if payload.title is not None:
-            async with rt.session() as db:
-                thread = await store.rename_thread(db, thread_id, payload.title)
-        if "model" in payload.model_fields_set:
-            async with rt.session() as db:
-                thread = await store.set_model(db, thread_id, payload.model)
+        # All changes in one transaction: a failure in any part applies none,
+        # so the client never sees "failed" with a renamed or archived thread.
+        async with rt.session() as db:
+            thread = await store.update_thread_fields(
+                db,
+                thread_id,
+                title=payload.title,
+                model=payload.model,
+                model_set="model" in payload.model_fields_set,
+                archived=payload.archived,
+            )
     except store.ThreadNotFound:
         raise HTTPException(status_code=404, detail="Thread not found")
     except store.ThreadBusy:

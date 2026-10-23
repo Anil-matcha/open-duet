@@ -5,7 +5,10 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from sqlalchemy import URL
 
 from app.core import public_url
+from app.core.logging import get_logger
 from app.desktop import profile
+
+logger = get_logger(__name__)
 
 
 class Settings(BaseSettings):
@@ -59,6 +62,11 @@ class Settings(BaseSettings):
     # Shown to web UI users as a clickable t.me/<username> link when linking
     # their Telegram account. Purely cosmetic — the link flow works without it.
     TELEGRAM_BOT_USERNAME: str = ""
+    # Comma-separated Telegram numeric user ids allowed to use the bot. The bot
+    # runs nobody else: an unset/empty list refuses everyone, so enabling the
+    # bot without naming who may use it cannot spend the operator's sandbox
+    # quota on strangers.
+    TELEGRAM_ALLOWED_USER_IDS: str = ""
 
     # Origin(s) allowed to call this API from a browser (the frontend's dev
     # server / deployed URL). Comma-separated.
@@ -233,6 +241,21 @@ class Settings(BaseSettings):
     @property
     def BOAT_ENABLED(self) -> bool:
         return bool(self.BOAT_API_KEY.strip())
+
+    @property
+    def TELEGRAM_ALLOWED_USER_ID_SET(self) -> frozenset[int]:
+        """The numeric Telegram user ids allowed to use the bot. Empty means
+        nobody: the bot refuses every message until this is configured."""
+        ids: set[int] = set()
+        for value in self.TELEGRAM_ALLOWED_USER_IDS.split(","):
+            value = value.strip()
+            if not value:
+                continue
+            try:
+                ids.add(int(value))
+            except ValueError:
+                logger.warning("ignoring non-numeric TELEGRAM_ALLOWED_USER_IDS entry", value=value)
+        return frozenset(ids)
 
     @property
     def LOCAL_ALLOWED_HOST_LIST(self) -> list[str]:

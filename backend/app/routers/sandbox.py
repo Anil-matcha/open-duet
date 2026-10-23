@@ -1,17 +1,16 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from boat_sdk.exceptions import ApiException
+from app.core.background import spawn
 from app.core.logging import get_logger
-import json
 
 logger = get_logger(__name__)
 
 from app.db.session import get_db, AsyncSessionLocal
 from app.db.transactions import release_snapshot
+from app.auth.routes import require_identity
 
 from app.schemas.sandbox import (
     SandboxCreateRequest,
@@ -26,6 +25,7 @@ from app.schemas.sandbox import (
 from app.services.box_operations import ascii_box_service
 from app.services import user_sandbox_service, user_credential_service, auth_flow_service
 from app.services.auth_flow_service import (
+    InvalidAuthInputError,
     UnsupportedProviderError,
     LoginTimeoutError,
     LoginFailedError,
@@ -51,6 +51,7 @@ async def known_box(box_id: str, db: AsyncSession = Depends(get_db)):
 async def create_sandbox(
     payload: SandboxCreateRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
 ):
     try:
         result = await run_in_threadpool(
@@ -62,7 +63,7 @@ async def create_sandbox(
 
         record = await user_sandbox_service.create(
             db,
-            user_id=payload.user_id,
+            user_id=user_id,
             box_id=box.id,
             state=box.state,
             machine_type=box.type,
@@ -90,6 +91,7 @@ async def create_sandbox(
 async def ensure_sandbox(
     payload: SandboxCreateRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
 ):
     """Returns the caller's existing active sandbox, creating one if they
     don't have one yet. Lets the web UI and Telegram bot share a sandbox
@@ -97,7 +99,7 @@ async def ensure_sandbox(
     """
     try:
         record, box = await user_sandbox_service.ensure(
-            db, user_id=payload.user_id, ttl_seconds=payload.ttl_seconds
+            db, user_id=user_id, ttl_seconds=payload.ttl_seconds
         )
     except ApiException as exc:
         raise HTTPException(status_code=502, detail=f"ASCII error: {exc.reason}") from exc
@@ -118,8 +120,22 @@ def health_check():
     return {"status": "healthy"}
 
 
+async def owned_box(
+    box_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
+):
+    """A sandbox record only if this box belongs to the session's identity.
+    Every box-scoped route depends on this so a caller cannot act on a box id
+    they do not own (audit finding M-2)."""
+    record = await user_sandbox_service.get_by_box_id(db, box_id)
+    if record is None or record.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    return record
+
+
 @router.get("/{box_id}", response_model=SandboxResponse, dependencies=[Depends(known_box)])
-async def get_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
+async def get_sandbox(box_id: str, db: AsyncSession = Depends(get_db), _=Depends(owned_box)):
     try:
         result = await run_in_threadpool(
             ascii_box_service.get_box,
@@ -150,7 +166,7 @@ async def get_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{box_id}/stop", dependencies=[Depends(known_box)])
-async def stop_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
+async def stop_sandbox(box_id: str, db: AsyncSession = Depends(get_db), _=Depends(owned_box)):
     try:
         result = await run_in_threadpool(
             ascii_box_service.stop_box,
@@ -174,7 +190,7 @@ async def stop_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{box_id}/resume", response_model=SandboxResponse, dependencies=[Depends(known_box)])
-async def resume_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
+async def resume_sandbox(box_id: str, db: AsyncSession = Depends(get_db), _=Depends(owned_box)):
     try:
         result = await run_in_threadpool(
             ascii_box_service.resume_box,
@@ -204,7 +220,7 @@ async def resume_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
         )
 
 @router.post("/{box_id}/test-command", dependencies=[Depends(known_box)])
-async def test_command(box_id: str):
+async def test_command(box_id: str, _=Depends(owned_box)):
     result = await run_in_threadpool(
         ascii_box_service.run_command,
         box_id,
@@ -224,7 +240,7 @@ async def test_command(box_id: str):
 
 
 @router.post("/{box_id}/test-write-file", dependencies=[Depends(known_box)])
-async def test_write_file(box_id: str, payload: dict):
+async def test_write_file(box_id: str, payload: dict, _=Depends(owned_box)):
     result = await run_in_threadpool(
         ascii_box_service.write_file,
         box_id,
@@ -236,14 +252,14 @@ async def test_write_file(box_id: str, payload: dict):
 
 
 @router.post("/{box_id}/auth/{provider}/start", response_model=AuthLoginStartResponse, dependencies=[Depends(known_box)])
-async def start_auth_login(box_id: str, provider: str):
+async def start_auth_login(box_id: str, provider: str, _=Depends(owned_box)):
     try:
         login_url = await run_in_threadpool(
             auth_flow_service.start_login, box_id, provider
         )
         return AuthLoginStartResponse(login_url=login_url)
 
-    except UnsupportedProviderError as exc:
+    except (UnsupportedProviderError, InvalidAuthInputError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except BoxNotRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -258,7 +274,7 @@ async def start_auth_login(box_id: str, provider: str):
     response_model=DeviceLoginStartResponse,
     dependencies=[Depends(known_box)],
 )
-async def start_device_auth_login(box_id: str, provider: str):
+async def start_device_auth_login(box_id: str, provider: str, _=Depends(owned_box)):
     """Starts a device-flow login (GitHub) — returns a URL + one-time code
     to show the user, then finishes saving the credential in the background
     once they approve it. Poll .../status to find out when that happens.
@@ -267,7 +283,7 @@ async def start_device_auth_login(box_id: str, provider: str):
         login = await run_in_threadpool(
             auth_flow_service.start_device_login, box_id, provider
         )
-    except UnsupportedProviderError as exc:
+    except (UnsupportedProviderError, InvalidAuthInputError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except BoxNotRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -276,7 +292,7 @@ async def start_device_auth_login(box_id: str, provider: str):
     except LoginTimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc))
 
-    asyncio.create_task(_finish_device_auth_login(box_id, provider))
+    spawn(_finish_device_auth_login(box_id, provider), name="device-auth-login")
     return DeviceLoginStartResponse(url=login.url, code=login.code)
 
 
@@ -304,11 +320,9 @@ async def _finish_device_auth_login(box_id: str, provider: str) -> None:
 
 
 @router.get("/{box_id}/auth/{provider}/status", response_model=AuthStatusResponse)
-async def get_auth_status(box_id: str, provider: str, db: AsyncSession = Depends(get_db)):
-    sandbox_record = await user_sandbox_service.get_by_box_id(db, box_id)
-    if sandbox_record is None:
-        raise HTTPException(status_code=404, detail="Sandbox not found")
-
+async def get_auth_status(
+    box_id: str, provider: str, db: AsyncSession = Depends(get_db), sandbox_record=Depends(owned_box)
+):
     decrypted = await user_credential_service.get_decrypted(
         db, sandbox_record.user_id, provider
     )
@@ -323,10 +337,8 @@ async def submit_auth_login(
     provider: str,
     payload: AuthLoginSubmitRequest,
     db: AsyncSession = Depends(get_db),
+    sandbox_record=Depends(owned_box),
 ):
-    sandbox_record = await user_sandbox_service.get_by_box_id(db, box_id)
-    if sandbox_record is None:
-        raise HTTPException(status_code=404, detail="Sandbox not found")
     await release_snapshot(db)  # the login below can take tens of seconds
 
     try:
@@ -344,7 +356,7 @@ async def submit_auth_login(
 
         return AuthLoginSubmitResponse(status="connected")
 
-    except UnsupportedProviderError as exc:
+    except (UnsupportedProviderError, InvalidAuthInputError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except BoxNotRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -357,7 +369,7 @@ async def submit_auth_login(
 
 
 @router.delete("/{box_id}", dependencies=[Depends(known_box)])
-async def delete_sandbox(box_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_sandbox(box_id: str, db: AsyncSession = Depends(get_db), _=Depends(owned_box)):
     try:
         await run_in_threadpool(
             ascii_box_service.delete_box,

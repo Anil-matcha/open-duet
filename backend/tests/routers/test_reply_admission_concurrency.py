@@ -42,7 +42,7 @@ async def test_concurrent_replies_to_one_conversation_admit_exactly_one(
         async with sessions() as db:
             yield db
 
-    app = task_app(request_session)
+    app = task_app(request_session, user=user)
     try:
         async with sessions() as db:
             await save_credential(db, user)
@@ -83,7 +83,7 @@ async def test_concurrent_replies_to_different_conversations_are_all_admitted(
         async with sessions() as db:
             yield db
 
-    app = task_app(request_session)
+    app = task_app(request_session, user=user)
     try:
         async with sessions() as db:
             await save_credential(db, user)

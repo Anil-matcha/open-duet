@@ -80,6 +80,17 @@ def read_options(argv: Sequence[str], environ: Mapping[str, str]) -> ServerOptio
     except SystemExit as exc:  # argparse already printed the usage
         raise ServerConfigError("Check the options above.") from exc
 
+    # The backend keeps per-process state that assumes exactly one process:
+    # sign-in lockouts, live run/approval state and the SSE hubs (docs/
+    # RELIABILITY.md). Refuse the well-known ways to ask for more than one
+    # worker rather than degrading silently.
+    workers = environ.get("WEB_CONCURRENCY") or environ.get("UVICORN_WORKERS")
+    if workers and workers.strip() not in {"", "1"}:
+        raise ServerConfigError(
+            f"This backend must run as a single process, but {workers!r} workers were requested "
+            "(WEB_CONCURRENCY/UVICORN_WORKERS). Unset it, or run one instance behind your proxy."
+        )
+
     try:
         port = int(args.port)
     except ValueError:
