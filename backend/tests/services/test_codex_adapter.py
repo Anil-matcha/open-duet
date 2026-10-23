@@ -215,6 +215,25 @@ async def test_accept_edits_never_auto_allows_a_command(crt, sessions, owner, co
     assert codex.answers()[0]["result"] == {"decision": "decline"}
 
 
+def test_inside_resolves_symlinks_so_a_link_out_is_not_inside(tmp_path):
+    # accept_edits auto-allows an edit only when every path is _inside the
+    # workspace. The check must resolve symlinks: a link under the workspace that
+    # points outside must not let a write through it pass.
+    workspace = (tmp_path / "ws").resolve()
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = workspace / "x"
+    link.symlink_to(outside)
+    assert codex_adapter._inside(str(workspace / "a.txt"), workspace) is True
+    # A path through the symlink resolves outside: not inside.
+    assert codex_adapter._inside(str(link / "cron.d" / "y"), workspace) is False
+    # A path lexical-prefixed by the workspace but aimed elsewhere is not inside.
+    assert codex_adapter._inside(str(tmp_path / "ws-evil" / "y"), workspace) is False
+    assert codex_adapter._inside("relative.txt", workspace) is True
+    assert codex_adapter._inside("../escape.txt", workspace) is False
+
+
 async def test_plan_mode_is_read_only_and_declines_without_a_card(crt, sessions, owner, codex, monkeypatch):
     monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
     codex.plan({"type": "command"})
