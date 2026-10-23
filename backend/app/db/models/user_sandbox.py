@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Identity, Integer, String, func
+from sqlalchemy import Boolean, Identity, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -9,6 +9,9 @@ from app.db.types import BigIntPK, UTCDateTime
 
 class UserSandbox(Base):
     __tablename__ = "user_sandbox"
+    __table_args__ = (
+        Index("ix_user_sandbox_active_expires", "is_active", "expires_at"),
+    )
 
     id: Mapped[int] = mapped_column(
         BigIntPK, Identity(always=True), primary_key=True

@@ -200,3 +200,45 @@ async def test_bot_uses_same_sandbox_recovery(
     box_id = await telegram_bot._get_or_create_sandbox(user_id)
     assert box_id == (OLD_BOX if existing_status == 200 else NEW_BOX)
     assert state["creates"] == (0 if existing_status == 200 else 1)
+
+
+async def test_expiry_deactivates_a_sandbox_past_its_ttl_and_deletes_the_box(
+    db_session, user_id, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import user_sandbox_service
+    from app.services.box_operations import ascii_box_service
+
+    record = await user_sandbox_service.create(
+        db_session, user_id=user_id, box_id=OLD_BOX,
+        state="ready", machine_type="small", ttl_seconds=1800,
+    )
+    # Age it past its expiry directly (create stamps it from the wall clock).
+    record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+
+    deleted: list[str] = []
+    monkeypatch.setattr(ascii_box_service, "delete_box", lambda box_id: deleted.append(box_id))
+
+    assert await user_sandbox_service.expire(db_session) == [OLD_BOX]
+    assert deleted == [OLD_BOX]
+    assert await user_sandbox_service.get_active_by_user_id(db_session, user_id) is None
+    # Once only: the row is no longer active, so the next sweep leaves it alone.
+    assert await user_sandbox_service.expire(db_session) == []
+
+
+async def test_expiry_leaves_a_live_sandbox_alone(db_session, user_id, monkeypatch):
+    from app.services import user_sandbox_service
+    from app.services.box_operations import ascii_box_service
+
+    await user_sandbox_service.create(
+        db_session, user_id=user_id, box_id=OLD_BOX,
+        state="ready", machine_type="small", ttl_seconds=1800,
+    )
+    monkeypatch.setattr(
+        ascii_box_service, "delete_box",
+        lambda box_id: (_ for _ in ()).throw(AssertionError("must not delete a live box")),
+    )
+    assert await user_sandbox_service.expire(db_session) == []
+    assert (await user_sandbox_service.get_active_by_user_id(db_session, user_id)) is not None
