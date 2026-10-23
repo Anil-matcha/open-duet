@@ -242,3 +242,101 @@ async def test_expiry_leaves_a_live_sandbox_alone(db_session, user_id, monkeypat
     )
     assert await user_sandbox_service.expire(db_session) == []
     assert (await user_sandbox_service.get_active_by_user_id(db_session, user_id)) is not None
+
+
+async def test_a_failed_delete_leaves_the_row_active_so_the_box_is_not_orphaned(
+    db_session, user_id, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import user_sandbox_service
+    from app.services.box_operations import ascii_box_service
+
+    record = await user_sandbox_service.create(
+        db_session, user_id=user_id, box_id=OLD_BOX,
+        state="ready", machine_type="small", ttl_seconds=1800,
+    )
+    record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+
+    attempts: list[str] = []
+
+    def failing_delete(box_id):
+        attempts.append(box_id)
+        raise RuntimeError("remote is down")
+
+    monkeypatch.setattr(ascii_box_service, "delete_box", failing_delete)
+
+    # The delete failed: the row must stay active, so the next sweep retries it.
+    assert await user_sandbox_service.expire(db_session) == []
+    assert attempts == [OLD_BOX]
+    assert (await user_sandbox_service.get_active_by_user_id(db_session, user_id)) is not None
+
+    # Once the remote recovers, the retry deletes the box and deactivates the row.
+    deleted: list[str] = []
+    monkeypatch.setattr(ascii_box_service, "delete_box", lambda box_id: deleted.append(box_id))
+    assert await user_sandbox_service.expire(db_session) == [OLD_BOX]
+    assert deleted == [OLD_BOX]
+    assert await user_sandbox_service.get_active_by_user_id(db_session, user_id) is None
+
+
+async def test_an_already_gone_box_is_deactivated_without_error(
+    db_session, user_id, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+
+    from boat_sdk.exceptions import ApiException
+
+    from app.services import user_sandbox_service
+    from app.services.box_operations import ascii_box_service
+
+    record = await user_sandbox_service.create(
+        db_session, user_id=user_id, box_id=OLD_BOX,
+        state="ready", machine_type="small", ttl_seconds=1800,
+    )
+    record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+
+    def gone(box_id):
+        raise ApiException(status=404, reason="not found")
+
+    monkeypatch.setattr(ascii_box_service, "delete_box", gone)
+    assert await user_sandbox_service.expire(db_session) == [OLD_BOX]
+    assert await user_sandbox_service.get_active_by_user_id(db_session, user_id) is None
+
+
+async def test_ensure_never_hands_back_an_expired_sandbox(
+    db_session, user_id, monkeypatch, boat_api
+):
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import user_sandbox_service
+    from app.services.box_operations import ascii_box_service
+
+    record = await user_sandbox_service.create(
+        db_session, user_id=user_id, box_id=OLD_BOX,
+        state="ready", machine_type="small", ttl_seconds=1800,
+    )
+    record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+
+    deleted: list[str] = []
+    monkeypatch.setattr(ascii_box_service, "delete_box", lambda box_id: deleted.append(box_id))
+    base_url, state = boat_api
+    monkeypatch.setattr(settings, "BOAT_BASE_URL", base_url)
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://owned"
+    ) as client:
+        response = await client.post(
+            "/api/v1/sandboxes/ensure",
+            json={"user_id": user_id, "ttl_seconds": 1800},
+        )
+    assert response.status_code == 200
+    assert response.json()["box_id"] == NEW_BOX  # the expired OLD_BOX was replaced
+    assert deleted == [OLD_BOX]
+    rows = (await db_session.execute(select(UserSandbox))).scalars().all()
+    assert sum(row.is_active for row in rows) == 1
