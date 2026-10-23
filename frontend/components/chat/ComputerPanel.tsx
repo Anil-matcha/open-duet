@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, ApiError, type Agent, type Computer, type ComputerHealth, type ComputerNetwork, type ComputerKind } from "@/lib/api";
 import { LiveDesktop } from "./LiveDesktop";
 import { DesktopPicture } from "./DesktopPicture";
@@ -80,17 +80,26 @@ function DockerComputerView({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const capabilityHelpId = useId();
   const createGate = computerCreationGate(engineSupportsComputers, engineLabel);
+  // Bumped whenever the shown agent changes, so a fetch started for the
+  // previous agent cannot overwrite the panel (and its Stop/Recreate buttons
+  // act on the wrong container).
+  const generation = useRef(0);
+  const shownAgent = useRef(agent.id);
 
   const load = useCallback(async () => {
+    const mine = generation.current;
     try {
       const computer = await api.getAgentComputer(agent.id);
+      if (generation.current !== mine) return;
       setPhase({ kind: "ready", computer });
       setLimits((current) => current ?? limitsOf(computer));
     } catch (err) {
+      if (generation.current !== mine) return;
       if (err instanceof ApiError && computersUnsupported(err.status, err.code)) {
         setPhase({ kind: "unsupported" });
       } else if (err instanceof ApiError && err.code === "no_computer") {
         const health = await api.computersHealth().catch(() => null);
+        if (generation.current !== mine) return;
         setPhase({ kind: "none", health });
       } else {
         setError(errorText(err));
@@ -99,13 +108,22 @@ function DockerComputerView({
   }, [agent.id]);
 
   useEffect(() => {
+    // A new agent: drop the previous agent's computer at once and ignore any
+    // fetch still in flight for it.
+    if (shownAgent.current !== agent.id) {
+      shownAgent.current = agent.id;
+      generation.current += 1;
+      setPhase({ kind: "loading" });
+      setLimits(null);
+      setError(null);
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the first read starts the panel
     void load();
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") void load();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [agent.id, load]);
 
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true);

@@ -210,6 +210,15 @@ function startsBlock(line: string): boolean {
 }
 
 export function parseMarkdown(source: string): Block[] {
+  return parseBlocks(source, 0);
+}
+
+// A quote nests by re-parsing its contents. Cap the depth so deeply nested
+// quotes in stored model output cannot recurse without bound (and exhaust the
+// stack). Past the cap the inner text is shown as plain paragraphs.
+const MAX_QUOTE_DEPTH = 8;
+
+function parseBlocks(source: string, depth: number): Block[] {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const blocks: Block[] = [];
   let i = 0;
@@ -260,7 +269,11 @@ export function parseMarkdown(source: string): Block[] {
         inner.push(QUOTE.exec(lines[i])![1]);
         i += 1;
       }
-      blocks.push({ type: "quote", blocks: parseMarkdown(inner.join("\n")) });
+      const text = inner.join("\n");
+      blocks.push({
+        type: "quote",
+        blocks: depth < MAX_QUOTE_DEPTH ? parseBlocks(text, depth + 1) : plainParagraphs(text),
+      });
       continue;
     }
 
@@ -321,4 +334,11 @@ export function parseMarkdown(source: string): Block[] {
   }
 
   return blocks;
+}
+
+function plainParagraphs(text: string): Block[] {
+  return text
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => ({ type: "paragraph" as const, children: parseInline(line.trim()) }));
 }
