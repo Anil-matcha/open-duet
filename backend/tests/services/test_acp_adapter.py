@@ -233,6 +233,21 @@ async def test_accept_edits_allows_only_edits_inside_the_workspace(art, sessions
     await finished(sessions, thread.id, count=2)
 
 
+async def test_accept_edits_never_auto_allows_a_command(art, sessions, owner, acp, monkeypatch):
+    # accept_edits lets workspace edits through; a command must still open a
+    # card, whatever the mode, or the floor could be bypassed by the CLI.
+    monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
+    thread = await acp_thread(art, sessions, owner, mode="accept_edits")
+    acp.plan({"type": "permission", "kind": "execute", "command": "python3 -c 'os.system(\"rm -rf /\")'"})
+    await art.send_turn(thread.id, "clean up")
+    approval = await pending_approval(sessions, thread.id)
+    assert approval.tool == "Bash" and approval.kind == "command"
+    assert "python3 -c" in approval.input["command"]
+    assert await art.answer_approval(approval.id, "deny")
+    await finished(sessions, thread.id)
+    assert acp.answers()[0]["result"]["outcome"]["optionId"] == "no"
+
+
 async def test_file_system_requests_are_refused(art, sessions, owner, acp):
     acp.plan({"type": "fs"})
     thread = await acp_thread(art, sessions, owner)

@@ -200,6 +200,21 @@ async def test_accept_edits_still_asks_about_an_edit_outside_the_workspace(crt, 
     assert codex.answers()[0]["result"] == {"decision": "decline"}
 
 
+async def test_accept_edits_never_auto_allows_a_command(crt, sessions, owner, codex, monkeypatch):
+    # The floor's one gap would be accept_edits auto-allowing a command the CLI
+    # decides for itself. A command must still open a card, whatever the mode.
+    monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
+    codex.plan({"type": "command", "command": "python3 -c 'os.system(\"rm -rf /\")'"})
+    thread = await codex_thread(crt, sessions, owner, mode="accept_edits")
+    await crt.send_turn(thread.id, "clean up")
+    approval = await pending_approval(sessions, thread.id)
+    assert approval.tool == "Bash" and approval.kind == "command"
+    assert "python3 -c" in approval.input["command"]  # the payload is on the card
+    assert await crt.answer_approval(approval.id, "deny")
+    await finished(sessions, thread.id)
+    assert codex.answers()[0]["result"] == {"decision": "decline"}
+
+
 async def test_plan_mode_is_read_only_and_declines_without_a_card(crt, sessions, owner, codex, monkeypatch):
     monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
     codex.plan({"type": "command"})

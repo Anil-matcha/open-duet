@@ -43,6 +43,16 @@ def test_screen_policy_requires_turn_grant_even_in_accept_edits():
     assert automatic("mcp__computer__screenshot", "plan") == ("allowed", "computer_screen_read")
 
 
+def test_accept_edits_never_auto_allows_a_computer_command():
+    # accept_edits lets a workspace write_file through; exec must still go to the
+    # person (or a saved rule), so the safety floor can never be bypassed here.
+    for mode in ("ask", "accept_edits", None):
+        assert automatic("mcp__computer__exec", mode) is None
+    assert automatic("mcp__computer__write_file", "accept_edits") == ("allowed", "accept_edits")
+    assert automatic("mcp__computer__write_file", "ask") is None
+    assert automatic("mcp__computer__exec", "plan") == ("denied", "plan_mode")
+
+
 def test_control_lease_does_not_leak_and_recovers_after_disconnect():
     now = [100.0]
     c = ControlRegistry(lambda: now[0])
