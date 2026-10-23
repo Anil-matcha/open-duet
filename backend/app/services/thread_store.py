@@ -371,11 +371,29 @@ async def _add_event(
         turn_id=turn_id,
         seq=await _next_seq(db, thread_id),
         type=type_,
-        data=data or {},
+        data=_redact_data(data) if data else (data or {}),
     )
     db.add(event)
     await db.flush()
     return event
+
+
+def _redact_data(value):
+    """A transcript copy with credentials replaced, at any depth.
+
+    The whole transcript (prompts, tool inputs, tool output) is stored here, so
+    this is the one place a secret would otherwise be written to the database in
+    the clear. The same shapes the notes file uses (services/agent_memory.py)
+    cover model output and tool traffic too."""
+    from app.services.agent_memory import redact_secrets
+
+    if isinstance(value, str):
+        return redact_secrets(value)[0]
+    if isinstance(value, dict):
+        return {key: _redact_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_data(item) for item in value]
+    return value
 
 
 async def create_thread(
@@ -535,6 +553,9 @@ async def start_turn(
     The returned turn carries the `owner_token` that only the run holds. Raises
     ThreadBusy if a turn is already running (the database refuses a second one),
     ThreadNotFound if the thread does not exist."""
+    from app.services.agent_memory import redact_secrets
+
+    prompt_text = redact_secrets(prompt_text)[0]
     await begin_write(db)
     thread = (
         await db.execute(select(Thread).where(Thread.id == thread_id).with_for_update())
@@ -614,6 +635,11 @@ async def finish_turn(
     _check(status, FINISH_STATUSES, "status")
     if session_state is not None:
         _check(session_state, SESSION_STATES, "session_state")
+    if result is not None or error is not None:
+        from app.services.agent_memory import redact_secrets
+
+        result = redact_secrets(result)[0] if result is not None else None
+        error = redact_secrets(error)[0] if error is not None else None
     await begin_write(db)
     updated = await db.execute(
         update(Turn)

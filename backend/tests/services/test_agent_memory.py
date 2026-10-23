@@ -41,6 +41,40 @@ def test_a_labelled_value_loses_only_its_value():
     assert count == 2
 
 
+@pytest.mark.parametrize(
+    "text,leak",
+    [
+        ("stripe: sk_live_" + "a1B2c3D4" * 3, "sk_live_"),
+        ("restricted rk_live_" + "a1B2c3D4" * 3, "rk_live_"),
+        ("AWS_SESSION " + "ASIA" + "ABCDEFGHIJKLMNOP", "ASIAABCDEFGHIJKLMNOP"),
+        ("sendgrid SG." + "a" * 22 + "." + "b" * 22, "SG."),
+        ("twilio " + "AC" + "0123456789abcdef0123456789abcdef", "AC0123456789abcdef"),
+        ("gitlab glpat-" + "a1B2c3D4e5" * 2, "glpat-"),
+        ("do dop_v1_" + "a1b2c3d4" * 6, "dop_v1_"),
+        ("perplexity pplx-" + "a1B2c3D4" * 5, "pplx-"),
+        ("ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDL" + "a" * 40 + " user@host", "AAAAB3Nza"),
+    ],
+)
+def test_more_credential_shapes_are_redacted(text, leak):
+    redacted, count = agent_memory.redact_secrets(text)
+    assert leak not in redacted and "[redacted]" in redacted and count >= 1
+
+
+@pytest.mark.parametrize(
+    "text,leak",
+    [
+        ("basic " + "dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA=="),
+        ("Bearer abcdefghijklmnop", "abcdefghijklmnop"),
+        ("postgres://admin:s3cr3tpass@db.example.com/app", "s3cr3tpass"),
+        ("Server=db;User Id=sa;Password=Sup3rS3cret!;TrustServerCertificate=true", "Sup3rS3cret!"),
+        ("redis://default:r3disPass@cache:6379", "r3disPass"),
+    ],
+)
+def test_connection_strings_and_basic_auth_are_redacted(text, leak):
+    redacted, count = agent_memory.redact_secrets(text)
+    assert leak not in redacted and count >= 1
+
+
 def test_a_private_key_block_is_redacted_whole():
     block = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAAB3Nza\n-----END OPENSSH PRIVATE KEY-----"
     text, count = agent_memory.redact_secrets(f"key:\n{block}\nend")
