@@ -17,7 +17,7 @@ from app.desktop.launch_auth import LaunchAuthMiddleware
 from app.desktop.account_guard import DesktopAccountMiddleware, signed_in as desktop_signed_in
 from app.routers.router import router as app_router
 from app.routers.hooks import router as hooks_router
-from app.services import routine_service, schedule_service, task_execution_service
+from app.services import routine_service, schedule_service, task_execution_service, user_sandbox_service
 from app.services.thread_runtime import runtime as thread_runtime
 from app.services.box_operations import BoatNotConfigured
 
@@ -100,6 +100,10 @@ async def _serving(app: FastAPI):
         # Agent computers: finish interrupted removals, remove orphans once
         # Docker answers, stop idle ones. Does nothing while Docker is down.
         asyncio.create_task(run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(thread_runtime.computers.upkeep))),
+        # Boat sandboxes: honour the TTL recorded at creation (deactivate the
+        # row and ask the provider to delete the box). Does nothing without Boat.
+        # A global sweep: it covers every tenant's sandboxes, so it stays unwrapped.
+        asyncio.create_task(run_every(BACKGROUND_INTERVAL_SECONDS, user_sandbox_service.run_expiry)),
         # The nightly memory tidy-up for agents that are due and idle (memory_capture.py).
         asyncio.create_task(run_every(600, per_tenant(_desktop_account_job(thread_runtime.capture.tick)))),
         # The Needs you card: refreshed once a minute, started only for something

@@ -3,12 +3,15 @@ from datetime import datetime, timedelta, timezone
 from boat_sdk.exceptions import ApiException
 from boat_sdk.models.sandbox import Sandbox
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.user_sandbox import UserSandbox
 from app.db.transactions import begin_write, release_snapshot
+from app.core.logging import get_logger
 from app.services.box_operations import ascii_box_service
+
+logger = get_logger(__name__)
 
 
 async def create(
@@ -74,6 +77,51 @@ async def deactivate(db: AsyncSession, box_id: str) -> UserSandbox | None:
     await db.commit()
     await db.refresh(record)
     return record
+
+
+async def expire(db: AsyncSession) -> list[str]:
+    """Background job: honour the TTL recorded when each sandbox was made.
+
+    Every active row whose `expires_at` has passed is deactivated (so `ensure`
+    never hands it back) and its remote box is asked to delete itself. A remote
+    failure is logged and does not stop the sweep; the row is deactivated
+    regardless, so an unknown box is never reused. Returns the box ids touched.
+    """
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(UserSandbox).where(
+            UserSandbox.is_active.is_(True),
+            UserSandbox.expires_at.is_not(None),
+            UserSandbox.expires_at < now,
+        )
+    )
+    expired = list(result.scalars())
+    if not expired:
+        return []
+    await begin_write(db)
+    await db.execute(
+        update(UserSandbox)
+        .where(UserSandbox.id.in_([row.id for row in expired]))
+        .values(is_active=False)
+    )
+    await db.commit()
+    # The remote calls take seconds; hold no write lock while they run.
+    for row in expired:
+        try:
+            await run_in_threadpool(ascii_box_service.delete_box, row.box_id)
+        except ApiException as exc:
+            logger.warning("could not delete an expired sandbox", box_id=row.box_id, status=exc.status)
+        except Exception:  # noqa: BLE001
+            logger.exception("could not delete an expired sandbox", box_id=row.box_id)
+    return [row.box_id for row in expired]
+
+
+async def run_expiry() -> list[str]:
+    """Background job entry point: open a session and expire due sandboxes."""
+    from app.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        return await expire(db)
 
 
 async def ensure(
