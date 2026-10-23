@@ -46,6 +46,21 @@ COMMAND_TOOLS = (BASH_TOOL, "mcp__computer__exec")
 _SHELL_OPERATORS = (";", "&", "|", "<", ">", "`", "$(", "\n", "\r")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
+# A prefix rule allows the command and anything after it, so its first word must
+# name one specific program. A wrapper (`env`, `sudo`, `time` ...), a command
+# that runs another command (`xargs`, `find -exec`, `eval`, a shell) or a
+# multiplexer (`screen`, `tmux`) would turn "always allow `env`" into "always
+# allow anything": `env rm -rf /`, `xargs sh -c ...`, `tmux new-session ...`.
+# None of these may be saved as a prefix rule.
+_PREFIX_FORBIDDEN_PROGRAMS = frozenset(
+    {
+        "sudo", "doas", "env", "nohup", "command", "time", "exec", "nice", "ionice",
+        "builtin", "stdbuf", "timeout", "chrt", "setsid", "xargs", "find", "eval",
+        "sh", "bash", "zsh", "dash", "ksh", "fish", "screen", "tmux", "script",
+        "watch", "parallel",
+    }
+)
+
 
 class InvalidRule(ValueError):
     pass
@@ -69,12 +84,25 @@ def split_scope(stored: str) -> tuple[str, str | None]:
     return kind, (workspace if at else None)
 
 
+def _program(command: str) -> str:
+    words = _words(command)
+    return Path(words[0]).name if words else ""
+
+
+def _is_forbidden_prefix(command: str) -> bool:
+    return _program(command) in _PREFIX_FORBIDDEN_PROGRAMS
+
+
 def command_matches(rule_kind: str, rule_command: str, command: str) -> bool:
     command = command.strip()
     if rule_kind == EXACT:
         return command == rule_command.strip()
     if rule_kind == PREFIX:
         if _has_shell_operators(command):
+            return False
+        # A rule that could never be saved now (a wrapper) must not match a
+        # command either, so one saved before this guard stops allowing.
+        if _is_forbidden_prefix(rule_command):
             return False
         rule_words, words = _words(rule_command), _words(command)
         if not rule_words or words is None:
@@ -111,6 +139,10 @@ def validate_rule(kind: str, command: str, workspace: str | None = None) -> str:
             raise InvalidRule("a prefix rule cannot contain shell operators")
         if not _words(command):
             raise InvalidRule("a prefix rule must be a valid command")
+        if _is_forbidden_prefix(command):
+            raise InvalidRule(
+                "a wrapper, multiplexer or shell cannot be always allowed as a prefix"
+            )
     if not safety_floor.clears_floor(command):
         raise InvalidRule("this command is on the safety floor and is always asked about")
     validate_workspace(workspace)
