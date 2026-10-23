@@ -262,7 +262,7 @@ _PREFIX_SAFE_REVIEW = {
     "head": {"runs": False, "writes_path": False, "why": "prints the head of files"},
     "tail": {"runs": False, "writes_path": False, "why": "prints the tail of files"},
     "wc": {"runs": False, "writes_path": False, "why": "counts in files"},
-    "file": {"runs": False, "writes_path": False, "why": "-C -m writes <path>.mgc next to the magic file, never a caller path; otherwise reads to describe bytes"},
+    "file": {"runs": False, "writes_path": False, "why": "-C -m writes basename(-m).mgc in the current directory, never a caller-named path; otherwise reads to describe bytes"},
     "stat": {"runs": False, "writes_path": False, "why": "reports file metadata"},
     "readlink": {"runs": False, "writes_path": False, "why": "prints a link target"},
     "realpath": {"runs": False, "writes_path": False, "why": "prints a resolved path"},
