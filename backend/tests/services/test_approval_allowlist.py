@@ -52,20 +52,43 @@ def test_rules_are_validated():
 
 @pytest.mark.parametrize(
     "command",
-    ["env", "sudo rm", "xargs", "find /", "sh", "bash -c", "tmux", "screen", "time", "stdbuf -o L"],
+    [
+        "env", "sudo rm", "xargs", "find /", "sh", "bash -c", "tmux", "screen",
+        "time", "stdbuf -o L", "flock /tmp/l make", "ssh host", "su", "runuser -u x",
+        "chroot /", "busybox rm", "strace -f ls", "unshare -r ls", "nsenter -t 1 ls",
+        "python3 -c x", "python3 script.py", "perl -e x", "node -e x", "docker run x",
+        "podman run x", "eval x", "watch ls", "parallel x", "at now", "crontab -l",
+        "dbus-send x",
+    ],
 )
-def test_a_wrapper_or_multiplexer_cannot_be_a_prefix_rule(command):
+def test_a_program_that_runs_another_cannot_be_a_prefix_rule(command):
     with pytest.raises(InvalidRule):
         allow.validate_rule(PREFIX, command)
 
 
-@pytest.mark.parametrize("command", ["env rm -rf /", "sudo rm -rf /", "xargs sh -c x", "find / -delete"])
-def test_a_prefix_rule_saved_for_a_wrapper_stops_matching(command):
-    # A rule saved before this guard must not silently allow the wrapper.
-    assert not command_matches(PREFIX, "env", command)
-    assert not command_matches(PREFIX, "sudo", command)
-    assert not command_matches(PREFIX, "xargs", command)
-    assert not command_matches(PREFIX, "find", command)
+@pytest.mark.parametrize(
+    "command",
+    ["git status", "git log", "npm test", "cargo build", "rg pattern", "ls -la", "pytest -q", "jq .x"],
+)
+def test_a_program_that_runs_itself_can_be_a_prefix_rule(command):
+    assert allow.validate_rule(PREFIX, command) == command
+
+
+@pytest.mark.parametrize(
+    "program,command",
+    [
+        ("env", "env rm -rf /"),
+        ("sudo", "sudo rm -rf /"),
+        ("xargs", "xargs sh -c x"),
+        ("find", "find / -delete"),
+        ("flock", "flock /tmp/l rm -rf ~"),
+        ("ssh", "ssh host shutdown -h now"),
+        ("python3", "python3 -c 'os.system(\"rm -rf /\")'"),
+    ],
+)
+def test_a_prefix_rule_saved_before_the_guard_stops_matching(program, command):
+    # A rule saved before the allowlist must not silently allow the program.
+    assert not command_matches(PREFIX, program, command)
 
 
 async def test_rules_are_saved_listed_matched_and_deleted(db_session):
