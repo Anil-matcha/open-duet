@@ -234,6 +234,26 @@ def test_inside_resolves_symlinks_so_a_link_out_is_not_inside(tmp_path):
     assert codex_adapter._inside("../escape.txt", workspace) is False
 
 
+async def test_accept_edits_allows_an_in_workspace_edit_that_runs_later(
+    crt, sessions, owner, codex, monkeypatch
+):
+    # A decided trade-off, not an oversight: accept_edits lets an in-workspace
+    # edit through, and an edit can be code that runs later (a git hook, a
+    # Makefile, a test helper). The floor is never bypassed — no command is
+    # auto-allowed — but the person chose a mode where such a write needs no
+    # card. This pins that the auto-allow happens for an in-workspace path and
+    # that the *tool* is a file write, never a command.
+    monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
+    thread = await codex_thread(crt, sessions, owner, mode="accept_edits")
+    hook = str(Path(thread.workspace_path) / ".git" / "hooks" / "pre-commit")
+    codex.plan({"type": "file", "path": hook})
+    await crt.send_turn(thread.id, "add a hook")
+    await finished(sessions, thread.id)
+    async with sessions() as db:
+        assert await store.list_approvals(db, thread.id) == []  # no card, by design
+    assert codex.answers()[0]["result"] == {"decision": "accept"}
+
+
 async def test_plan_mode_is_read_only_and_declines_without_a_card(crt, sessions, owner, codex, monkeypatch):
     monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
     codex.plan({"type": "command"})

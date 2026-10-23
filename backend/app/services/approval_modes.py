@@ -9,6 +9,15 @@ the enforcing, so this app never re-implements what the CLI already decides.
 
 There is deliberately no "full access" mode: no run skips permissions.
 
+accept_edits lets an in-workspace *edit* through without a command card. That
+includes an edit whose effect is code that runs later — a `.git/hooks/` hook, a
+`Makefile` target, a `package.json` script, a `conftest.py` — because a test,
+build or commit that runs it is a command the floor already clears by design.
+The floor is never bypassed (no command is auto-allowed here), but the mode does
+trade "a person reads every write" for "edits go through", and this is the one
+path where that yields execution without a command card. It is the intended
+meaning of the mode, not an oversight; `ask` is the default.
+
 `mode=None` means "not chosen" and behaves exactly as before modes existed (ask).
 """
 
