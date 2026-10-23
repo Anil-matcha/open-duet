@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { BASE_PATH } from "@/lib/paths";
 import { safeNextPath, type AuthStatus } from "@/lib/session";
+import { Button } from "@/components/ui/Button";
 
-const inputClass = "block w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm";
-const buttonClass = "w-full cursor-pointer rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 bg-accent text-accent-fg hover:opacity-90";
+const inputClass = "block w-full rounded-field border border-line bg-transparent px-3 py-2 text-sm";
 
 function nextPath(): string {
   return safeNextPath(new URLSearchParams(window.location.search).get("next"), BASE_PATH);
@@ -26,6 +26,8 @@ export function LoginScreen() {
   const [repeat, setRepeat] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Guards against a double submit from a fast double-click or Enter repeat.
+  const inFlight = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,11 +46,13 @@ export function LoginScreen() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (inFlight.current) return;
     setError(null);
     if (settingUp && passphrase !== repeat) {
       setError("The two passphrases differ.");
       return;
     }
+    inFlight.current = true;
     setBusy(true);
     try {
       if (settingUp) await auth.setup(passphrase);
@@ -57,6 +61,7 @@ export function LoginScreen() {
     } catch (err) {
       setError(message(err, "Could not sign in. Try again."));
       setBusy(false);
+      inFlight.current = false;
     }
   };
 
@@ -88,7 +93,9 @@ export function LoginScreen() {
               </div>
             )}
             {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-            <button type="submit" className={buttonClass} disabled={busy}>{busy ? "Working…" : settingUp ? "Set passphrase and sign in" : "Sign in"}</button>
+            <Button type="submit" variant="primary" size="md" className="w-full" loading={busy}>
+              {busy ? "Working…" : settingUp ? "Set passphrase and sign in" : "Sign in"}
+            </Button>
           </form>
         )}
         {status && !settingUp && (

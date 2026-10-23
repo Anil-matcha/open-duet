@@ -205,7 +205,6 @@ export function Composer({
                   type="file"
                   multiple
                   hidden
-                  aria-hidden
                   tabIndex={-1}
                   accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
                   onChange={(e) => {
@@ -291,7 +290,8 @@ export function Composer({
               rows={1}
               placeholder={blockedReason ?? "Message your agent"}
               aria-label="Message"
-              className="max-h-52 min-h-10 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] leading-5 outline-none placeholder:text-faint focus-visible:outline-none"
+              aria-describedby={blockedReason ? "composer-blocked-reason" : undefined}
+              className="max-h-52 min-h-10 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] leading-5 placeholder:text-faint"
             />
             {running ? (
               <button
@@ -328,7 +328,11 @@ export function Composer({
             <Button variant="primary" size="sm" onClick={blockedAction.onClick}>{blockedAction.label}</Button>
           </div>
         )}
-        {blockedReason && value.trim() !== "" && <p className="mt-1.5 px-3 text-xs text-muted">{blockedReason}</p>}
+        {blockedReason && (
+          <p id="composer-blocked-reason" role="status" className="mt-1.5 px-3 text-xs text-muted">
+            {blockedReason}
+          </p>
+        )}
       </div>
     </div>
   );

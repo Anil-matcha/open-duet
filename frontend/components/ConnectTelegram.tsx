@@ -42,7 +42,7 @@ export function ConnectTelegram({
       pollRef.current = setInterval(async () => {
         try {
           const status = await api.getLinkStatus(code.code);
-          if (status.status === "claimed" && status.user_id) {
+          if (status.status === "claimed") {
             if (pollRef.current) clearInterval(pollRef.current);
             setLinkCode(null);
             onLinked({ link_code: code.code });
