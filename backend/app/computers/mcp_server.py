@@ -31,6 +31,25 @@ NOT_APPROVED = (
     "Ask again; every computer call needs an approval."
 )
 
+SECRET_REFUSAL = (
+    "That path holds credentials or keys (for example ~/.ssh, ~/.aws, .git or a "
+    ".env or .pem file), so it is not read or listed automatically. Ask the "
+    "person if you really need it."
+)
+
+
+def _secret_path(path: str) -> str | None:
+    """The refusal text when `path` names a credential file or folder, else None.
+    Absolute paths are read relative to the guest workspace; anything else keeps
+    its whole path so a secret directory anywhere in it is still caught."""
+    from app.services.workspace_files import is_secret
+
+    text = (path or "").strip()
+    if text.startswith(docker_cli.GUEST_WORKSPACE):
+        text = text[len(docker_cli.GUEST_WORKSPACE):]
+    parts = tuple(part for part in Path(text).parts if part not in ("", ".", ".."))
+    return SECRET_REFUSAL if is_secret(parts) else None
+
 
 def _schema(properties: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": properties, "required": required, "additionalProperties": False}
@@ -170,6 +189,10 @@ class Server:
         return _text("\n".join(lines), error=code != 0)
 
     def _read_file(self, args: dict) -> dict:
+        refused = _secret_path(args.get("path"))
+        if refused is not None:
+            self._remember("read_file", args["path"], None, False, refused)
+            return _text(refused, error=True)
         done = docker_cli.run(docker_cli.read_args(self.container, args["path"], self.user), timeout=60, docker=self.docker)
         self._remember("read_file", args["path"], done.code, done.timed_out, "")
         if done.code != 0:
@@ -194,6 +217,10 @@ class Server:
 
     def _list_files(self, args: dict) -> dict:
         path = args.get("path") or "."
+        refused = _secret_path(path)
+        if refused is not None:
+            self._remember("list_files", path, None, False, refused)
+            return _text(refused, error=True)
         done = docker_cli.run(docker_cli.list_args(self.container, path, self.user), timeout=60, docker=self.docker)
         self._remember("list_files", path, done.code, done.timed_out, "")
         if done.code != 0:

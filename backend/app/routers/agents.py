@@ -71,18 +71,50 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 
 def _check_workspace(path: str | None) -> str | None:
     """A workspace is an existing folder this process can use. It is stored in
-    its canonical spelling, as a thread's pinned workspace is."""
+    its canonical spelling, as a thread's pinned workspace is.
+
+    The folder is mounted read-write into the agent's computer, so it must not
+    be a system directory, the filesystem root, or the person's home root: an
+    agent that could mount those could read or overwrite credentials and system
+    files with no approval (reads inside a mounted workspace are not gated)."""
     if path is None:
         return None
     folder = Path(path.strip()).expanduser()
     if not folder.is_absolute():
         raise _error(422, "workspace_unavailable", "The workspace must be an absolute path.")
     try:
-        return str(require_workspace(folder.resolve()))
+        resolved = folder.resolve()
     except OSError:
         raise _error(
             422, "workspace_unavailable", "The workspace folder does not exist or cannot be used."
         ) from None
+    if _is_unsafe_workspace(resolved):
+        raise _error(
+            422,
+            "workspace_unavailable",
+            "Choose a project folder, not the home folder, a system directory or the filesystem root.",
+        )
+    try:
+        return str(require_workspace(resolved))
+    except OSError:
+        raise _error(
+            422, "workspace_unavailable", "The workspace folder does not exist or cannot be used."
+        ) from None
+
+
+def _is_unsafe_workspace(folder: Path) -> bool:
+    """A folder that must never be mounted into a computer: the filesystem
+    root, a system directory, or the home root itself."""
+    from app.services.safety_floor import SYSTEM_DIRECTORIES
+
+    text = str(folder)
+    if text == "/" or folder.parent == folder:
+        return True
+    if text in SYSTEM_DIRECTORIES:
+        return True
+    if text == str(Path.home().resolve()):
+        return True
+    return False
 
 
 def _start_notes(agent_id: int, notes: str | None) -> None:
