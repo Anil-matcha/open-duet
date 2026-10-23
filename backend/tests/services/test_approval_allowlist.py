@@ -97,23 +97,36 @@ def test_a_program_whose_argument_runs_code_cannot_be_a_prefix_rule(command):
         "ls -la", "cat notes.txt", "head -n 5 x", "tail -f log", "wc -l x",
         "grep -n pattern file", "diff a b", "cut -d, -f2", "uniq -c",
         "tr a b", "comm a b", "echo hi", "printf x", "date +%s", "file x",
-        "stat x", "cp a b", "mkdir d", "base64 x",
+        "stat x", "base64 x",
     ],
 )
 def test_a_program_that_runs_itself_can_be_a_prefix_rule(command):
     assert allow.validate_rule(PREFIX, command) == command
 
 
-# The invariant the allowlist exists to keep: no argument form of a program can
-# make it run another program. A membership check cannot test that, so this gate
-# is two maps:
+@pytest.mark.parametrize("command", ["cp a b", "mkdir d", "tee x", "ln -s a b"])
+def test_a_program_that_writes_a_caller_path_cannot_be_a_prefix_rule(command):
+    # A prefix rule for a write-capable program auto-approves a write anywhere;
+    # a workspace scopes where a rule applies, never what a command may touch.
+    with pytest.raises(InvalidRule):
+        allow.validate_rule(PREFIX, command)
+
+
+# The invariants the allowlist exists to keep. A membership check cannot test
+# them, so this gate is three maps:
 #
 #   _ARG_EXEC_HOOKS     every program known to run code through an argument,
 #                       each with a payload that exercises the hook. The payload
 #                       must be REFUSED as a prefix rule. A program listed here
 #                       must not be on the allowlist.
+#   _ARG_WRITE_HOOKS    every program whose arguments name a path it writes.
+#                       Same rule: the payload must be refused, and the program
+#                       must not be on the allowlist. A workspace scopes where a
+#                       rule applies, never what a command may touch, so a
+#                       prefix rule for these auto-approves a write anywhere.
 #   _PREFIX_SAFE_REVIEW every allowlisted program, with the sentence that says
-#                       why no argument of it runs a program.
+#                       why it keeps BOTH properties (runs no argument, writes
+#                       no caller path).
 #
 # A new allowlist entry fails until it has a review sentence here, and fails if
 # it is also a known hook program. That is what forces the question "does any
@@ -204,54 +217,70 @@ _ARG_EXEC_HOOKS = {
     "psql": ["psql -c 'x'"],
 }
 
-# One sentence per allowlisted program: why no argument of it runs a program.
+# Programs whose arguments name a path they will write or change. A workspace
+# scopes where a rule applies, never what a command may touch, so a prefix rule
+# for any of these auto-approves a write anywhere (`cp` scoped to /work/a still
+# matches `cp /tmp/x ~/.ssh/authorized_keys`). A program here must not be on the
+# allowlist, and its payload must be refused as a prefix rule.
+_ARG_WRITE_HOOKS = {
+    "cp": ["cp /tmp/payload ~/.ssh/authorized_keys", "cp /tmp/hook .git/hooks/pre-commit"],
+    "mv": ["mv /tmp/payload ~/.bashrc"],
+    "tee": ["tee ~/.ssh/authorized_keys"],
+    "ln": ["ln -sf /tmp/payload ~/.bashrc"],
+    "touch": ["touch /etc/cron.d/x"],
+    "chmod": ["chmod 777 /etc/passwd"],
+    "chown": ["chown me /etc/passwd"],
+    "mkdir": ["mkdir /etc/evil"],
+    "rmdir": ["rmdir /etc/important"],
+    "install": ["install /tmp/x /usr/local/bin/x"],
+    "dd": ["dd of=/dev/sda"],
+    "truncate": ["truncate -s 0 /etc/passwd"],
+    "rm": ["rm -rf ~"],
+    "shred": ["shred /etc/passwd"],
+}
+
+# One sentence per allowlisted program, naming which of the two properties it
+# keeps: it runs no program through an argument AND writes no path the caller
+# names. The sentence must say "writes nothing", so a future entry cannot be
+# certified on the run-a-program property alone.
 _PREFIX_SAFE_REVIEW = {
-    "ls": "arguments are paths and listing options",
-    "cat": "arguments are files to print",
-    "head": "arguments are count options and files",
-    "tail": "arguments are count options and files",
-    "wc": "arguments are counting flags and files",
-    "file": "arguments are files (and -m reads a magic file, which describes bytes)",
-    "stat": "arguments are format flags and paths",
-    "readlink": "arguments are paths and a -f flag",
-    "realpath": "arguments are paths and a -m flag",
-    "basename": "arguments are a path and a suffix",
-    "dirname": "arguments are paths",
-    "grep": "the pattern is data; a pattern file (-f) is data, not a program",
-    "egrep": "same as grep",
-    "fgrep": "same as grep",
-    "cut": "arguments are delimiters, fields and files",
-    "uniq": "arguments are skip/compare options and files",
-    "tr": "arguments are two character sets",
-    "diff": "arguments are format options and files; no format string runs a program",
-    "comm": "arguments are files and a set of column flags",
-    "tee": "arguments are files to copy to",
-    "jq": "arguments are a filter and files; the filter language has no process call",
-    "cp": "arguments are paths and copy options",
-    "mv": "arguments are paths",
-    "mkdir": "arguments are paths and mode flags",
-    "rmdir": "arguments are paths",
-    "touch": "arguments are paths and timestamps",
-    "ln": "arguments are paths and link options",
-    "chmod": "arguments are a mode and paths",
-    "chown": "arguments are an owner and paths",
-    "echo": "arguments are data; -e is escapes, not a program",
-    "printf": "the format and its arguments are data",
-    "date": "arguments are format strings and setters",
-    "printenv": "arguments are variable names",
-    "which": "arguments are program names to locate",
-    "whoami": "takes no arguments that run anything",
-    "id": "arguments are user names and id flags",
-    "pwd": "takes no arguments that run anything",
-    "true": "takes no arguments that run anything",
-    "false": "takes no arguments that run anything",
-    "test": "arguments are expressions over strings, numbers and files",
-    "sleep": "arguments are durations",
-    "seq": "arguments are numbers and separators",
-    "base64": "arguments are files and wrap flags",
-    "sha256sum": "arguments are files and a check flag (-c reads a manifest of hashes)",
-    "md5sum": "same as sha256sum",
-    "cksum": "arguments are files",
+    "ls": "reads names and metadata; writes nothing",
+    "cat": "prints files; writes nothing",
+    "head": "prints the head of files; writes nothing",
+    "tail": "prints the tail of files; writes nothing",
+    "wc": "counts in files; writes nothing",
+    "file": "reads a magic file to describe bytes; writes nothing",
+    "stat": "reports file metadata; writes nothing",
+    "readlink": "prints a link target; writes nothing",
+    "realpath": "prints a resolved path; writes nothing",
+    "basename": "prints a path component; writes nothing",
+    "dirname": "prints a path component; writes nothing",
+    "grep": "reads files; a pattern file (-f) is data, and it writes nothing",
+    "egrep": "same as grep; writes nothing",
+    "fgrep": "same as grep; writes nothing",
+    "cut": "prints selected columns; writes nothing",
+    "uniq": "prints deduplicated lines; writes nothing",
+    "tr": "prints translated characters; writes nothing",
+    "diff": "reads two files and prints the difference; writes nothing",
+    "comm": "reads two sorted files and prints columns; writes nothing",
+    "jq": "filters JSON to stdout; the filter language has no process call and no writes",
+    "echo": "prints data; -e is escapes, not a program, and it writes nothing",
+    "printf": "prints the format and its arguments; writes nothing",
+    "date": "prints or sets the clock (a system effect, not a caller path); writes no file",
+    "printenv": "prints environment values; writes nothing",
+    "which": "locates a program on PATH; writes nothing",
+    "whoami": "prints the user; takes no path, writes nothing",
+    "id": "prints user and group ids; takes no path, writes nothing",
+    "pwd": "prints the working directory; takes no path, writes nothing",
+    "true": "does nothing; writes nothing",
+    "false": "does nothing; writes nothing",
+    "sleep": "waits; takes no path, writes nothing",
+    "test": "evaluates an expression over strings, numbers and files; writes nothing",
+    "seq": "prints a number sequence; writes nothing",
+    "base64": "encodes or decodes to stdout; writes nothing",
+    "sha256sum": "reads files and prints hashes; -c reads a manifest and writes nothing",
+    "md5sum": "same as sha256sum; writes nothing",
+    "cksum": "reads files and prints checksums; writes nothing",
 }
 
 
@@ -268,11 +297,39 @@ def test_a_program_with_an_argument_exec_hook_is_not_prefix_safe():
                 allow.validate_rule(PREFIX, payload)
 
 
+def test_a_program_that_writes_a_caller_path_is_not_prefix_safe():
+    # The exec property is not the write property: a workspace scopes where a
+    # rule applies, never what a command may touch. A program whose arguments
+    # name a path it writes must not be prefix-safe, whatever else is true of
+    # it. Adding `cp`/`tee`/`ln` back to the allowlist fails here.
+    safe = set(allow._PREFIX_SAFE_PROGRAMS)
+    for program, payloads in _ARG_WRITE_HOOKS.items():
+        assert program not in safe, f"{program} writes a path an argument names"
+        for payload in payloads:
+            assert allow._program(payload) == program, payload
+            with pytest.raises(InvalidRule):
+                allow.validate_rule(PREFIX, payload)
+
+
+def test_a_write_hook_rule_scoped_to_a_folder_still_reaches_outside(tmp_path):
+    # A folder scopes where a rule applies, never what a command may touch: a
+    # `cp` rule saved to /work/a would still match a write to an absolute path
+    # outside it. That is why write-capable programs are not prefix-safe at all
+    # — and the guard refuses the program regardless of the scope.
+    with pytest.raises(InvalidRule):
+        allow.validate_rule(PREFIX, f"cp@{tmp_path}")
+    with pytest.raises(InvalidRule):
+        allow.validate_rule(PREFIX, "cp")
+
+
 def test_every_prefix_safe_program_has_a_reviewed_reason():
     # Every allowlisted program must carry a sentence saying why no argument of
-    # it runs a program. This fails until a new entry is reviewed — the question
-    # that was skipped for sed, awk, rg, sort and zip.
+    # it runs a program AND why it writes no caller path. This fails until a new
+    # entry is reviewed — the question that was skipped for sed, awk, rg, sort,
+    # zip and cp.
     assert set(_PREFIX_SAFE_REVIEW) == set(allow._PREFIX_SAFE_PROGRAMS)
+    for program, reason in _PREFIX_SAFE_REVIEW.items():
+        assert "writes" in reason, f"{program}: the reason does not address writing"
 
 
 @pytest.mark.parametrize(

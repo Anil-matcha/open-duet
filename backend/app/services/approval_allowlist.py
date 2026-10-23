@@ -48,29 +48,35 @@ COMMAND_TOOLS = (BASH_TOOL, "mcp__computer__exec")
 _SHELL_OPERATORS = (";", "&", "|", "<", ">", "`", "$(", "\n", "\r")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
-# A prefix rule allows the command and anything after it. A program turns
-# "always allow X" into "always allow anything" in either of two ways:
+# A prefix rule allows the command and anything after it. To be safe to
+# auto-allow, a program's arguments must satisfy two separate properties — and a
+# check for one is not a check for the other:
 #
-#   1. Its first word does not name the thing that runs: a wrapper (`env`,
-#      `sudo`, `time`), a runner (`xargs`, `find -exec`, `flock`, `chroot`,
-#      `su`), a shell, a multiplexer (`screen`, `tmux`), or a subcommand
-#      dispatcher (`docker`, `ssh`, `python3`).
-#   2. Its first word names the program, but an *argument* selects code to run:
-#      `sed -i '1e touch f'`, `awk 'BEGIN{system(...)}'`, `git -c alias.p='!cmd'`,
-#      `tar --checkpoint-action=exec=...`, `rg --pre <script>`,
-#      `sort --compress-program <script>`, `zip -T --unzip-command <cmd>`.
+#   (a) no argument runs another program. A wrapper (`env`, `sudo`, `time`), a
+#       runner (`xargs`, `find -exec`, `flock`, `chroot`, `su`), a shell, a
+#       multiplexer, or a subcommand dispatcher (`docker`, `ssh`, `python3`)
+#       names the program elsewhere in the line; and an argument hook runs code
+#       even when the first word is right: `sed -i '1e touch f'`,
+#       `awk 'BEGIN{system(...)}'`, `git -c alias.p='!cmd'`,
+#       `tar --checkpoint-action=exec=...`, `rg --pre <script>`,
+#       `sort --compress-program <script>`, `zip -T --unzip-command <cmd>`.
+#   (b) no argument writes outside the project. A workspace scopes WHERE a rule
+#       applies, never WHAT a command may touch: a `cp` rule scoped to `/work/a`
+#       still matches `cp /tmp/x ~/.ssh/authorized_keys`, and `tee`, `mv`, `ln`,
+#       `touch`, `chmod`, `chown`, `mkdir`, `rmdir` are the same. Those effects
+#       are not visible to a program-run check at all.
 #
-# Both classes are open-ended, so a denylist cannot win either race. Only the
-# programs below, whose every argument is data or an option that cannot name a
-# program, may be saved as a prefix rule.
+# So the allowlist holds only programs that satisfy both: they read, transform
+# or describe, and they never write a path the caller names. Everything else can
+# still be always allowed *exactly* (one literal command, so nothing rides
+# along) and can still be answered on the card.
 #
 # The list is not trusted on its own. tests/services/test_approval_allowlist.py
-# holds `_PREFIX_INVARIANT_PAYLOADS`, a {program: [payloads]} map whose keys must
-# equal this set and whose payloads must all be refused. A program cannot be on
-# the allowlist without a payload that tries to make it run something else — so
-# adding an entry forces the question "does any argument of this run a program?",
-# which a set-membership check cannot answer. `rg`, `sort` and `zip` were each
-# added without that question being asked; that is what the map is for.
+# holds two gates: `_ARG_EXEC_HOOKS` (every program known to run code through an
+# argument; its keys must be disjoint from this set) and `_PREFIX_SAFE_REVIEW`
+# (a sentence for each entry saying which of the two properties it keeps, and
+# why). Adding a convenience entry fails until both are answered — the questions
+# that were skipped for `sed`, `awk`, `rg`, `sort`, `zip` and `cp`.
 _PREFIX_SAFE_PROGRAMS = frozenset(
     {
         # reading and listing files (arguments are paths and options)
@@ -79,9 +85,7 @@ _PREFIX_SAFE_PROGRAMS = frozenset(
         # searching text (patterns are data; no expression language, no hook)
         "grep", "egrep", "fgrep",
         # shaping text and streams (no expression language, no exec hook)
-        "cut", "uniq", "tr", "diff", "comm", "tee", "jq",
-        # moving and naming files (effects, but no program runs)
-        "cp", "mv", "mkdir", "rmdir", "touch", "ln", "chmod", "chown",
+        "cut", "uniq", "tr", "diff", "comm", "jq",
         # printing and inspecting the environment (values are data)
         "echo", "printf", "date", "printenv", "which", "whoami", "id", "pwd",
         "true", "false", "test", "sleep", "seq",
