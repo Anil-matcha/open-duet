@@ -215,12 +215,14 @@ async def _approvals(sessions, thread_id):
 
 async def test_a_saved_rule_never_allows_a_command_on_the_safety_floor(rt, sessions, cli, tools_on, owner):
     # A rule that predates the floor, or was written straight into the table.
-    # `chmod` is prefix-safe, and `chmod -R 777 /etc` is on the floor: the rule
-    # matches but the floor still holds the call for a person.
+    # `chmod -R 777 /etc` is on the floor: an exact rule for it still matches,
+    # but the floor holds the call for a person. (`chmod` is not even prefix-safe
+    # now, because its operands name paths it writes; an exact rule is the way a
+    # user could still reach it, so that is what this covers.)
     async with rt.session() as db:
         from app.db.models.permission_rule import PermissionRule
 
-        db.add(PermissionRule(user_id=owner, bucket=allow.BUCKET, connector=allow.PREFIX, tool="chmod", decision="allow"))
+        db.add(PermissionRule(user_id=owner, bucket=allow.BUCKET, connector=allow.EXACT, tool="chmod -R 777 /etc", decision="allow"))
         await db.commit()
     thread = await new_thread(sessions, owner)
     cli.script({"type": "tool", "tool_name": "Bash", "tool_input": {"command": "chmod -R 777 /etc"}})
