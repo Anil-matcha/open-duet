@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.core import hook_token
 from app.core.config import Settings, settings
 from app.auth.routes import require_identity
 from app.db.models.task import Tasks
@@ -81,7 +82,9 @@ async def test_parallel_search_task_launch(
     assert permission["hooks"][0]["url"] == (
         f"{settings.PERMISSION_HOOK_BASE_URL}/api/v1/permissions/check/{user_id}/{response.json()['id']}"
     )
-    assert permission["hooks"][0]["headers"] == {"Authorization": f"Bearer {settings.HOOK_TOKEN}"}
+    assert permission["hooks"][0]["headers"] == {
+        "Authorization": f"Bearer {hook_token.scoped_token(settings.HOOK_TOKEN, user_id, response.json()['id'])}"
+    }
 
 
 def test_parallel_search_is_opt_in(monkeypatch):
