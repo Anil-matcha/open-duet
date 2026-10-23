@@ -102,14 +102,14 @@ async def test_a_saved_exact_rule_allows_the_command_without_asking(rt, sessions
 
 
 async def test_a_saved_prefix_rule_allows_a_longer_command_but_not_a_chained_one(rt, sessions, cli, tools_on, owner):
-    await save_rule(rt, allow.PREFIX, "git status")
+    await save_rule(rt, allow.PREFIX, "grep status")
     thread = await new_thread(sessions, owner)
-    cli.script(BASH)
+    cli.script({"type": "tool", "tool_name": "Bash", "tool_input": {"command": "grep status -s"}})
     await rt.send_turn(thread.id, "status")
     await finished(sessions, thread.id)
     assert cli.log("reply")[0]["reply"]["response"]["response"]["behavior"] == "allow"
 
-    chained = {"type": "tool", "tool_name": "Bash", "tool_input": {"command": "git status; rm -rf ~"}}
+    chained = {"type": "tool", "tool_name": "Bash", "tool_input": {"command": "grep status; rm -rf ~"}}
     cli.script(chained)
     await rt.send_turn(thread.id, "again")
     approval = await pending_approval(sessions, thread.id)  # asked: the rule does not cover it
@@ -215,18 +215,20 @@ async def _approvals(sessions, thread_id):
 
 async def test_a_saved_rule_never_allows_a_command_on_the_safety_floor(rt, sessions, cli, tools_on, owner):
     # A rule that predates the floor, or was written straight into the table.
+    # `chmod` is prefix-safe, and `chmod -R 777 /etc` is on the floor: the rule
+    # matches but the floor still holds the call for a person.
     async with rt.session() as db:
         from app.db.models.permission_rule import PermissionRule
 
-        db.add(PermissionRule(user_id=owner, bucket=allow.BUCKET, connector=allow.PREFIX, tool="git push", decision="allow"))
+        db.add(PermissionRule(user_id=owner, bucket=allow.BUCKET, connector=allow.PREFIX, tool="chmod", decision="allow"))
         await db.commit()
     thread = await new_thread(sessions, owner)
-    cli.script({"type": "tool", "tool_name": "Bash", "tool_input": {"command": "git push --force origin main"}})
-    await rt.send_turn(thread.id, "push")
+    cli.script({"type": "tool", "tool_name": "Bash", "tool_input": {"command": "chmod -R 777 /etc"}})
+    await rt.send_turn(thread.id, "fix perms")
     approval = await pending_approval(sessions, thread.id)  # asked, not auto-allowed
     assert cli.log("reply") == []
     [entry] = await logged_shown_cards()
-    assert (entry["event"], entry["rule"]) == ("shown", "safety_floor:force-push")
+    assert (entry["event"], entry["rule"]) == ("shown", "safety_floor:permission-change-root")
     assert await rt.answer_approval(approval.id, "deny")
     await finished(sessions, thread.id)
 

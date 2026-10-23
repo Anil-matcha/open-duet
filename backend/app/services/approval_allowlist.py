@@ -48,44 +48,48 @@ COMMAND_TOOLS = (BASH_TOOL, "mcp__computer__exec")
 _SHELL_OPERATORS = (";", "&", "|", "<", ">", "`", "$(", "\n", "\r")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
-# A prefix rule allows the command and anything after it, so its first word must
-# name one specific program that does not run another command. A wrapper (`env`,
-# `sudo`, `time`), a runner (`xargs`, `find -exec`, `flock`, `chroot`, `su`), a
-# shell, a multiplexer (`screen`, `tmux`) or a program whose first word is a
-# subcommand that runs code (`docker`, `ssh`, `podman`, `python3`) would turn
-# "always allow `env`" into "always allow anything": `env rm -rf /`,
-# `docker run rm -rf /`, `python3 -c 'os.system(...)'`.
+# A prefix rule allows the command and anything after it. Two ways a program can
+# turn "always allow X" into "always allow anything":
 #
-# A denylist of wrappers cannot win this race: the class of programs that run
-# something else is open-ended (interpreters, container runtimes, sandbox-escape
-# helpers, schedulers, and the next one to be installed). So prefix rules are
-# allowed only for a program on the allowlist below, whose first word names the
-# thing that runs. Exact rules are unaffected: they match one literal command,
-# so nothing can ride along. Anything not listed can still be always allowed
-# exactly, and can still be answered on the card.
+#   1. Its first word does not name the thing that runs. A wrapper (`env`, `sudo`,
+#      `time`), a runner (`xargs`, `find -exec`, `flock`, `chroot`, `su`), a
+#      shell, a multiplexer (`screen`, `tmux`), or a subcommand dispatcher
+#      (`docker`, `ssh`, `podman`, `python3`): `env rm -rf /`, `docker run rm -rf /`,
+#      `python3 -c 'os.system(...)'`.
+#   2. Its first word names the program, but an *argument* selects code to run:
+#      `sed -i '1e touch f'`, `awk 'BEGIN{system("...")}'`,
+#      `git -c alias.p='!cmd' p`, `tar --checkpoint-action=exec=...`, `curl` with a
+#      `-o`/config, `make` targets, `npm`/`poetry` lifecycle scripts, `go run`.
+#
+# A denylist cannot win either race: both classes are open-ended (interpreters,
+# runtimes, sandbox-escape helpers, schedulers, and the next convenience flag).
+# So only the programs below — whose every argument is data or an option and
+# cannot name a program to run — may be saved as a prefix rule. Everything else
+# can still be always allowed *exactly* (one literal command, so nothing rides
+# along) and can still be answered on the card.
+#
+# Adding an entry here is a claim that no argument form of it executes another
+# program. That claim is covered by tests/services/test_approval_allowlist.py,
+# which asserts it for each entry; do not add a convenience entry without it —
+# that is exactly how `sed` and `awk` got in.
 _PREFIX_SAFE_PROGRAMS = frozenset(
     {
-        # version control and its common tools
-        "git", "gh", "hg", "svn", "jj", "git-lfs",
-        # build, package and test runners whose first word is the tool
-        "npm", "npx", "pnpm", "yarn", "bun", "cargo", "rustc", "go", "mvn", "gradle",
-        "gradlew", "make", "cmake", "ninja", "bazel", "buck", "ant", "sbt", "mix",
-        "composer", "bundle", "gem", "rake", "poetry", "pipenv", "conda", "dotnet",
-        "msbuild", "clang", "clang++", "gcc", "g++", "cc", "ld", "ar", "tup",
-        # language entry points that run a named file, not an inline script
-        "ts-node", "tsc", "esbuild", "vite", "webpack", "rollup", "jest", "vitest",
-        "mocha", "pytest", "ruff", "mypy", "black", "flake8", "eslint", "prettier",
-        "gofmt", "golangci-lint", "clippy", "rustfmt", "sqlfluff", "shellcheck",
-        # file, text and archive tools
+        # reading and listing files (arguments are paths and options)
         "ls", "cat", "head", "tail", "wc", "file", "stat", "tree", "du", "df",
-        "grep", "egrep", "fgrep", "rg", "ag", "sed", "awk", "cut", "sort", "uniq",
-        "tr", "diff", "comm", "tee", "jq", "yq", "tar", "zip", "unzip", "gzip",
-        "gunzip", "bzip2", "xz", "zstd", "cp", "mv", "mkdir", "rmdir", "touch",
-        "ln", "chmod", "chown", "readlink", "realpath", "basename", "dirname",
-        # misc read-only or single-purpose utilities whose first word is the tool
+        "readlink", "realpath", "basename", "dirname",
+        # searching text (patterns are data; no expression language)
+        "grep", "egrep", "fgrep", "rg", "ag",
+        # shaping text and streams (no expression language, no exec hook)
+        "cut", "sort", "uniq", "tr", "diff", "comm", "tee", "jq", "yq",
+        # archives (list/extract only writes files, never runs a program)
+        "zip", "unzip", "gzip", "gunzip", "bzip2", "xz", "zstd",
+        # moving and naming files (effects, but no program runs)
+        "cp", "mv", "mkdir", "rmdir", "touch", "ln", "chmod", "chown",
+        # printing and inspecting the environment (values are data)
         "echo", "printf", "date", "printenv", "which", "whoami", "id",
         "hostname", "uname", "pwd", "true", "false", "test", "sleep", "seq",
-        "base64", "sha256sum", "md5sum", "shasum", "cksum", "curl", "wget",
+        # encoding and hashing (pure functions of their input)
+        "base64", "sha256sum", "md5sum", "shasum", "cksum",
     }
 )
 
