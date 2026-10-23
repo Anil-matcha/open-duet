@@ -48,48 +48,45 @@ COMMAND_TOOLS = (BASH_TOOL, "mcp__computer__exec")
 _SHELL_OPERATORS = (";", "&", "|", "<", ">", "`", "$(", "\n", "\r")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
-# A prefix rule allows the command and anything after it. Two ways a program can
-# turn "always allow X" into "always allow anything":
+# A prefix rule allows the command and anything after it. A program turns
+# "always allow X" into "always allow anything" in either of two ways:
 #
-#   1. Its first word does not name the thing that runs. A wrapper (`env`, `sudo`,
-#      `time`), a runner (`xargs`, `find -exec`, `flock`, `chroot`, `su`), a
-#      shell, a multiplexer (`screen`, `tmux`), or a subcommand dispatcher
-#      (`docker`, `ssh`, `podman`, `python3`): `env rm -rf /`, `docker run rm -rf /`,
-#      `python3 -c 'os.system(...)'`.
+#   1. Its first word does not name the thing that runs: a wrapper (`env`,
+#      `sudo`, `time`), a runner (`xargs`, `find -exec`, `flock`, `chroot`,
+#      `su`), a shell, a multiplexer (`screen`, `tmux`), or a subcommand
+#      dispatcher (`docker`, `ssh`, `python3`).
 #   2. Its first word names the program, but an *argument* selects code to run:
-#      `sed -i '1e touch f'`, `awk 'BEGIN{system("...")}'`,
-#      `git -c alias.p='!cmd' p`, `tar --checkpoint-action=exec=...`, `curl` with a
-#      `-o`/config, `make` targets, `npm`/`poetry` lifecycle scripts, `go run`.
+#      `sed -i '1e touch f'`, `awk 'BEGIN{system(...)}'`, `git -c alias.p='!cmd'`,
+#      `tar --checkpoint-action=exec=...`, `rg --pre <script>`,
+#      `sort --compress-program <script>`, `zip -T --unzip-command <cmd>`.
 #
-# A denylist cannot win either race: both classes are open-ended (interpreters,
-# runtimes, sandbox-escape helpers, schedulers, and the next convenience flag).
-# So only the programs below — whose every argument is data or an option and
-# cannot name a program to run — may be saved as a prefix rule. Everything else
-# can still be always allowed *exactly* (one literal command, so nothing rides
-# along) and can still be answered on the card.
+# Both classes are open-ended, so a denylist cannot win either race. Only the
+# programs below, whose every argument is data or an option that cannot name a
+# program, may be saved as a prefix rule.
 #
-# Adding an entry here is a claim that no argument form of it executes another
-# program. That claim is covered by tests/services/test_approval_allowlist.py,
-# which asserts it for each entry; do not add a convenience entry without it —
-# that is exactly how `sed` and `awk` got in.
+# The list is not trusted on its own. tests/services/test_approval_allowlist.py
+# holds `_PREFIX_INVARIANT_PAYLOADS`, a {program: [payloads]} map whose keys must
+# equal this set and whose payloads must all be refused. A program cannot be on
+# the allowlist without a payload that tries to make it run something else — so
+# adding an entry forces the question "does any argument of this run a program?",
+# which a set-membership check cannot answer. `rg`, `sort` and `zip` were each
+# added without that question being asked; that is what the map is for.
 _PREFIX_SAFE_PROGRAMS = frozenset(
     {
         # reading and listing files (arguments are paths and options)
-        "ls", "cat", "head", "tail", "wc", "file", "stat", "tree", "du", "df",
-        "readlink", "realpath", "basename", "dirname",
-        # searching text (patterns are data; no expression language)
-        "grep", "egrep", "fgrep", "rg", "ag",
+        "ls", "cat", "head", "tail", "wc", "file", "stat", "readlink", "realpath",
+        "basename", "dirname",
+        # searching text (patterns are data; no expression language, no hook)
+        "grep", "egrep", "fgrep",
         # shaping text and streams (no expression language, no exec hook)
-        "cut", "sort", "uniq", "tr", "diff", "comm", "tee", "jq", "yq",
-        # archives (list/extract only writes files, never runs a program)
-        "zip", "unzip", "gzip", "gunzip", "bzip2", "xz", "zstd",
+        "cut", "uniq", "tr", "diff", "comm", "tee", "jq",
         # moving and naming files (effects, but no program runs)
         "cp", "mv", "mkdir", "rmdir", "touch", "ln", "chmod", "chown",
         # printing and inspecting the environment (values are data)
-        "echo", "printf", "date", "printenv", "which", "whoami", "id",
-        "hostname", "uname", "pwd", "true", "false", "test", "sleep", "seq",
+        "echo", "printf", "date", "printenv", "which", "whoami", "id", "pwd",
+        "true", "false", "test", "sleep", "seq",
         # encoding and hashing (pure functions of their input)
-        "base64", "sha256sum", "md5sum", "shasum", "cksum",
+        "base64", "sha256sum", "md5sum", "cksum",
     }
 )
 
