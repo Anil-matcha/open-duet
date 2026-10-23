@@ -13,7 +13,10 @@ does not match still asks, and a command on the safety floor
   prefix  the command starts with these words (`git status` allows
           `git status -s`). A command containing shell operators (`;` `&` `|`
           `<` `>` backtick, `$(`, a newline) never matches a prefix rule,
-          because `git status; rm -rf ~` would otherwise ride along.
+          because `git status; rm -rf ~` would otherwise ride along. A prefix
+          rule may only be saved for a program whose first word names the thing
+          that runs (see `_PREFIX_SAFE_PROGRAMS`); anything else can be always
+          allowed exactly instead.
 
 A rule saved from an answer is tied to that conversation's workspace folder,
 spelled exactly as stored (no symlink or `..` folding, so a rule can never
@@ -31,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.permission_rule import PermissionRule
 from app.db.transactions import begin_write
 from app.services import decision_log, safety_floor
-
 BUCKET = "local_command"
 EXACT = "exact"
 PREFIX = "prefix"
@@ -47,19 +49,46 @@ _SHELL_OPERATORS = (";", "&", "|", "<", ">", "`", "$(", "\n", "\r")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 # A prefix rule allows the command and anything after it, so its first word must
-# name one specific program. A wrapper (`env`, `sudo`, `time` ...), a command
-# that runs another command (`xargs`, `find -exec`, `eval`, a shell) or a
-# multiplexer (`screen`, `tmux`) would turn "always allow `env`" into "always
-# allow anything": `env rm -rf /`, `xargs sh -c ...`, `tmux new-session ...`.
-# None of these may be saved as a prefix rule.
-_PREFIX_FORBIDDEN_PROGRAMS = frozenset(
+# name one specific program that does not run another command. A wrapper (`env`,
+# `sudo`, `time`), a runner (`xargs`, `find -exec`, `flock`, `chroot`, `su`), a
+# shell, a multiplexer (`screen`, `tmux`) or a program whose first word is a
+# subcommand that runs code (`docker`, `ssh`, `podman`, `python3`) would turn
+# "always allow `env`" into "always allow anything": `env rm -rf /`,
+# `docker run rm -rf /`, `python3 -c 'os.system(...)'`.
+#
+# A denylist of wrappers cannot win this race: the class of programs that run
+# something else is open-ended (interpreters, container runtimes, sandbox-escape
+# helpers, schedulers, and the next one to be installed). So prefix rules are
+# allowed only for a program on the allowlist below, whose first word names the
+# thing that runs. Exact rules are unaffected: they match one literal command,
+# so nothing can ride along. Anything not listed can still be always allowed
+# exactly, and can still be answered on the card.
+_PREFIX_SAFE_PROGRAMS = frozenset(
     {
-        "sudo", "doas", "env", "nohup", "command", "time", "exec", "nice", "ionice",
-        "builtin", "stdbuf", "timeout", "chrt", "setsid", "xargs", "find", "eval",
-        "sh", "bash", "zsh", "dash", "ksh", "fish", "screen", "tmux", "script",
-        "watch", "parallel",
+        # version control and its common tools
+        "git", "gh", "hg", "svn", "jj", "git-lfs",
+        # build, package and test runners whose first word is the tool
+        "npm", "npx", "pnpm", "yarn", "bun", "cargo", "rustc", "go", "mvn", "gradle",
+        "gradlew", "make", "cmake", "ninja", "bazel", "buck", "ant", "sbt", "mix",
+        "composer", "bundle", "gem", "rake", "poetry", "pipenv", "conda", "dotnet",
+        "msbuild", "clang", "clang++", "gcc", "g++", "cc", "ld", "ar", "tup",
+        # language entry points that run a named file, not an inline script
+        "ts-node", "tsc", "esbuild", "vite", "webpack", "rollup", "jest", "vitest",
+        "mocha", "pytest", "ruff", "mypy", "black", "flake8", "eslint", "prettier",
+        "gofmt", "golangci-lint", "clippy", "rustfmt", "sqlfluff", "shellcheck",
+        # file, text and archive tools
+        "ls", "cat", "head", "tail", "wc", "file", "stat", "tree", "du", "df",
+        "grep", "egrep", "fgrep", "rg", "ag", "sed", "awk", "cut", "sort", "uniq",
+        "tr", "diff", "comm", "tee", "jq", "yq", "tar", "zip", "unzip", "gzip",
+        "gunzip", "bzip2", "xz", "zstd", "cp", "mv", "mkdir", "rmdir", "touch",
+        "ln", "chmod", "chown", "readlink", "realpath", "basename", "dirname",
+        # misc read-only or single-purpose utilities whose first word is the tool
+        "echo", "printf", "date", "printenv", "which", "whoami", "id",
+        "hostname", "uname", "pwd", "true", "false", "test", "sleep", "seq",
+        "base64", "sha256sum", "md5sum", "shasum", "cksum", "curl", "wget",
     }
 )
+
 
 
 class InvalidRule(ValueError):
@@ -90,7 +119,9 @@ def _program(command: str) -> str:
 
 
 def _is_forbidden_prefix(command: str) -> bool:
-    return _program(command) in _PREFIX_FORBIDDEN_PROGRAMS
+    """True unless the first word names a program safe to always allow."""
+    program = _program(command)
+    return program not in _PREFIX_SAFE_PROGRAMS
 
 
 def command_matches(rule_kind: str, rule_command: str, command: str) -> bool:
@@ -100,8 +131,9 @@ def command_matches(rule_kind: str, rule_command: str, command: str) -> bool:
     if rule_kind == PREFIX:
         if _has_shell_operators(command):
             return False
-        # A rule that could never be saved now (a wrapper) must not match a
-        # command either, so one saved before this guard stops allowing.
+        # A rule that could never be saved now (its program is not on the
+        # allowlist) must not match a command either, so one saved before this
+        # guard stops allowing.
         if _is_forbidden_prefix(rule_command):
             return False
         rule_words, words = _words(rule_command), _words(command)
@@ -141,7 +173,8 @@ def validate_rule(kind: str, command: str, workspace: str | None = None) -> str:
             raise InvalidRule("a prefix rule must be a valid command")
         if _is_forbidden_prefix(command):
             raise InvalidRule(
-                "a wrapper, multiplexer or shell cannot be always allowed as a prefix"
+                "a prefix rule is only allowed for a program that runs itself, not another "
+                "command; save an exact rule for this one instead"
             )
     if not safety_floor.clears_floor(command):
         raise InvalidRule("this command is on the safety floor and is always asked about")
