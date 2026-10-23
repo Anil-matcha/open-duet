@@ -84,8 +84,8 @@ _PREFIX_SAFE_PROGRAMS = frozenset(
         "basename", "dirname",
         # searching text (patterns are data; no expression language, no hook)
         "grep", "egrep", "fgrep",
-        # shaping text and streams (no expression language, no exec hook)
-        "cut", "uniq", "tr", "diff", "comm", "jq",
+        # shaping text and streams (no expression language, no exec hook, no caller path written)
+        "cut", "tr", "diff", "comm", "jq",
         # printing and inspecting the environment (values are data)
         "echo", "printf", "date", "printenv", "which", "whoami", "id", "pwd",
         "true", "false", "test", "sleep", "seq",
@@ -275,6 +275,11 @@ async def matching_rule(
         return None
     command = tool_input.get("command")
     if not isinstance(command, str) or not command.strip():
+        return None
+    # A rule never allows a floor call, whatever the allowlist holds today. The
+    # property is asserted here rather than left to the accident that every
+    # prefix-safe program is read-only.
+    if not safety_floor.clears_floor(command):
         return None
     for rule in await list_rules(db, owner_id):
         if not rule.connector or not rule.tool:

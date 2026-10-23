@@ -347,11 +347,13 @@ class ThreadApprovalGate:
             return ApprovalHandle(approval_id=approval.id, request_id=request_id, tool=tool)
         rule = None if tool.startswith("mcp__team__") or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
         held = None
-        if rule is not None:
-            # A command on the safety floor, or one that could not be read, is
-            # never allowed by a rule: a person decides on the card.
-            reading = safety_floor.floor_reading(input.get("command", "")) if isinstance(input.get("command"), str) else None
-            if reading is not None and not reading.clear:
+        # A command on the safety floor, or one that could not be read, is never
+        # allowed by a rule: a person decides on the card, and the card names the
+        # floor rule. (matching_rule also refuses a floor call, so `rule` is
+        # already None here; this labels why.)
+        if isinstance(input.get("command"), str):
+            reading = safety_floor.floor_reading(input["command"])
+            if not reading.clear:
                 held = reading.verdict.rule if reading.verdict else "unreadable"
                 rule = None
         if rule is not None:

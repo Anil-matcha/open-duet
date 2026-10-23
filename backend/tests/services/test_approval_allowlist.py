@@ -95,7 +95,7 @@ def test_a_program_whose_argument_runs_code_cannot_be_a_prefix_rule(command):
     "command",
     [
         "ls -la", "cat notes.txt", "head -n 5 x", "tail -f log", "wc -l x",
-        "grep -n pattern file", "diff a b", "cut -d, -f2", "uniq -c",
+        "grep -n pattern file", "diff a b", "cut -d, -f2",
         "tr a b", "comm a b", "echo hi", "printf x", "date +%s", "file x",
         "stat x", "base64 x",
     ],
@@ -104,7 +104,7 @@ def test_a_program_that_runs_itself_can_be_a_prefix_rule(command):
     assert allow.validate_rule(PREFIX, command) == command
 
 
-@pytest.mark.parametrize("command", ["cp a b", "mkdir d", "tee x", "ln -s a b"])
+@pytest.mark.parametrize("command", ["cp a b", "mkdir d", "tee x", "ln -s a b", "uniq -c"])
 def test_a_program_that_writes_a_caller_path_cannot_be_a_prefix_rule(command):
     # A prefix rule for a write-capable program auto-approves a write anywhere;
     # a workspace scopes where a rule applies, never what a command may touch.
@@ -237,50 +237,62 @@ _ARG_WRITE_HOOKS = {
     "truncate": ["truncate -s 0 /etc/passwd"],
     "rm": ["rm -rf ~"],
     "shred": ["shred /etc/passwd"],
+    # `uniq` is a text filter but its *second positional operand* is a
+    # destination path: `uniq staged.txt ~/.ssh/authorized_keys` writes the
+    # file. The capability lives in an operand position, which a map keyed by
+    # program name cannot see; the payload is what catches it.
+    "uniq": ["uniq /tmp/staged_key.txt ~/.ssh/authorized_keys", "uniq /tmp/hook.txt .git/hooks/pre-commit"],
 }
 
-# One sentence per allowlisted program, naming which of the two properties it
-# keeps: it runs no program through an argument AND writes no path the caller
-# names. The sentence must say "writes nothing", so a future entry cannot be
-# certified on the run-a-program property alone.
+# One record per allowlisted program. Each record carries the two properties as
+# machine-checkable booleans, not as prose a substring assertion can read:
+#
+#   runs         True if any argument form can run another program
+#   writes_path  True if any argument form — positional or flag — names a path
+#                the program writes
+#   why          the sentence explaining both
+#
+# Every record must be {runs: False, writes_path: False}, and the gate refuses
+# any program that is also in _ARG_EXEC_HOOKS or _ARG_WRITE_HOOKS. A sentence
+# naming the write is not enough (`uniq`'s "prints deduplicated lines; writes
+# nothing" named it and was false); the boolean is.
 _PREFIX_SAFE_REVIEW = {
-    "ls": "reads names and metadata; writes nothing",
-    "cat": "prints files; writes nothing",
-    "head": "prints the head of files; writes nothing",
-    "tail": "prints the tail of files; writes nothing",
-    "wc": "counts in files; writes nothing",
-    "file": "reads a magic file to describe bytes; writes nothing",
-    "stat": "reports file metadata; writes nothing",
-    "readlink": "prints a link target; writes nothing",
-    "realpath": "prints a resolved path; writes nothing",
-    "basename": "prints a path component; writes nothing",
-    "dirname": "prints a path component; writes nothing",
-    "grep": "reads files; a pattern file (-f) is data, and it writes nothing",
-    "egrep": "same as grep; writes nothing",
-    "fgrep": "same as grep; writes nothing",
-    "cut": "prints selected columns; writes nothing",
-    "uniq": "prints deduplicated lines; writes nothing",
-    "tr": "prints translated characters; writes nothing",
-    "diff": "reads two files and prints the difference; writes nothing",
-    "comm": "reads two sorted files and prints columns; writes nothing",
-    "jq": "filters JSON to stdout; the filter language has no process call and no writes",
-    "echo": "prints data; -e is escapes, not a program, and it writes nothing",
-    "printf": "prints the format and its arguments; writes nothing",
-    "date": "prints or sets the clock (a system effect, not a caller path); writes no file",
-    "printenv": "prints environment values; writes nothing",
-    "which": "locates a program on PATH; writes nothing",
-    "whoami": "prints the user; takes no path, writes nothing",
-    "id": "prints user and group ids; takes no path, writes nothing",
-    "pwd": "prints the working directory; takes no path, writes nothing",
-    "true": "does nothing; writes nothing",
-    "false": "does nothing; writes nothing",
-    "sleep": "waits; takes no path, writes nothing",
-    "test": "evaluates an expression over strings, numbers and files; writes nothing",
-    "seq": "prints a number sequence; writes nothing",
-    "base64": "encodes or decodes to stdout; writes nothing",
-    "sha256sum": "reads files and prints hashes; -c reads a manifest and writes nothing",
-    "md5sum": "same as sha256sum; writes nothing",
-    "cksum": "reads files and prints checksums; writes nothing",
+    "ls": {"runs": False, "writes_path": False, "why": "reads names and metadata"},
+    "cat": {"runs": False, "writes_path": False, "why": "prints files"},
+    "head": {"runs": False, "writes_path": False, "why": "prints the head of files"},
+    "tail": {"runs": False, "writes_path": False, "why": "prints the tail of files"},
+    "wc": {"runs": False, "writes_path": False, "why": "counts in files"},
+    "file": {"runs": False, "writes_path": False, "why": "-C -m writes <path>.mgc next to the magic file, never a caller path; otherwise reads to describe bytes"},
+    "stat": {"runs": False, "writes_path": False, "why": "reports file metadata"},
+    "readlink": {"runs": False, "writes_path": False, "why": "prints a link target"},
+    "realpath": {"runs": False, "writes_path": False, "why": "prints a resolved path"},
+    "basename": {"runs": False, "writes_path": False, "why": "prints a path component"},
+    "dirname": {"runs": False, "writes_path": False, "why": "prints a path component"},
+    "grep": {"runs": False, "writes_path": False, "why": "reads files; a pattern file (-f) is data"},
+    "egrep": {"runs": False, "writes_path": False, "why": "same as grep"},
+    "fgrep": {"runs": False, "writes_path": False, "why": "same as grep"},
+    "cut": {"runs": False, "writes_path": False, "why": "prints selected columns"},
+    "tr": {"runs": False, "writes_path": False, "why": "prints translated characters"},
+    "diff": {"runs": False, "writes_path": False, "why": "reads two files and prints the difference"},
+    "comm": {"runs": False, "writes_path": False, "why": "reads two sorted files and prints columns"},
+    "jq": {"runs": False, "writes_path": False, "why": "filters JSON to stdout; the filter language has no process call and no writes"},
+    "echo": {"runs": False, "writes_path": False, "why": "prints data; -e is escapes, not a program"},
+    "printf": {"runs": False, "writes_path": False, "why": "prints the format and its arguments"},
+    "date": {"runs": False, "writes_path": False, "why": "prints or sets the clock (a system effect, not a caller path)"},
+    "printenv": {"runs": False, "writes_path": False, "why": "prints environment values"},
+    "which": {"runs": False, "writes_path": False, "why": "locates a program on PATH"},
+    "whoami": {"runs": False, "writes_path": False, "why": "prints the user; takes no path"},
+    "id": {"runs": False, "writes_path": False, "why": "prints user and group ids; takes no path"},
+    "pwd": {"runs": False, "writes_path": False, "why": "prints the working directory; takes no path"},
+    "true": {"runs": False, "writes_path": False, "why": "does nothing"},
+    "false": {"runs": False, "writes_path": False, "why": "does nothing"},
+    "sleep": {"runs": False, "writes_path": False, "why": "waits; takes no path"},
+    "test": {"runs": False, "writes_path": False, "why": "evaluates an expression over strings, numbers and files"},
+    "seq": {"runs": False, "writes_path": False, "why": "prints a number sequence"},
+    "base64": {"runs": False, "writes_path": False, "why": "encodes or decodes to stdout"},
+    "sha256sum": {"runs": False, "writes_path": False, "why": "reads files and prints hashes; -c reads a manifest"},
+    "md5sum": {"runs": False, "writes_path": False, "why": "same as sha256sum"},
+    "cksum": {"runs": False, "writes_path": False, "why": "reads files and prints checksums"},
 }
 
 
@@ -323,13 +335,20 @@ def test_a_write_hook_rule_scoped_to_a_folder_still_reaches_outside(tmp_path):
 
 
 def test_every_prefix_safe_program_has_a_reviewed_reason():
-    # Every allowlisted program must carry a sentence saying why no argument of
-    # it runs a program AND why it writes no caller path. This fails until a new
-    # entry is reviewed — the question that was skipped for sed, awk, rg, sort,
-    # zip and cp.
+    # Every allowlisted program must carry a record that certifies BOTH
+    # properties, as machine-checkable booleans rather than prose. A sentence
+    # naming the write is not enough: `uniq`'s "prints deduplicated lines;
+    # writes nothing" named it and was false. `writes_path` must be False, and
+    # the program must not be a known hook for either property. This fails until
+    # a new entry is reviewed — the question that was skipped for sed, awk, rg,
+    # sort, zip, cp and uniq.
     assert set(_PREFIX_SAFE_REVIEW) == set(allow._PREFIX_SAFE_PROGRAMS)
-    for program, reason in _PREFIX_SAFE_REVIEW.items():
-        assert "writes" in reason, f"{program}: the reason does not address writing"
+    for program, review in _PREFIX_SAFE_REVIEW.items():
+        assert review["runs"] is False, f"{program}: an argument runs a program"
+        assert review["writes_path"] is False, f"{program}: an argument names a path it writes"
+        assert review["why"], f"{program}: the record has no explanation"
+        assert program not in _ARG_EXEC_HOOKS, program
+        assert program not in _ARG_WRITE_HOOKS, program
 
 
 @pytest.mark.parametrize(
@@ -370,6 +389,24 @@ async def test_only_bash_calls_with_a_string_command_can_match(db_session):
     await allow.add_rule(db_session, owner, EXACT, "ls")
     assert not await allow.matching_rule(db_session, owner, "Write", {"command": "ls"})
     assert not await allow.matching_rule(db_session, owner, "Bash", {"command": ["ls"]})
+
+
+async def test_a_rule_never_matches_a_call_on_the_floor(db_session):
+    # The floor claim in matching_rule must hold on its own, not because every
+    # prefix-safe program happens to be read-only. Write a matching rule for a
+    # floor command straight into the table (bypassing validate_rule) and assert
+    # the floor still refuses the match.
+    from app.db.models.permission_rule import PermissionRule
+
+    owner = "rule-owner-floor"
+    db_session.add(
+        PermissionRule(
+            user_id=owner, bucket=allow.BUCKET, connector=allow.EXACT,
+            tool="rm -rf /", decision="allow",
+        )
+    )
+    await db_session.commit()
+    assert not await allow.matching_rule(db_session, owner, "Bash", {"command": "rm -rf /"})
     assert not await allow.matching_rule(db_session, owner, "Bash", {})
 
 
