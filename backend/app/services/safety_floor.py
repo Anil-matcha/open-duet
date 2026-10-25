@@ -40,9 +40,58 @@ _HOME_WORDS = frozenset({"~", "$HOME", "${HOME}"})
 _WRAPPERS = frozenset({"sudo", "doas", "env", "nohup", "command", "time", "exec", "nice", "ionice", "builtin", "stdbuf", "timeout"})
 _REDIRECTS = frozenset({">", ">>", ">&", "&>", ">|"})
 _SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish"})
-# Options of a wrapper that take a value as the next word.
-_VALUE_OPTIONS = frozenset({"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-n", "-c", "-s", "-k"})
+# Options of a wrapper that take a value as the next word. Kept per wrapper:
+# treating a flag like `time -p` as taking a value would eat the command after
+# it and hide the command from the checks below.
+_VALUE_OPTIONS = {
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}),
+    "sudo": frozenset({"-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt",
+                       "-C", "--chdir", "-T", "--command-timeout", "-D", "--chdir", "-r", "--role",
+                       "-t", "--type", "-a", "--auth-type"}),
+    "doas": frozenset({"-u", "-C"}),
+    "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "ionice": frozenset({"-c", "-n", "-p"}),
+    "stdbuf": frozenset({"-i", "-o", "-e"}),
+    "exec": frozenset({"-a"}),
+    "chrt": frozenset({"-p", "-m", "-P", "-r", "-o"}),
+}
+# Options that are always a value-eating option for the wrapper in front of them.
 _MAX_NESTING = 3
+
+# Programs that run another command named after their own options/operands. They
+# are not wrappers (a wrapper precedes the command; these take arguments first)
+# and not `xargs`/`find` (whose inner command is introduced by a flag). Each is
+# read through to the inner command so `flock /tmp/l rm -rf ~` is seen as
+# `rm -rf ~`; only a runner whose inner command cannot be recovered (an
+# interpreter fed a `-c`/`-e` script) is held as unreadable.
+# `_LEAD_OPTIONS[tool]` are options that take a value as the next word, so the
+# command after them is not mistaken for the value.
+_RUNNERS = frozenset(
+    {"flock", "chroot", "busybox", "strace", "unshare", "nsenter", "su", "runuser", "setpriv", "toybox", "eatmydata"}
+)
+_LEAD_OPTIONS = {
+    "flock": frozenset({"-w", "--wait", "--timeout", "-E", "--conflict-exit-code", "-c", "--command"}),
+    "chroot": frozenset({"--userspec", "--groups", "--skip-chdir"}),
+    "strace": frozenset(
+        {"-e", "--trace", "-o", "--output", "-p", "--attach", "-s", "--string-limit", "-u", "--user",
+         "-b", "--buffer-size", "-I", "--interruptible", "-a", "--columns"}
+    ),
+    "unshare": frozenset({"--setgroups", "--kill-child", "--mount-proc", "--root", "-w", "--wd"}),
+    "nsenter": frozenset({"-t", "--target", "-w", "--wd", "-r", "--root", "-S", "--setuid", "-G", "--setgid"}),
+    "su": frozenset({"-s", "--shell", "-g", "--group", "-G", "--supp-group", "--session-command"}),
+    "runuser": frozenset({"-s", "--shell", "-g", "--group", "-G", "--supp-group", "-u", "--user"}),
+    "setpriv": frozenset({"--reuid", "--regid", "--groups", "--inh-caps", "--ambient-caps", "--securebits", "--selinux-label"}),
+}
+# Interpreters run a script the checks cannot read: `python3 -c '...'`,
+# `perl -e ...`, `node -e ...`. Used with a script file they are not runners and
+# fall through to the ordinary rules (which read the file path, not its body).
+_INTERPRETERS = frozenset({"python", "python2", "python3", "perl", "node", "nodejs", "ruby", "php", "lua", "rscript", "deno", "bun"})
+# The interpreter option that runs a script given on the command line. `-r` is
+# php's; `-c`/`-e` cover the rest. A runner's own `-r` (unshare, setpriv) is not
+# in this set, so it is not mistaken for a script.
+_INLINE_SCRIPT_FLAGS = frozenset({"-c", "-e", "--eval", "--command", "-r"})
+_SCRIPT_FLAGS_WITHOUT_R = frozenset({"-c", "-e", "--eval", "--command"})
 
 _DISK_DEVICE = re.compile(
     r"^/dev/(?:r?disk\d+(?:s\d+)*|disk/.+|sd[a-z]{1,3}\d*|hd[a-z]\d*|x?vd[a-z]{1,2}\d*|"
@@ -143,24 +192,44 @@ def _redirect_targets(words: list[str]) -> tuple[list[str], list[str]]:
 
 def _strip_wrappers(words: list[str]) -> list[str]:
     """Drop `sudo`, `env X=1`, `nohup`, `timeout 5` ... in front of the command."""
+    return _resolve_wrappers(words)[0]
+
+
+def _resolve_wrappers(words: list[str]) -> tuple[list[str], list[str], list[tuple[str, str]]]:
+    """`_strip_wrappers`, but also reporting what it removed: the resolved argv,
+    the wrapper chain (`sudo`, `env`, ...) and the value options it consumed as
+    `(option, value)` pairs. The explain projection reads this so it never
+    re-implements the resolution the floor uses."""
     words = list(words)
+    chain: list[str] = []
+    resolved: list[tuple[str, str]] = []
     while words:
         head = words[0]
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", head):
             words.pop(0)
         elif posixpath.basename(head) in _WRAPPERS:
             wrapper = posixpath.basename(words.pop(0))
+            chain.append(wrapper)
+            value_options = _VALUE_OPTIONS.get(wrapper, frozenset())
             while words and words[0].startswith("-") and words[0] != "--":
                 option = words.pop(0)
-                if option in _VALUE_OPTIONS and words:
-                    words.pop(0)
+                # `--opt=value` carries its value; a bare option may take the
+                # next word, but only for this wrapper's value options.
+                if "=" in option:
+                    resolved.append((option.split("=", 1)[0], option.split("=", 1)[1]))
+                elif option in value_options and words:
+                    resolved.append((option, words.pop(0)))
             if words and words[0] == "--":
                 words.pop(0)
             if wrapper == "timeout" and words and re.fullmatch(r"\d+(?:\.\d+)?[smhd]?", words[0]):
                 words.pop(0)
+            if wrapper == "env":
+                # `env NAME=value ...`: more environment assignments follow.
+                while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+                    words.pop(0)
         else:
             break
-    return words
+    return words, chain, resolved
 
 
 _HOME_MARK = "/\ue000home"
@@ -270,6 +339,16 @@ def _check_command(words: list[str], targets: list[str]) -> FloorVerdict | None:
             device = device.replace("//", "/")
             if device and _DISK_DEVICE.match(device) and not _SCRATCH_DEVICE.match(device):
                 return _verdict("overwrite-disk")
+    elif name == "find":
+        # `find <path> -delete` removes what the path names; `-exec rm -rf {} +`
+        # is handled as a nested command by the caller.
+        if "-delete" in args:
+            for path in args:
+                if path.startswith("-"):
+                    break
+                rule = _dangerous_target(path)
+                if rule:
+                    return _verdict(rule)
     elif name == "git":
         git_args = [a for a in args if a != "--no-pager"]
         # `git -C dir push ...`: skip global options that take a value.
@@ -290,6 +369,124 @@ def _check_command(words: list[str], targets: list[str]) -> FloorVerdict | None:
     return None
 
 
+def _indirect_commands(words: list[str]) -> list[list[str]]:
+    """Commands a program runs for us, pulled out so the checks read them.
+
+    `xargs rm -rf /` and `find / -exec rm -rf {} +` run another command;
+    `env -S 'rm -rf /'` and `env --split-string=...` do too. A wrapper's words
+    are returned, already split into whitespace-separated tokens."""
+    if not words:
+        return []
+    head = posixpath.basename(words[0])
+    rest = words[1:]
+    if head == "xargs":
+        index = 0
+        while index < len(rest):
+            word = rest[index]
+            if word == "--":
+                return [rest[index + 1 :]]
+            if word.startswith("-") and "=" not in word and word in ("-a", "-E", "-I", "-n", "-s", "-P", "--max-args", "--max-chars", "--replace", "--delimiter", "--arg-file", "--process-slot-var"):
+                index += 2
+            elif word.startswith("-"):
+                index += 1
+            else:
+                return [rest[index:]]
+        return []
+    if head == "find":
+        paths = [w for w in rest if not w.startswith("-")]
+        commands = []
+        for index, word in enumerate(rest):
+            if word in ("-exec", "-execdir") and index + 1 < len(rest):
+                tail = rest[index + 1 :]
+                for terminator in (";", "+"):
+                    if terminator in tail:
+                        tail = tail[: tail.index(terminator)]
+                        break
+                # `{}` stands for each match, so the searched paths are what
+                # the command runs against.
+                tail = [w for w in tail if w != "{}"] + paths[:1]
+                if tail:
+                    commands.append(tail)
+        return commands
+    if head == "env":
+        for index, word in enumerate(rest):
+            script = None
+            if word in ("-S", "--split-string") and index + 1 < len(rest):
+                script = rest[index + 1]
+            elif word.startswith("--split-string="):
+                script = word.split("=", 1)[1]
+            if script:
+                try:
+                    return [shlex.split(script)]
+                except ValueError:
+                    return []
+        return []
+    return []
+
+
+def _read_through(words: list[str]) -> list[str] | None:
+    """The inner command of a runner, or None when there is none to read.
+
+    `flock /tmp/l rm -rf ~` -> `rm -rf ~`; `busybox rm -rf /` -> `rm -rf /`;
+    `chroot / rm -rf /` -> `rm -rf /`. Returns `[]` when the runner names no
+    command (`flock /tmp/l`, `su - user`), and None when the inner command is a
+    script the checks cannot read (`python3 -c ...`, `perl -e ...`)."""
+    if not words:
+        return []
+    name = posixpath.basename(words[0])
+    if name in _INTERPRETERS:
+        rest = words[1:]
+        if any(w in _INLINE_SCRIPT_FLAGS or any(w.startswith(f + "=") for f in ("--eval", "--command")) for w in rest):
+            return None
+        return []
+    if name not in _RUNNERS:
+        return []
+    rest = words[1:]
+    # Skip leading options (and the value of any that take one). A `-c`/`-e`/`-r`
+    # among the runner's *own* options means it runs a script string, which the
+    # checks cannot read.
+    index = 0
+    inline_script = False
+    script_flags = _SCRIPT_FLAGS_WITHOUT_R
+    value_options = _LEAD_OPTIONS.get(name, frozenset())
+    while index < len(rest) and rest[index].startswith("-") and rest[index] != "--":
+        option = rest[index]
+        index += 1
+        if option in script_flags or any(
+            option.startswith(f + "=") for f in ("--eval", "--command")
+        ):
+            inline_script = True
+        if "=" not in option and option in value_options and index < len(rest):
+            index += 1
+    if index < len(rest) and rest[index] == "--":
+        index += 1
+    if inline_script:
+        return None
+    if name in ("flock", "chroot"):
+        index += 1  # the lock file / the new root
+    if name == "busybox":
+        # `busybox [applet] command...`: the applet is the command's program.
+        if index >= len(rest):
+            return []
+        return rest[index:]
+    if name in ("su", "runuser", "setpriv"):
+        # `su [user [args...]]`: the first bare word is the user and what
+        # follows is the command. `runuser -u user -- cmd` names the user as an
+        # option, so no bare user operand is consumed.
+        args = rest[index:]
+        if not args:
+            return []
+        if args[0] == "-":
+            args = args[1:]
+        took_user_option = any(w in ("-u", "--user") for w in rest[:index])
+        if name == "setpriv" or took_user_option:
+            return args
+        return args[1:] if len(args) > 1 else []
+    if index >= len(rest):
+        return []
+    return rest[index:]
+
+
 def floor_reading(command: str, _depth: int = 0) -> FloorReading:
     """Read one shell command line. A block found before something unreadable
     stands; otherwise anything unreadable is not clear."""
@@ -304,12 +501,40 @@ def floor_reading(command: str, _depth: int = 0) -> FloorReading:
         found = _check_command(plain, targets)
         if found:
             return FloorReading(True, found)
+        if _depth < _MAX_NESTING:
+            for indirect in _indirect_commands(plain):
+                nested = _check_command(indirect, [])
+                if nested:
+                    return FloorReading(True, nested)
+                nested = floor_reading(" ".join(shlex.quote(w) for w in indirect), _depth + 1)
+                if nested.verdict:
+                    return nested
+                readable = readable and nested.readable
         inner = _strip_wrappers(plain)
         if not inner:
             continue
         name, args = posixpath.basename(inner[0]), inner[1:]
         if "$" in inner[0]:
             readable = False  # the program is a variable: what runs is unknown
+        elif name in _RUNNERS or name in _INTERPRETERS:
+            # Read through to the command a runner actually runs. An interpreter
+            # fed an inline script (`python3 -c ...`) is unreadable, so it is
+            # held for a person rather than cleared.
+            ran = _read_through(inner)
+            if ran is None:
+                readable = False
+                continue
+            if ran:
+                found = _check_command(ran, [])
+                if found:
+                    return FloorReading(True, found)
+                if _depth < _MAX_NESTING:
+                    nested = floor_reading(
+                        " ".join(shlex.quote(w) for w in ran), _depth + 1
+                    )
+                    if nested.verdict:
+                        return nested
+                    readable = readable and nested.readable
         elif name == "eval":
             # Its words are a script. One holding a variable is unknown.
             if not args or any("$" in a for a in args) or _depth >= _MAX_NESTING:
@@ -334,3 +559,30 @@ def floor_reading(command: str, _depth: int = 0) -> FloorReading:
 def clears_floor(command: str) -> bool:
     """False for a never-list command and for one that could not be read."""
     return floor_reading(command).clear
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """What the floor sees after wrapper / value-option resolution. A read-only
+    projection: the same functions the enforcement uses produce it, so the two
+    cannot drift."""
+
+    argv: list[str]  # the command's words, quotes removed ([] when unreadable)
+    wrapper_chain: list[str]  # `sudo`, `env`, ... in the order they precede it
+    value_options_resolved: list[tuple[str, str]]  # (option, value) pairs consumed
+    resolved_argv: list[str]  # the words left after wrappers are stripped
+
+
+def resolution(command: str) -> Resolution:
+    """Resolve one command line the way the floor does, and report the steps."""
+    tokens = _tokens(command)
+    if tokens is None:
+        return Resolution([], [], [], [])
+    # The first split segment is the command being resolved (matching the floor's
+    # first `_check_command`); the floor itself walks every segment.
+    segments = _split(tokens)
+    words = segments[0] if segments else []
+    plain, _targets = _redirect_targets(words)
+    resolved_argv, chain, value_opts = _resolve_wrappers(plain)
+    return Resolution(list(plain), chain, value_opts, list(resolved_argv))
+

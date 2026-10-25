@@ -168,6 +168,46 @@ async def set_archived(db: AsyncSession, thread_id: int, archived: bool) -> Thre
     return await _change_quietly(db, thread_id, archived_at=utcnow() if archived else None)
 
 
+async def update_thread_fields(
+    db: AsyncSession,
+    thread_id: int,
+    *,
+    title: str | None = None,
+    model: str | None = None,
+    model_set: bool = False,
+    archived: bool | None = None,
+) -> Thread:
+    """Rename, change the model and/or archive a thread in one transaction, so
+    a failure in any part leaves none of them applied (audit finding M-4).
+    Validation is done by the caller before this runs; here the row is locked,
+    the archive check is made, and every change is committed together.
+    Raises ThreadNotFound, or ThreadBusy when archiving a thread whose turn is
+    running."""
+    await _locked_thread(db, thread_id)
+    if archived and await _has_running_turn(db, thread_id):
+        await db.rollback()
+        raise ThreadBusy(thread_id)
+
+    values: dict = {"updated_at": Thread.updated_at}
+    if archived is not None:
+        values["archived_at"] = utcnow() if archived else None
+    if title is not None:
+        values["title"] = title
+    if model_set:
+        values["model"] = model
+
+    if len(values) > 1:  # something other than the updated_at passthrough
+        await db.execute(
+            update(Thread)
+            .where(Thread.id == thread_id)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+
+    return await db.get(Thread, thread_id, populate_existing=True)
+
+
 async def delete_thread(db: AsyncSession, thread_id: int) -> None:
     """Remove a thread with its turns, events and approvals, in one transaction.
     Raises ThreadNotFound, or ThreadBusy while a turn is running (stop it
@@ -331,11 +371,29 @@ async def _add_event(
         turn_id=turn_id,
         seq=await _next_seq(db, thread_id),
         type=type_,
-        data=data or {},
+        data=_redact_data(data) if data else (data or {}),
     )
     db.add(event)
     await db.flush()
     return event
+
+
+def _redact_data(value):
+    """A transcript copy with credentials replaced, at any depth.
+
+    The whole transcript (prompts, tool inputs, tool output) is stored here, so
+    this is the one place a secret would otherwise be written to the database in
+    the clear. The same shapes the notes file uses (services/agent_memory.py)
+    cover model output and tool traffic too."""
+    from app.services.agent_memory import redact_secrets
+
+    if isinstance(value, str):
+        return redact_secrets(value)[0]
+    if isinstance(value, dict):
+        return {key: _redact_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_data(item) for item in value]
+    return value
 
 
 async def create_thread(
@@ -493,6 +551,9 @@ async def start_turn(
     The returned turn carries the `owner_token` that only the run holds. Raises
     ThreadBusy if a turn is already running (the database refuses a second one),
     ThreadNotFound if the thread does not exist."""
+    from app.services.agent_memory import redact_secrets
+
+    prompt_text = redact_secrets(prompt_text)[0]
     await begin_write(db)
     thread = (
         await db.execute(select(Thread).where(Thread.id == thread_id).with_for_update())
@@ -572,6 +633,11 @@ async def finish_turn(
     _check(status, FINISH_STATUSES, "status")
     if session_state is not None:
         _check(session_state, SESSION_STATES, "session_state")
+    if result is not None or error is not None:
+        from app.services.agent_memory import redact_secrets
+
+        result = redact_secrets(result)[0] if result is not None else None
+        error = redact_secrets(error)[0] if error is not None else None
     await begin_write(db)
     updated = await db.execute(
         update(Turn)

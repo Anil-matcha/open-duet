@@ -4,6 +4,7 @@
     python -m app.server doctor                # check that this machine is ready (changes nothing)
     python -m app.server backup [--out DIR]    # one archive of the database, attachments, decision log and workspace
     python -m app.server restore ARCHIVE       # fill an empty data folder from an archive
+    python -m app.server rotate-keys           # re-encrypt stored credentials under the newest key
     python -m app.server service [--user NAME] # print a systemd unit for this installation
     python -m app.server                       # reads the settings below from the environment
     python -m app.server --ui-dir ../frontend/out --port 8000
@@ -76,6 +77,17 @@ def read_options(argv: Sequence[str], environ: Mapping[str, str]) -> ServerOptio
         args = parser.parse_args(list(argv))
     except SystemExit as exc:  # argparse already printed the usage
         raise ServerConfigError("Check the options above.") from exc
+
+    # The backend keeps per-process state that assumes exactly one process:
+    # sign-in lockouts, live run/approval state and the SSE hubs (docs/
+    # RELIABILITY.md). Refuse the well-known ways to ask for more than one
+    # worker rather than degrading silently.
+    workers = environ.get("WEB_CONCURRENCY") or environ.get("UVICORN_WORKERS")
+    if workers and workers.strip() not in {"", "1"}:
+        raise ServerConfigError(
+            f"This backend must run as a single process, but {workers!r} workers were requested "
+            "(WEB_CONCURRENCY/UVICORN_WORKERS). Unset it, or run one instance behind your proxy."
+        )
 
     try:
         port = int(args.port)
@@ -173,6 +185,10 @@ def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = 
         from app.server import backup_cli
 
         return backup_cli.main(arguments)
+    if arguments[:1] == ["rotate-keys"]:
+        from app.server import rotate_keys
+
+        return rotate_keys.main(arguments[1:])
     if arguments[:1] == ["service"]:
         from app.server import service
 

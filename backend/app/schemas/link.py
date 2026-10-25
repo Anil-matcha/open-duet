@@ -10,5 +10,6 @@ class LinkCodeCreateResponse(BaseModel):
 
 
 class LinkCodeStatusResponse(BaseModel):
+    # The claimed user's id is deliberately not disclosed: the code is the
+    # only secret, and the web UI only needs to know whether it was claimed.
     status: str  # "pending" | "claimed" | "expired"
-    user_id: str | None = None

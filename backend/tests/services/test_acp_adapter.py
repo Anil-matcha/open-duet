@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.db.models import Agent, Thread, Turn
 from app.db.models.user_credential import UserCredential
 from app.services import agent_store, engine_config, local_claude_runner
+from app.services import acp_adapter
 from app.services import thread_store as store
 from app.services.acp_adapter import AcpAdapter, InvalidConfig, history_preamble
 from app.services.thread_hub import ThreadHub
@@ -231,6 +232,38 @@ async def test_accept_edits_allows_only_edits_inside_the_workspace(art, sessions
     assert approval.kind == "file_write"
     assert await art.answer_approval(approval.id, "deny")
     await finished(sessions, thread.id, count=2)
+
+
+async def test_accept_edits_never_auto_allows_a_command(art, sessions, owner, acp, monkeypatch):
+    # accept_edits lets workspace edits through; a command must still open a
+    # card, whatever the mode, or the floor could be bypassed by the CLI.
+    monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
+    thread = await acp_thread(art, sessions, owner, mode="accept_edits")
+    acp.plan({"type": "permission", "kind": "execute", "command": "python3 -c 'os.system(\"rm -rf /\")'"})
+    await art.send_turn(thread.id, "clean up")
+    approval = await pending_approval(sessions, thread.id)
+    assert approval.tool == "Bash" and approval.kind == "command"
+    assert "python3 -c" in approval.input["command"]
+    assert await art.answer_approval(approval.id, "deny")
+    await finished(sessions, thread.id)
+    assert acp.answers()[0]["result"]["outcome"]["optionId"] == "no"
+
+
+def test_inside_resolves_symlinks_so_a_link_out_is_not_inside(tmp_path):
+    # accept_edits auto-allows an edit only when every location is _inside the
+    # workspace. The check must resolve symlinks, or a link under the workspace
+    # pointing outside would let a write through it pass.
+    workspace = (tmp_path / "ws").resolve()
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = workspace / "x"
+    link.symlink_to(outside)
+    assert acp_adapter._inside(str(workspace / "a.txt"), workspace) is True
+    assert acp_adapter._inside(str(link / "cron.d" / "y"), workspace) is False
+    assert acp_adapter._inside(str(tmp_path / "ws-evil" / "y"), workspace) is False
+    assert acp_adapter._inside("relative.txt", workspace) is True
+    assert acp_adapter._inside("../escape.txt", workspace) is False
 
 
 async def test_file_system_requests_are_refused(art, sessions, owner, acp):

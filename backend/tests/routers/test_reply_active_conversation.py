@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models.task import Tasks
+from app.auth.routes import require_identity
 from app.db.session import get_db
 from app.routers.task import router
 from app.services import user_credential_service
@@ -105,6 +106,7 @@ async def test_reply_to_finished_ancestor_observes_conversation(
     app = FastAPI()
     app.include_router(router, prefix='/api/v1')
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     payload = {'user_id': user_id, 'provider': 'claude', 'box_id': 'bx_abcdefgh', 'prompt_text': 'initial'}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://owned') as client:
         if scenario == 'unrelated-active':

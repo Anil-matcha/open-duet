@@ -66,8 +66,13 @@ export async function migrateLegacyIdentity(
 }
 
 // Only a same-site path: never send someone to another site after sign-in.
+// Control characters (a browser strips them and can turn "/\t/host" into a
+// protocol-relative "//host") and backslashes are rejected before the prefix
+// checks, so only a plain in-app path survives.
 export function safeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return "/chat";
+  if (!raw) return "/chat";
+  if (/[\u0000-\u001f\u007f\\]/.test(raw)) return "/chat";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/chat";
   if (raw.startsWith("/login") || raw.startsWith("/pair")) return "/chat";
   return raw;
 }

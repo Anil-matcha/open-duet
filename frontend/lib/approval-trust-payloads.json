@@ -1,0 +1,27 @@
+{
+  "wrapper_explain": {
+    "command": "env -S 'rm -rf ~'",
+    "resolved_argv": [
+      "env",
+      "-S",
+      "rm -rf ~"
+    ],
+    "wrapper_chain": [
+      "env"
+    ],
+    "value_options_resolved": [
+      [
+        "-S",
+        "rm -rf ~"
+      ]
+    ],
+    "matched_rule": null,
+    "floor_verdict": {
+      "clear": false,
+      "tripped_check": "delete-home",
+      "reason": "recursive delete of the home directory",
+      "skipped_reason": null
+    },
+    "also_allows": []
+  }
+}

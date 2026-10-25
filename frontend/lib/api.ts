@@ -242,6 +242,39 @@ export type ApprovalAnswer = {
   remember_error?: string | null;
 };
 
+// POST /approvals/{id}/explain — the read-only projection of what enforcement
+// will do. The card renders these keys verbatim; it never re-derives them.
+export type ExplainMatchedRule = {
+  id: number;
+  kind: "exact" | "prefix";
+  command: string;
+  workspace: string | null;
+};
+
+export type ExplainFloorVerdict = {
+  clear: boolean;
+  tripped_check: string | null;
+  reason: string | null;
+  skipped_reason: string | null;
+};
+
+export type ExplainPayload = {
+  command: string;
+  resolved_argv: string[];
+  wrapper_chain: string[];
+  value_options_resolved: [string, string][];
+  matched_rule: ExplainMatchedRule | null;
+  floor_verdict: ExplainFloorVerdict;
+  also_allows: string[];
+};
+
+// POST /approval-rules/preview — what a candidate rule would allow, without saving.
+export type RulePreview = {
+  would_allow: string[];
+  would_reject: string[];
+  floor_state: ExplainFloorVerdict;
+};
+
 export type SentinelIssue = {
   sig: string;
   kind: "tool_error" | "retry_loop" | "repeated_denial" | "turn_failure";
@@ -272,7 +305,6 @@ export type LinkCode = {
 
 export type LinkStatus = {
   status: "pending" | "claimed" | "expired";
-  user_id: string | null;
 };
 
 export type Sandbox = {
@@ -721,6 +753,21 @@ export type ThreadEvent = {
   data: Record<string, unknown>;
   ts?: string;
 };
+
+export type PendingWorkItem = {
+  kind: "approval" | "needs_you";
+  thread_id: number | null;
+  agent_id: number | null;
+  agent_name: string | null;
+  title: string;
+  created_at: string;
+  deadline: string | null;
+  urgency: "expired" | "due" | "normal";
+};
+
+export type PendingWorkFeed = { items: PendingWorkItem[] };
+
+export type PendingWorkChanged = { type: "pending_work.changed"; data: { change: string } };
 
 // A GET that returns server-sent events. No Content-Type header: it is a plain
 // GET and stays a simple cross-origin request (Last-Event-ID, when given, is
@@ -1189,6 +1236,15 @@ export const api = {
   addApprovalRule: (input: ApprovalRuleInput) =>
     request<ApprovalRule>("/approval-rules", { method: "POST", body: JSON.stringify(input) }),
 
+  // Read-only: what enforcement will do with an approval's command. Never spends
+  // or transitions the approval.
+  explainApproval: (approvalId: string) =>
+    request<ExplainPayload>(`/approvals/${encodeURIComponent(approvalId)}/explain`, { method: "POST" }),
+
+  // Dry-run a candidate rule; 400 with the save path's message when it would be refused.
+  previewApprovalRule: (input: ApprovalRuleInput) =>
+    request<RulePreview>("/approval-rules/preview", { method: "POST", body: JSON.stringify(input) }),
+
   // Logged as `undone`; `threadId` says which conversation it was undone from.
   deleteApprovalRule: (ruleId: number, threadId?: number | null) =>
     request<void>(
@@ -1222,6 +1278,14 @@ export const api = {
       signal,
       onOpen
     ),
+
+  // What is waiting on the person, anywhere. Idempotent and read-only.
+  pendingWork: () => request<PendingWorkFeed>("/pending-work"),
+
+  // One `pending_work.changed` frame per change, carrying a summary (never the
+  // full set): the caller re-reads the feed on each frame. Live only.
+  streamPendingWork: (onEvent: (event: PendingWorkChanged) => void, signal?: AbortSignal, onOpen?: () => void): Promise<void> =>
+    readEventStream<PendingWorkChanged>("/pending-work/stream", {}, onEvent, signal, onOpen),
 
   getPendingAsk: (taskId: number) =>
     request<PermissionAsk | null>(`/permissions/ask/task/${taskId}`),

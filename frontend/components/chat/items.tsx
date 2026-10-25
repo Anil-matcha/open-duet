@@ -2,7 +2,7 @@
 
 import { Check, ChevronRight, Loader2, Square, X } from "lucide-react";
 import { useState } from "react";
-import { canAlwaysAllow, isScreenInput } from "@/lib/approvals";
+import { canAlwaysAllow, isScreenInput, type ExplainView } from "@/lib/approvals";
 import { isComputerTool, toolLabel } from "@/lib/computers";
 import { cn } from "@/lib/cn";
 import { failureNextStep, interruptedText, turnUsageText } from "@/lib/everyday";
@@ -150,6 +150,56 @@ const APPROVAL_LABEL: Record<Item<"approval">["status"], string> = {
 // (null after Undo), or why it could not be saved.
 export type Remembered = { ruleId: number | null; error: string | null };
 
+// The four explain sections rendered from the endpoint payload (verbatim). A
+// section is never locally derived; the view object is shaped by lib/approvals.
+function ExplainSections({ view }: { view: ExplainView }) {
+  if (view.state === "loading") {
+    return <p className="text-xs text-muted">Checking what this will do…</p>;
+  }
+  if (view.state === "unavailable") {
+    // Degrade state: visibly distinct, never a silent absence of explanation.
+    return (
+      <p role="status" className="rounded-field border border-warning/60 bg-warning/10 px-2.5 py-1.5 text-xs text-ink">
+        {view.banner}
+      </p>
+    );
+  }
+  const { sections } = view;
+  return (
+    <div className="space-y-2 rounded-field border border-line bg-inset/60 p-2.5">
+      <div>
+        <p className="text-xs font-medium text-muted">Resolved command</p>
+        <pre className="mt-0.5 whitespace-pre-wrap break-words font-mono text-xs text-ink">{sections.resolvedCommand}</pre>
+      </div>
+      <div>
+        <p className="text-xs font-medium text-muted">Matched rule</p>
+        <p className="mt-0.5 break-words text-xs text-ink">{sections.matchedRule}</p>
+      </div>
+      <div>
+        <p className="text-xs font-medium text-muted">Floor verdict</p>
+        <p className={cn("mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", sections.floor.clear ? "bg-success/15 text-ink" : "bg-danger/15 text-ink")}>
+          {sections.floor.clear ? "Safe floor check passed" : "Held by the safety floor"}
+        </p>
+        {sections.floor.detail && <p className="mt-1 break-words text-xs text-muted">{sections.floor.detail}</p>}
+      </div>
+      <details open={sections.alsoAllowsExpanded}>
+        <summary className="cursor-pointer text-xs font-medium text-muted">
+          Also allows ({sections.alsoAllows.length})
+        </summary>
+        {sections.alsoAllows.length === 0 ? (
+          <p className="mt-1 text-xs text-muted">This rule would not allow any other known command.</p>
+        ) : (
+          <ul className="mt-1 space-y-0.5">
+            {sections.alsoAllows.map((c) => (
+              <li key={c} className="break-words font-mono text-xs text-ink">{c}</li>
+            ))}
+          </ul>
+        )}
+      </details>
+    </div>
+  );
+}
+
 export function ApprovalCard({
   item,
   answering,
@@ -158,6 +208,7 @@ export function ApprovalCard({
   remembered,
   undoneRules = [],
   onUndo,
+  explain,
 }: {
   item: Item<"approval">;
   answering: boolean;
@@ -168,6 +219,9 @@ export function ApprovalCard({
   undoneRules?: number[];
   // Stop always allowing: removes the saved rule; the next such command asks.
   onUndo?: (ruleId: number) => void;
+  // The explain projection for this pending approval (undefined when the caller
+  // does not provide one, e.g. the shared/collaboration card path).
+  explain?: ExplainView | null;
 }) {
   const pending = item.status === "pending";
   const rememberable = canAlwaysAllow(item.tool, item.input);
@@ -224,23 +278,28 @@ export function ApprovalCard({
           ))}
         </dl>
       )}
+      {pending && explain !== undefined && explain !== null && <ExplainSections view={explain} />}
       {pending && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering}>
             {screenInput ? "Allow this turn" : "Allow"}
           </Button>
-          {rememberable && (
-            <Button
-              onClick={() => onAnswer("allow", true)}
-              disabled={answering}
-              title="Allow it now, and run exactly this command in this folder without asking from now on"
-            >
-              Always allow this command
-            </Button>
-          )}
           <Button onClick={() => onAnswer("deny")} disabled={answering}>
             Deny
           </Button>
+          {rememberable && (
+            <>
+              <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
+              <Button
+                variant="warning"
+                onClick={() => onAnswer("allow", true)}
+                disabled={answering}
+                title="Allow it now, and run exactly this command in this folder without asking from now on"
+              >
+                Always allow this command
+              </Button>
+            </>
+          )}
         </div>
       )}
       {!pending && remembered?.error && <p className="text-xs text-muted">Allowed this once only: {remembered.error}.</p>}

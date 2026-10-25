@@ -449,7 +449,7 @@ def restore_backup(archive: Path) -> RestoreReport:
             try:
                 manifest = _read_manifest(tar)
                 staging = Path(tempfile.mkdtemp(prefix=".restore-", dir=where["database"].parent))
-                os.chmod(staging, 0o700)
+                os.chmod(staging, 0o700)  # nosemgrep: python.lang.security.audit.insecure-file-permissions.insecure-file-permissions
                 parts = _stage(tar, manifest, staging)
             except (tarfile.TarError, EOFError, OSError) as exc:
                 raise BackupError(f"The archive could not be read all the way through ({exc}). Nothing was restored.") from None

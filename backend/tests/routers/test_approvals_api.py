@@ -105,11 +105,11 @@ async def test_an_empty_log_is_an_empty_page(api):
 
 
 async def test_rules_are_added_listed_and_deleted(api):
-    created = await api.post("/api/v1/approval-rules", json={"match": "prefix", "command": "git status"})
+    created = await api.post("/api/v1/approval-rules", json={"match": "prefix", "command": "grep status"})
     assert created.status_code == 201
     rule = created.json()
-    assert (rule["match"], rule["command"]) == ("prefix", "git status")
-    again = await api.post("/api/v1/approval-rules", json={"match": "prefix", "command": "git status"})
+    assert (rule["match"], rule["command"]) == ("prefix", "grep status")
+    again = await api.post("/api/v1/approval-rules", json={"match": "prefix", "command": "grep status"})
     assert again.json()["id"] == rule["id"]
     assert [r["id"] for r in (await api.get("/api/v1/approval-rules")).json()] == [rule["id"]]
     assert (await api.delete(f"/api/v1/approval-rules/{rule['id']}")).status_code == 204
@@ -136,6 +136,16 @@ async def test_a_rule_can_be_tied_to_a_folder(api):
         {"match": "regex", "command": "ls"},
         {"match": "exact", "command": ""},
         {"match": "exact", "command": "x" * 1001},
+        # A program whose first word names the tool but whose *argument* runs
+        # code cannot be a prefix rule: sed's `e`, awk's system(), a git `!`alias,
+        # tar's --checkpoint-action, and the build/test tools.
+        {"match": "prefix", "command": "sed -i"},
+        {"match": "prefix", "command": "awk 'BEGIN{system(\"id\")}'"},
+        {"match": "prefix", "command": "git -c alias.p='!touch ran' p"},
+        {"match": "prefix", "command": "tar --checkpoint-action=exec=sh"},
+        {"match": "prefix", "command": "curl"},
+        {"match": "prefix", "command": "make"},
+        {"match": "prefix", "command": "npm install"},
     ],
 )
 async def test_a_bad_rule_is_a_422(api, body):

@@ -327,6 +327,9 @@ class ThreadApprovalGate:
             except store.TurnNotRunning:
                 run.recorder.lose()
                 return None
+        from app.services import pending_work as pending_work_service
+
+        pending_work_service.hub.notify("approval_added")
         future = asyncio.get_running_loop().create_future()
         runtime._waiters[approval.id] = future
         self._by_request[request_id] = approval.id
@@ -347,11 +350,13 @@ class ThreadApprovalGate:
             return ApprovalHandle(approval_id=approval.id, request_id=request_id, tool=tool)
         rule = None if tool.startswith("mcp__team__") or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
         held = None
-        if rule is not None:
-            # A command on the safety floor, or one that could not be read, is
-            # never allowed by a rule: a person decides on the card.
-            reading = safety_floor.floor_reading(input.get("command", "")) if isinstance(input.get("command"), str) else None
-            if reading is not None and not reading.clear:
+        # A command on the safety floor, or one that could not be read, is never
+        # allowed by a rule: a person decides on the card, and the card names the
+        # floor rule. (matching_rule also refuses a floor call, so `rule` is
+        # already None here; this labels why.)
+        if isinstance(input.get("command"), str):
+            reading = safety_floor.floor_reading(input["command"])
+            if not reading.clear:
                 held = reading.verdict.rule if reading.verdict else "unreadable"
                 rule = None
         if rule is not None:
@@ -452,6 +457,9 @@ class ThreadRuntime:
     _waiters: dict[str, asyncio.Future] = field(default_factory=dict)
     _status_cache: dict[str, tuple[float, ProviderStatus]] = field(default_factory=dict)
     _session_factory: object | None = None
+    # Bounds turns that hold a worker thread at once (TURN_MAX_CONCURRENT), so
+    # they cannot consume the whole pool and starve the recovery jobs.
+    _admission: asyncio.Semaphore | None = None
     # Agent computers (app/computers/service.py), sharing this runtime's
     # database sessions and owner.
     computers: computer_service.ComputerService | None = None
@@ -477,6 +485,8 @@ class ThreadRuntime:
             )
         if self.engines is None:
             self.engines = EngineRegistry(self)
+        if self._admission is None and settings.TURN_MAX_CONCURRENT > 0:
+            self._admission = asyncio.Semaphore(settings.TURN_MAX_CONCURRENT)
 
     # -- engines ------------------------------------------------------------------------
 
@@ -831,8 +841,18 @@ class ThreadRuntime:
         run.gate = ThreadApprovalGate(self, run)
         self._runs[turn.id] = run
         run.task = asyncio.create_task(self._run(run, adapter, capabilities_of(adapter).computers))
+        # Whatever ends the run — completion, failure, or a cancellation from the
+        # stale-turn sweep — this removes it and wakes listeners. _run's own
+        # finally only covers its tail; a cancellation mid-provider-run would
+        # otherwise leave the entry (and its computer lease) behind.
+        run.task.add_done_callback(lambda _t, r=run: self._run_ended(r))
         self.hub.notify(thread_id)
         return turn
+
+    def _run_ended(self, run: ActiveRun) -> None:
+        self._runs.pop(run.turn_id, None)
+        self.hub.message_done(run.thread_id)
+        self.hub.notify(run.thread_id)
 
     async def _recall(self, agent, thread_id: int, prompt_text: str):
         """Passages from the agent's topic notes and other conversations for
@@ -1030,8 +1050,16 @@ class ThreadRuntime:
                 async with self.session() as db:
                     await store.mark_engine_sent(db, run.turn_id, run.owner_token)
                 run.touch()  # the engine's silence is counted from here
-                outcome = await self._run_adapter(run, adapter)
-                outcome = await self._after_limit(run, adapter, outcome)
+                # One worker thread per running engine, so admission is capped
+                # here; a turn past the cap waits its turn (holding no thread).
+                if self._admission is not None:
+                    await self._admission.acquire()
+                try:
+                    outcome = await self._run_adapter(run, adapter)
+                    outcome = await self._after_limit(run, adapter, outcome)
+                finally:
+                    if self._admission is not None:
+                        self._admission.release()
             except _EngineWithoutComputers:
                 outcome = TurnOutcome(
                     "failed",
@@ -1383,6 +1411,10 @@ class ThreadRuntime:
                 await self._remember(approval)
         if approval is not None:
             self.hub.notify(approval.thread_id)
+        if won:
+            from app.services import pending_work as pending_work_service
+
+            pending_work_service.hub.notify("approval_removed")
         return won
 
     def _mode_of(self, turn_id: int) -> str | None:
@@ -1423,6 +1455,22 @@ class ThreadRuntime:
                 turn = await store.get_turn(db, turn_id)
                 if turn is not None:
                     self.hub.notify(turn.thread_id)
+        # Reconcile the in-memory view with the database: a turn declared dead
+        # must also stop writing, stop its engine, and release its computer now,
+        # rather than lingering until its next emit fails or the stall watchdog
+        # fires (which a quiet engine never triggers).
+        for turn_id in interrupted:
+            run = self._runs.get(turn_id)
+            if run is None:
+                continue
+            # Abort first: the provider run awaits a blocking process in a
+            # thread, which a task.cancel() alone cannot interrupt — abort kills
+            # the process tree so that await returns.
+            run.ctx.abort()
+            if run.recorder is not None:
+                run.recorder.lose()
+            if run.task is not None:
+                run.task.cancel()
         if interrupted:
             logger.warning("interrupted turns whose owner stopped", turn_ids=interrupted)
         await self.team_jobs.recover()

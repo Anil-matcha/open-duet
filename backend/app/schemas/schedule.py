@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class ScheduleCreateRequest(BaseModel):
-    user_id: str
+    # The acting user is taken from the session identity, never the body.
     provider: str
     box_id: str
     prompt_text: str

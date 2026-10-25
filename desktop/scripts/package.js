@@ -34,7 +34,7 @@ run("Building the page", process.execPath, [path.join(__dirname, "build.js")], p
 run(
   "Freezing the backend",
   "uv",
-  ["run", "--with", "pyinstaller", "python", "build.py"],
+  ["run", "--frozen", "--group", "build", "python", "build.py"],
   paths.backend,
 );
 if (!fs.existsSync(frozen)) fail(`The frozen backend is missing from ${frozen}.`);

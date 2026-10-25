@@ -21,6 +21,8 @@ import {
 
 import { NeedsYouCard } from "./NeedsYouCard";
 import { DelegationCard, AgentCreatedCard, TeamNoticeCard, TeamSetupCard } from "./TeamCards";
+import { ResumeCard } from "./ResumeCard";
+import type { ResumeEvent } from "@/lib/resume-summary";
 
 const STICK_DISTANCE_PX = 80;
 
@@ -56,6 +58,7 @@ export function Conversation({
   onUndo,
   threadId = null,
   emptyHint,
+  onComposeContinuation,
   agent = null,
 }: {
   // The conversation the transcript belongs to: attachments are fetched from it.
@@ -72,6 +75,8 @@ export function Conversation({
   remembered?: Record<string, Remembered>;
   undoneRules?: number[];
   onUndo?: (ruleId: number) => void;
+  // Guided resume: fills the composer with a continuation summary. Never sends.
+  onComposeContinuation?: (summary: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
@@ -150,6 +155,26 @@ export function Conversation({
                   />
                 );
               case "turn_end":
+                if (item.status === "interrupted" && onComposeContinuation) {
+                  const events: ResumeEvent[] = transcript.items
+                    .filter((candidate) => candidate.kind !== "session_reset" && candidate.turnId === item.turnId)
+                    .flatMap((candidate): ResumeEvent[] => {
+                      if (candidate.kind === "tool") return [{ kind: "tool", turnId: candidate.turnId, tool: candidate.name, summary: candidate.summary }];
+                      if (candidate.kind === "assistant") return [{ kind: "assistant", turnId: candidate.turnId, text: candidate.text }];
+                      return [];
+                    });
+                  return (
+                    <div key={item.key} className="space-y-2">
+                      <TurnEnd item={item} />
+                      <ResumeCard
+                        events={events}
+                        phase={item.replay as "before_accept" | "after_accept" | "unknown" | ""}
+                        turnId={item.turnId}
+                        onComposeContinuation={onComposeContinuation}
+                      />
+                    </div>
+                  );
+                }
                 return <TurnEnd key={item.key} item={item} />;
               case "session_reset":
                 return <SessionReset key={item.key} item={item} />;

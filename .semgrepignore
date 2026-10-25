@@ -1,0 +1,7 @@
+# Semgrep cannot read this file in context, and each blocking finding it
+# raises is a false positive we have already reviewed:
+#   - missing-internal: `location /` and the SSE location are the public entry
+#     points of the reverse proxy; `internal` would refuse every visitor.
+#   - missing-ssl-version: `ssl_protocols TLSv1.2 TLSv1.3;` is set in the same
+#     server block (line 27); the rule matches the `server {` line alone.
+deploy/proxy/nginx.conf

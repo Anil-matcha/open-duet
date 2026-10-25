@@ -47,6 +47,14 @@ test('after sign-in only same-site paths are followed', () => {
   }
 });
 
+test('a control character cannot smuggle a protocol-relative path past the guard', () => {
+  // "%09" (tab) and "%0d" (CR) are stripped by the browser's URL parser, so
+  // "/\t/evil.example" would otherwise resolve to //evil.example.
+  for (const bad of ['/\t/evil.example', '/\r/evil.example', '/evil\texample', '/\x00/evil.example', '/\u007f/evil.example']) {
+    assert.equal(safeNextPath(bad), '/chat', JSON.stringify(bad));
+  }
+});
+
 test('the pairing code is read from the URL fragment', () => {
   assert.equal(pairingCodeFromHash('#code=ABCD-EFGH'), 'ABCD-EFGH');
   assert.equal(pairingCodeFromHash('#x=1&code=AB%20CD'), 'AB CD');

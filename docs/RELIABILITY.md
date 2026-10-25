@@ -10,6 +10,25 @@ and the desktop first-run setup.
 
 ## The promises
 
+### One process per backend
+
+Each backend is a single process. Sign-in and pairing lockouts
+(`app/auth/limiter.py`), live run and approval state, and the SSE hubs
+(`app/services/local_run_hub.py`, `app/services/thread_hub.py`) live in that
+process's memory: several workers would each keep their own copy, so a lockout
+budget would multiply and a stream opened on one worker would show nothing
+about a turn owned by another.
+
+- The server (`python -m app.server`) runs one process by construction, and
+  refuses to start when `WEB_CONCURRENCY` or `UVICORN_WORKERS` asks for more
+  than one.
+- To serve more traffic, run one instance and put a reverse proxy in front; do
+  not run several workers against the same database.
+- On PostgreSQL several *backends* may share a database (turn ownership is
+  enforced there), but each is still a single process. The controls that must
+  be one-per-database — the file lease on SQLite and the advisory
+  scheduler lock on PostgreSQL — take care of the rest.
+
 ### One backend per database
 
 A backend on SQLite holds an exclusive lock on `<database>.backend-lease` next
