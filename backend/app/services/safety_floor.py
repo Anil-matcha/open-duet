@@ -192,20 +192,33 @@ def _redirect_targets(words: list[str]) -> tuple[list[str], list[str]]:
 
 def _strip_wrappers(words: list[str]) -> list[str]:
     """Drop `sudo`, `env X=1`, `nohup`, `timeout 5` ... in front of the command."""
+    return _resolve_wrappers(words)[0]
+
+
+def _resolve_wrappers(words: list[str]) -> tuple[list[str], list[str], list[tuple[str, str]]]:
+    """`_strip_wrappers`, but also reporting what it removed: the resolved argv,
+    the wrapper chain (`sudo`, `env`, ...) and the value options it consumed as
+    `(option, value)` pairs. The explain projection reads this so it never
+    re-implements the resolution the floor uses."""
     words = list(words)
+    chain: list[str] = []
+    resolved: list[tuple[str, str]] = []
     while words:
         head = words[0]
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", head):
             words.pop(0)
         elif posixpath.basename(head) in _WRAPPERS:
             wrapper = posixpath.basename(words.pop(0))
+            chain.append(wrapper)
             value_options = _VALUE_OPTIONS.get(wrapper, frozenset())
             while words and words[0].startswith("-") and words[0] != "--":
                 option = words.pop(0)
                 # `--opt=value` carries its value; a bare option may take the
                 # next word, but only for this wrapper's value options.
-                if "=" not in option and option in value_options and words:
-                    words.pop(0)
+                if "=" in option:
+                    resolved.append((option.split("=", 1)[0], option.split("=", 1)[1]))
+                elif option in value_options and words:
+                    resolved.append((option, words.pop(0)))
             if words and words[0] == "--":
                 words.pop(0)
             if wrapper == "timeout" and words and re.fullmatch(r"\d+(?:\.\d+)?[smhd]?", words[0]):
@@ -216,7 +229,7 @@ def _strip_wrappers(words: list[str]) -> list[str]:
                     words.pop(0)
         else:
             break
-    return words
+    return words, chain, resolved
 
 
 _HOME_MARK = "/\ue000home"
@@ -546,3 +559,30 @@ def floor_reading(command: str, _depth: int = 0) -> FloorReading:
 def clears_floor(command: str) -> bool:
     """False for a never-list command and for one that could not be read."""
     return floor_reading(command).clear
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """What the floor sees after wrapper / value-option resolution. A read-only
+    projection: the same functions the enforcement uses produce it, so the two
+    cannot drift."""
+
+    argv: list[str]  # the command's words, quotes removed ([] when unreadable)
+    wrapper_chain: list[str]  # `sudo`, `env`, ... in the order they precede it
+    value_options_resolved: list[tuple[str, str]]  # (option, value) pairs consumed
+    resolved_argv: list[str]  # the words left after wrappers are stripped
+
+
+def resolution(command: str) -> Resolution:
+    """Resolve one command line the way the floor does, and report the steps."""
+    tokens = _tokens(command)
+    if tokens is None:
+        return Resolution([], [], [], [])
+    # The first split segment is the command being resolved (matching the floor's
+    # first `_check_command`); the floor itself walks every segment.
+    segments = _split(tokens)
+    words = segments[0] if segments else []
+    plain, _targets = _redirect_targets(words)
+    resolved_argv, chain, value_opts = _resolve_wrappers(plain)
+    return Resolution(list(plain), chain, value_opts, list(resolved_argv))
+

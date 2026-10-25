@@ -327,6 +327,9 @@ class ThreadApprovalGate:
             except store.TurnNotRunning:
                 run.recorder.lose()
                 return None
+        from app.services import pending_work as pending_work_service
+
+        pending_work_service.hub.notify("approval_added")
         future = asyncio.get_running_loop().create_future()
         runtime._waiters[approval.id] = future
         self._by_request[request_id] = approval.id
@@ -1408,6 +1411,10 @@ class ThreadRuntime:
                 await self._remember(approval)
         if approval is not None:
             self.hub.notify(approval.thread_id)
+        if won:
+            from app.services import pending_work as pending_work_service
+
+            pending_work_service.hub.notify("approval_removed")
         return won
 
     def _mode_of(self, turn_id: int) -> str | None:

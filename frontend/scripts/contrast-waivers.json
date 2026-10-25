@@ -1,0 +1,103 @@
+{
+  "note": "Triage of the honest gate's first measurement. Every entry is a deliberate, reviewed waiver; the gate fails on any failing pair not listed here, and on any listed pair whose ratio drifts (stale waiver).",
+  "waivers": [
+    {
+      "theme": "light",
+      "pair": "line on bg-app",
+      "ratio": 1.316,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "light",
+      "pair": "line on bg-surface",
+      "ratio": 1.363,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "light",
+      "pair": "line on bg-raised",
+      "ratio": 1.422,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "light",
+      "pair": "line on bg-hover",
+      "ratio": 1.141,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "light",
+      "pair": "line on bg-inset",
+      "ratio": 1.216,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "light",
+      "pair": "scrim on bg-app",
+      "ratio": 2.974,
+      "required": 3,
+      "reason": "Modal scrim darkens content behind an overlay; it is not a control boundary. Its perceivability comes from the large area + the modal elevation, not from a 3:1 edge ratio against bg-app."
+    },
+    {
+      "theme": "dark",
+      "pair": "line on bg-app",
+      "ratio": 1.45,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "dark",
+      "pair": "line on bg-surface",
+      "ratio": 1.371,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "dark",
+      "pair": "line on bg-raised",
+      "ratio": 1.25,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "dark",
+      "pair": "line on bg-hover",
+      "ratio": 1.075,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "dark",
+      "pair": "line on bg-inset",
+      "ratio": 1.407,
+      "required": 3,
+      "reason": "Hairline separator (WCAG 1.4.11 applies to boundaries needed to identify a control; these 1px borders are decorative dividers between panes/rows, drawn in addition to surface-tone changes). A 3:1 line would render near-black on light and near-white on dark, a visual regression the design rejects."
+    },
+    {
+      "theme": "dark",
+      "pair": "scrim on bg-app",
+      "ratio": 1.053,
+      "required": 3,
+      "reason": "Modal scrim darkens content behind an overlay; it is not a control boundary. Its perceivability comes from the large area + the modal elevation, not from a 3:1 edge ratio against bg-app."
+    }
+  ],
+  "unmeasured_triage": [
+    {
+      "file": "frontend/components/chat/FilesPanel.tsx",
+      "fg": "text-red-600",
+      "disposition": "compliant-by-hand",
+      "detail": "The alert text sits on the enclosing Dialog surface (bg-raised), a background set in another file the static rule cannot see. Measured by hand against bg-raised: red-600 on #ffffff (light) = 4.76:1, and the dark variant red-400 on #1e1e21 (dark) = 5.75:1 \u2014 both pass 4.5:1."
+    },
+    {
+      "file": "frontend/components/chat/TemplatesGallery.tsx",
+      "fg": "text-white",
+      "disposition": "runtime-varies",
+      "detail": "Initial letter is drawn white on a per-template runtime backgroundColor (template.color, an arbitrary user/data-supplied value). No static analysis can know the background; the correct control is a runtime contrast assertion at the point template colours are defined, tracked as a follow-up (not silently skipped \u2014 the pair stays in the gate's unmeasured report every run)."
+    }
+  ]
+}

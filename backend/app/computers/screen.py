@@ -82,14 +82,9 @@ def driver_lock(state_dir: Path):
     It blocks a whole thread (fcntl.flock / msvcrt.locking), so it must not be
     entered on the event loop; call it via asyncio.to_thread. That is enforced
     here so a new call site cannot reintroduce the stall (issue: release_turn)."""
-    import asyncio
+    from app.core.loop_guard import assert_off_loop
 
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-    else:
-        raise RuntimeError("driver_lock blocks; call it through asyncio.to_thread")
+    assert_off_loop("screen.driver_lock")
     grants.private_dir(state_dir)
     with (state_dir / "screen.lock").open("a+b") as lock:
         if os.name == "nt":

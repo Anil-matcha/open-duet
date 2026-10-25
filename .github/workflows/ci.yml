@@ -252,12 +252,56 @@ jobs:
             p/python
             p/security-audit
 
+  # The models and a freshly migrated database must describe the same schema,
+  # and the Alembic graph must have one leaf. A hard-coded rebuild once dropped
+  # agent.memory_upkeep on fresh databases and a two-headed chain shipped; both
+  # would have passed without this gate (backend/scripts/check_schema_drift.py).
+  schema-drift:
+    name: Schema drift gate
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_BACKEND: sqlite
+      # Throwaway key for tests only (a valid Fernet key; protects nothing).
+      TOKEN_ENCRYPTION_KEYS: 3n3b2YkQd0xVv8m1c1m0nq1l4Z3xk9q0n7xv7y5q8wE=
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: uv sync --frozen
+      - run: uv run python scripts/check_schema_drift.py
+
+  # The turn crash contract made executable: start the real backend, SIGKILL it
+  # at each turn phase, restart, and assert exactly-one interrupted / zero
+  # auto-replay / lease reclaimed (backend/tests/crash/).
+  crash-injection:
+    name: Crash injection (SIGKILL contract)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_BACKEND: sqlite
+      # Throwaway key for tests only (a valid Fernet key; protects nothing).
+      TOKEN_ENCRYPTION_KEYS: 3n3b2YkQd0xVv8m1c1m0nq1l4Z3xk9q0n7xv7y5q8wE=
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: uv sync --frozen
+      - run: uv run pytest tests/crash -q
+
   # The one check to require in branch protection. Skipped jobs (docs-only
   # changes) count as passing; failed or cancelled jobs do not.
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, backend-sqlite, backend-postgres, backend-smoke, server-smoke, frontend, desktop, browser, security]
+    needs: [changes, backend-sqlite, backend-postgres, backend-smoke, server-smoke, frontend, desktop, browser, security, schema-drift, crash-injection]
     runs-on: ubuntu-latest
     steps:
       - name: Check results

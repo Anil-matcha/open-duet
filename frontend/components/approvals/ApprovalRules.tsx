@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiError, type ApprovalRule } from "@/lib/api";
+import { api, ApiError, type ApprovalRule, type RulePreview } from "@/lib/api";
+import { previewView } from "@/lib/approvals";
 import { ruleMatchLabel, ruleScopeLabel } from "@/lib/approvals";
 import { BUTTON, FIELD, FIELD_BOX, PRIMARY } from "./styles";
 
@@ -22,6 +23,27 @@ export function ApprovalRules({
   const [match, setMatch] = useState<"exact" | "prefix">("exact");
   const [command, setCommand] = useState("");
   const [folder, setFolder] = useState(workspace ?? "");
+  const [preview, setPreview] = useState<{ key: string; value: RulePreview | null; error: string | null } | null>(null);
+  const previewKey = `${match}\u0000${command.trim()}\u0000${folder.trim()}`;
+  const activePreview = preview?.key === previewKey ? preview : null;
+
+  // Preview the candidate rule before save is possible: the owner sees what it
+  // would also allow, straight from the endpoint (never derived locally).
+  useEffect(() => {
+    const candidate = command.trim();
+    if (!candidate) return;
+    let cancelled = false;
+    const key = `${match}\u0000${candidate}\u0000${folder.trim()}`;
+    const timer = setTimeout(() => {
+      api
+        .previewApprovalRule({ match, command: candidate, workspace: folder.trim() || null })
+        .then((p) => { if (!cancelled) setPreview({ key, value: p, error: null }); })
+        .catch((err: unknown) => {
+          if (!cancelled) setPreview({ key, value: null, error: err instanceof ApiError ? err.message : "Could not preview this rule." });
+        });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [match, command, folder]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +160,28 @@ export function ApprovalRules({
           spellCheck={false}
           autoComplete="off"
         />
-        <button type="submit" className={PRIMARY} disabled={busy || !command.trim()}>
+        {(() => {
+          const view = previewView(activePreview?.value ?? null, { error: activePreview?.error ?? null });
+          return (
+            <div className="space-y-1 rounded-md bg-inset px-3 py-2">
+              <p className="text-xs font-medium text-muted">{view.floorLabel}</p>
+              {view.wouldAllow.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted">This rule would also allow:</p>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {view.wouldAllow.map((c) => (
+                      <li key={c} className="break-all font-mono text-xs text-ink">{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {command.trim() && activePreview && view.wouldAllow.length === 0 && !activePreview.error && (
+                <p className="text-xs text-muted">This rule would not allow any known dangerous command.</p>
+              )}
+            </div>
+          );
+        })()}
+        <button type="submit" className={PRIMARY} disabled={busy || !command.trim() || !previewView(activePreview?.value ?? null, { error: activePreview?.error ?? null }).canSave}>
           {busy ? "Saving…" : "Add rule"}
         </button>
       </form>

@@ -9,6 +9,7 @@ import { useSession } from "@/components/AuthGate";
 import { Dialog } from "@/components/ui/Dialog";
 import { RoomSettings } from "./RoomSettings";
 import { SharedApproval } from "./SharedApproval";
+import { BatchApprove } from "@/components/approvals/BatchApprove";
 import { Markdown } from "./Markdown";
 
 const BUTTON = "rounded-field border border-line px-3 py-1.5 text-sm hover:bg-hover disabled:opacity-50";
@@ -69,6 +70,11 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
         <div ref={scroller} onScroll={() => { const element = scroller.current; if (element) following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }} className="max-h-[45dvh] space-y-4 overflow-y-auto rounded-field border border-line p-3" aria-label="Room conversation" tabIndex={0}>
           {messages.length === 0 && <p className="text-sm text-muted">Start the conversation. Tag a member to ask them to reply.</p>}
           {messages.map(message => <article key={message.seq} className="min-w-0 space-y-1"><p className="text-xs font-semibold text-muted">{message.author.label ?? (message.author.agent_id ? roomMemberName(room.members, message.author.agent_id) : message.author.kind === "person" ? "You" : "Room")} <time className="ml-1 font-normal" dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p><div className="break-words text-sm"><Markdown text={message.text} /></div>{message.source?.thread_id && <Link className="text-xs underline" href={`/chat?thread=${message.source.thread_id}`}>See work</Link>}</article>)}
+          <BatchApprove
+            approvals={approvals.filter(item => item.status === "pending").map(item => ({ id: item.id, tool: item.tool, threadId: item.thread_id }))}
+            onApprove={(threadId, approvalId) => api.answerThreadApproval(threadId, approvalId, "allow")}
+            onChanged={() => void refresh()}
+          />
           {approvals.filter(item => item.status === "pending").map(approval => <SharedApproval key={approval.id} approval={approval} onChanged={() => void refresh()} />)}
         </div>
         {room.dispatches.filter(item => ["failed", "stopped"].includes(item.status)).map(item => <div key={item.id} className="flex flex-wrap items-center gap-2 text-xs text-warning"><span>{roomMemberName(room.members, item.agent_id)}: {item.status}{item.error_code ? ` (${item.error_code})` : ""}</span>{admin && <button type="button" className="underline" disabled={busy} onClick={() => void act(() => collaboration.retryDispatch(room.id, item.id))}>Retry</button>}</div>)}
