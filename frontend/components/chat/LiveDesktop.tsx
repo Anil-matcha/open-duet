@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, desktopViewerUrl } from "@/lib/api";
 import { DesktopRfb, DESKTOP_KEYS, isReleaseChord } from "@/lib/desktop-rfb";
+import { RELEASE_CHORD_KEYS, type TrappedSurfaceProps } from "@/lib/a11y-invariants";
 import { takeover } from "@/lib/takeover";
+import { TrappedCanvas } from "./TrappedCanvas";
 
 const BUTTON = "cursor-pointer rounded border border-line px-2 py-1 text-xs disabled:opacity-50";
+
 export function LiveDesktop({ computerId }: { computerId: number }) {
   const [state, dispatch] = useReducer(takeover, "watching");
   const [error, setError] = useState<string | null>(null);
@@ -30,14 +33,18 @@ export function LiveDesktop({ computerId }: { computerId: number }) {
     opener.current?.focus();
   }, [computerId]);
   // The canvas forwards keys to the guest, so it must never swallow the way
-  // out. These chords return control instead of going to the remote machine.
+  // out. Its release contract is declared through TrappedSurfaceProps (below),
+  // and the runtime check reads the same RELEASE_CHORD_KEYS constant the type
+  // requires — one source of truth between declaration and behaviour.
+  const trapped: TrappedSurfaceProps = { escapeKeys: RELEASE_CHORD_KEYS, onEscape: release };
+  const { onEscape: onRelease } = trapped;
   const onCanvasKeyDown = useCallback((event: React.KeyboardEvent<HTMLCanvasElement>) => {
     if (isReleaseChord(event)) {
-      event.preventDefault(); event.stopPropagation(); release(); return;
+      event.preventDefault(); event.stopPropagation(); onRelease(); return;
     }
     const key=DESKTOP_KEYS[event.key] ?? (event.key.length === 1 ? event.key.codePointAt(0) : undefined);
     if (key) { event.preventDefault(); client.current?.key(key,true); }
-  }, [release]);
+  }, [onRelease]);
   useEffect(() => {
     mounted.current = true;
     window.addEventListener("pagehide", release);
@@ -101,7 +108,7 @@ export function LiveDesktop({ computerId }: { computerId: number }) {
     {active && <>
       <div role="group" aria-label="Computer desktop" className="space-y-2">
         <button type="button" className={BUTTON} onClick={release}>Hand control back</button>
-        <canvas ref={canvas} tabIndex={0} aria-label="Computer desktop. Click to focus; Tab, Escape and other keys go to the remote machine. Press F6 (or Ctrl+Shift+Escape) or the Hand control back button to return control to the agent."
+        <TrappedCanvas ref={canvas} tabIndex={0} escapeKeys={trapped.escapeKeys} onEscape={trapped.onEscape} aria-label="Computer desktop. Click to focus; Tab, Escape and other keys go to the remote machine. Press F6 (or Ctrl+Shift+Escape) or the Hand control back button to return control to the agent."
           className="aspect-[16/10] min-h-0 w-full touch-none rounded border border-line bg-black object-contain outline-accent"
           onPointerDown={event => { event.preventDefault(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId); pointer(event); }}
           onPointerMove={event => pointer(event)} onPointerUp={event => pointer(event,0)} onPointerCancel={event => pointer(event,0)} onContextMenu={event => event.preventDefault()}

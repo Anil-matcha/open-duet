@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { RoomMentionComposer } from "./RoomMentionComposer";
 import { RoomSettings } from "./RoomSettings";
 import { SharedApproval } from "./SharedApproval";
+import { BatchApprove } from "@/components/approvals/BatchApprove";
 import { Markdown } from "./Markdown";
 import { useT } from "@/lib/use-i18n";
 
@@ -236,6 +237,11 @@ export function RoomView({ roomId, agents, onClose, onSelect, onTitleChange }: {
             </article>)}
             {pendingApprovals.length > 0 && <section aria-label={t("header.approvals")} className="mx-auto max-w-4xl space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t("header.approvals")}</h3>
+              <BatchApprove
+                approvals={pendingApprovals.map(item => ({ id: item.id, tool: item.tool, threadId: item.thread_id }))}
+                onApprove={(threadId, approvalId) => api.answerThreadApproval(threadId, approvalId, "allow")}
+                onChanged={() => void refresh()}
+              />
               {pendingApprovals.map(approval => <SharedApproval key={approval.id} approval={approval} onChanged={() => void refresh()} />)}
             </section>}
             {room.dispatches.filter(item => ["failed", "stopped"].includes(item.status)).map(item => <div key={item.id} role="status" className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-field border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">

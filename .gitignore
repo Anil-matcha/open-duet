@@ -5,6 +5,9 @@
 
 .internal/
 
+# Orion-OS working state: manifest, specs, memory bank (AGENTS.md §03.6).
+.agents/
+
 # The settings file compose reads (compose.yaml) holds TOKEN_ENCRYPTION_KEYS,
 # a secret. It lives at the repo root by default, so ignore it here too.
 open-dots.env

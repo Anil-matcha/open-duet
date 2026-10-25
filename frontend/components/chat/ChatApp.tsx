@@ -18,6 +18,9 @@ import { computerChip } from "@/lib/computers";
 import { AgentsPanel } from "./AgentsPanel";
 import { NotificationBell } from "./NotificationBell";
 import { LanguageSelect } from "@/components/settings/LanguageSelect";
+import { AttentionRegion } from "./AttentionRegion";
+import { usePendingWork } from "./usePendingWork";
+import { desktopNotifier, type Notifier } from "@/lib/attention";
 import { RoutinesPanel } from "./RoutinesPanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { EngineModelFields } from "./EngineModelFields";
@@ -181,6 +184,11 @@ export function ChatApp() {
   // The turn Stop was pressed for; cleared by the turn ending, which is what
   // the button waits for.
   const [stoppingTurn, setStoppingTurn] = useState<number | null>(null);
+  // The owner's pending work anywhere, for the app-root attention surface.
+  const pendingWork = usePendingWork();
+  const notifier = useState<Notifier>(() =>
+    desktopNotifier(typeof window === "undefined" ? undefined : window.openDots)
+  )[0];
   // Named agents. null: the backend has none to offer (an older one answers 404),
   // and the page behaves as before.
   const [agents, setAgents] = useState<Agent[] | null>(null);
@@ -1029,6 +1037,7 @@ export function ChatApp() {
 
   return (
     <div className="relative flex h-dvh">
+      <AttentionRegion items={pendingWork.items} focusedThreadId={threadId} notifier={notifier} />
       <a
         href="#conversation"
         className="sr-only z-50 rounded-field bg-raised px-3 py-2 text-sm font-medium text-ink shadow-lg focus:not-sr-only focus:absolute focus:left-3 focus:top-3"
@@ -1134,6 +1143,7 @@ export function ChatApp() {
               remembered={remembered}
               undoneRules={undoneRules}
               onUndo={undoRule}
+              onComposeContinuation={(summary) => { setDraft(summary); setFocusComposer(true); }}
             />
           )}
 

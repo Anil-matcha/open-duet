@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["./**/*.tsx", "../../components/chat/TrappedCanvas.tsx", "../../lib/a11y-invariants.ts"],
+  "exclude": []
+}

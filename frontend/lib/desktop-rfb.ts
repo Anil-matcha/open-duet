@@ -109,7 +109,8 @@ export const DESKTOP_KEYS: Record<string, number> = { Backspace: 0xff08, Tab: 0x
 
 // The desktop canvas forwards keys to the guest (Tab and Escape included), so
 // it needs a chord that hands control back instead. Keeps the view from being a
-// keyboard trap (WCAG 2.1.2).
+// keyboard trap (WCAG 2.1.2). The key list is imported from the a11y invariant
+// module so the declared `escapeKeys` and this runtime check read one constant.
 export function isReleaseChord(event: { key: string; ctrlKey?: boolean; shiftKey?: boolean }): boolean {
   return event.key === "F6" || (event.key === "Escape" && Boolean(event.ctrlKey) && Boolean(event.shiftKey));
 }
