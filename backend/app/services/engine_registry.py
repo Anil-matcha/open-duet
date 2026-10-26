@@ -69,8 +69,30 @@ class UnavailableAdapter:
         return TurnOutcome("failed", error=self.reason, error_code="engine_unavailable")
 
 
+HOSTED_REASON = "This hosted service runs agents in your own private sandbox. Choose the Claude engine."
+
+
+def hosted_adapters() -> dict:
+    """What a hosted deployment offers (HOST_EXECUTION_DISABLED): Claude, run in the account's
+    Boat sandbox. Every other engine would start a process or call out from this server, so it is
+    listed as unavailable with the reason, and keeps its key so stored agents still resolve."""
+    from app.services.boat_adapter import BoatClaudeAdapter, SdkBoatBoxes
+
+    labels = {"codex": "Codex", "cursor": "Cursor", "gemini": "Gemini CLI",
+              "antigravity": "Google Gemini (Antigravity)", "opencode": "OpenCode (experimental)",
+              "openrouter": "OpenRouter", "acp": "ACP agent", "openai_compat": "OpenAI-compatible"}
+    adapters: dict = {"claude": BoatClaudeAdapter(SdkBoatBoxes())}
+    for key, label in labels.items():
+        adapters[key] = UnavailableAdapter(key, label, HOSTED_REASON)
+    return adapters
+
+
 def default_adapters() -> dict:
     """Every built-in engine. One that cannot be built is kept as unavailable."""
+    from app.core.config import settings
+
+    if settings.HOST_EXECUTION_DISABLED:
+        return hosted_adapters()
     from app.services.acp_adapter import AcpAdapter
     from app.services.antigravity_adapter import AntigravityAdapter
     from app.services.acp_presets import GeminiAdapter, CursorAdapter, OpenCodeAdapter

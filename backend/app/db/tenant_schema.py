@@ -35,6 +35,12 @@ def current_schema() -> str | None:
     return _current.get()
 
 
+def current_tenant_id() -> str | None:
+    """The tenant id (`u_<hex>`) whose schema is in context, or None."""
+    schema = _current.get()
+    return f"u_{schema[2:]}" if schema else None
+
+
 @contextmanager
 def use_tenant(tenant_id: str | None):
     """Run the enclosed code (and tasks it starts) against one account's schema."""
