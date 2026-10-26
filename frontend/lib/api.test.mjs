@@ -1,9 +1,32 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { api, ApiError } from './api.ts';
+import { api, ApiError, setCsrfToken } from './api.ts';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
+
+test('engine sign-out uses the explicit authenticated logout endpoints', async () => {
+  const requests = [];
+  setCsrfToken('test-token');
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init });
+    return new Response(null, { status: 204 });
+  };
+  try {
+    await api.logoutClaudeEngine();
+    await api.logoutCodexEngine();
+    assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), [
+      '/api/v1/engines/claude/logout', '/api/v1/engines/codex/logout',
+    ]);
+    for (const { init } of requests) {
+      assert.equal(init.method, 'POST');
+      assert.equal(init.credentials, 'include');
+      assert.equal(init.headers['X-CSRF-Token'], 'test-token');
+    }
+  } finally {
+    setCsrfToken(null);
+  }
+});
 
 function rejectWith(body, status = 422, statusText = 'Unprocessable Entity') {
   globalThis.fetch = async () => new Response(JSON.stringify(body), {

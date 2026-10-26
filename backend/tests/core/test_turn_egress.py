@@ -1,6 +1,7 @@
 """Policy, DNS pinning, protocol transport and isolation launch regressions."""
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
@@ -188,6 +189,19 @@ def network_box(monkeypatch, tmp_path):
     return workspace
 
 
+@pytest.fixture
+def real_network_box(monkeypatch, tmp_path):
+    """Enable the real Linux sandbox without platform or executable fakes."""
+    monkeypatch.setattr(settings, 'TURN_SANDBOX_ENABLED', True)
+    monkeypatch.setattr(settings, 'TURN_SANDBOX_NETWORK_ENABLED', True)
+    monkeypatch.setattr(settings, 'TURN_SANDBOX_READONLY_PATHS', '')
+    monkeypatch.setattr(settings, 'TURN_SANDBOX_WRITABLE_PATHS', '')
+    monkeypatch.setattr(settings, 'SQLITE_PATH', str(tmp_path / 'data' / 'app.db'))
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    return workspace
+
+
 def test_network_setting_cannot_silently_run_without_filesystem_box(monkeypatch):
     monkeypatch.setattr(settings, 'TURN_SANDBOX_ENABLED', False)
     monkeypatch.setattr(settings, 'TURN_SANDBOX_NETWORK_ENABLED', True)
@@ -239,3 +253,53 @@ def test_bridge_refuses_missing_gate_before_engine(monkeypatch, tmp_path):
     monkeypatch.setattr(gate.subprocess, 'Popen', lambda *a, **kw: pytest.fail('engine must not start'))
     with pytest.raises(OSError):
         gate.bridge(['engine'])
+
+
+@pytest.mark.skipif(not sys.platform.startswith('linux') or not shutil.which('bwrap'), reason='requires real Linux bubblewrap')
+def test_real_linux_network_box_blocks_host_loopback_and_gates_proxy(real_network_box):
+    """Exercise the actual network namespace, bridge, supervisor and gate together."""
+    assert box.self_check()['status'] == 'available'
+    with socket.socket() as host_listener:
+        host_listener.bind(('127.0.0.1', 0))
+        host_listener.listen(1)
+        host_listener.settimeout(0.2)
+        host_port = host_listener.getsockname()[1]
+
+        result_file = real_network_box / 'network-result'
+        script = r'''import socket, sys
+port = int(sys.argv[1])
+result_file = sys.argv[2]
+try:
+    socket.create_connection(("127.0.0.1", port), timeout=1).close()
+except OSError:
+    pass
+else:
+    raise SystemExit("boxed process reached a host loopback listener directly")
+
+with socket.create_connection(("127.0.0.1", 18764), timeout=2) as proxy:
+    proxy.sendall(b"CONNECT 127.0.0.1:443 HTTP/1.1\r\nHost: 127.0.0.1:443\r\n\r\n")
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        chunk = proxy.recv(4096)
+        if not chunk:
+            break
+        response.extend(chunk)
+    if not response.startswith(b"HTTP/1.1 403 Forbidden"):
+        raise SystemExit("private destination was not refused by the host gate: " + repr(bytes(response)))
+with open(result_file, "w", encoding="utf-8") as result:
+    result.write("host loopback blocked; private proxy destination refused")
+print("host loopback blocked; private proxy destination refused")
+'''
+        args = box.command([sys.executable, '-c', script, str(host_port), str(result_file)], cwd=real_network_box,
+                           env={'PATH': '/usr/bin:/bin'})
+        scratch = Path('/tmp')
+        before = set(scratch.glob('duet-egress-*'))
+        result = subprocess.run(args, capture_output=True, text=True, timeout=15,
+                                env={'PATH': '/usr/bin:/bin'})
+        after = set(scratch.glob('duet-egress-*'))
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == 'host loopback blocked; private proxy destination refused'
+        assert result_file.read_text(encoding='utf-8') == 'host loopback blocked; private proxy destination refused'
+        assert after <= before
+        with pytest.raises(TimeoutError):
+            host_listener.accept()

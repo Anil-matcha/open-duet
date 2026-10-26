@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type CodexLoginOperation } from "@/lib/api";
+import { EngineSignOut } from "./EngineSignOut";
 
 const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:opacity-50";
 
-export function CodexEngineSetup({ onChanged }: { onChanged: () => void }) {
+export function CodexEngineSetup({ onChanged, signedIn }: { onChanged: () => void; signedIn: boolean | null }) {
   const [flow, setFlow] = useState<CodexLoginOperation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signOutPending, setSignOutPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const changed = useRef(onChanged);
   useEffect(() => { changed.current = onChanged; }, [onChanged]);
@@ -43,7 +45,8 @@ export function CodexEngineSetup({ onChanged }: { onChanged: () => void }) {
   };
   const running = flow?.phase === "running";
   return <div className="space-y-2">
-    <button className={BUTTON} disabled={busy || running} onClick={() => void act(async () => setFlow(await api.startCodexLogin()))}>Sign in to Codex</button>
+    <button className={BUTTON} disabled={busy || running || signOutPending} onClick={() => void act(async () => setFlow(await api.startCodexLogin()))}>Sign in to Codex</button>
+    {signedIn && <EngineSignOut label="Codex" disabled={busy || running} onSignOut={api.logoutCodexEngine} onChanged={onChanged} onPendingChange={setSignOutPending} />}
     {running && <button className={`${BUTTON} ml-2`} disabled={busy} onClick={() => void act(async () => {
       await api.cancelCodexLogin(flow.id); setFlow(null); changed.current();
     })}>Cancel sign-in</button>}

@@ -450,6 +450,9 @@ class ThreadRuntime:
     adapters: dict[str, ProviderAdapter] = field(default_factory=default_adapters)
     codex_login: CodexLogin = field(default_factory=CodexLogin)
     claude_login: ClaudeLogin = field(default_factory=ClaudeLogin)
+    # Account changes and turn admission reserve before their first await.
+    _account_changing: bool = False
+    _starting_turns: int = 0
     status_ttl: float = STATUS_CACHE_SECONDS
     instance_id: str = field(default_factory=lambda: uuid4().hex)
     owner_id: str = LOCAL_OWNER_ID
@@ -631,7 +634,16 @@ class ThreadRuntime:
 
     # -- sending a turn ----------------------------------------------------------
 
-    async def send_turn(
+    async def send_turn(self, *args, **kwargs) -> store.Turn:
+        if self._account_changing:
+            raise ProviderUnavailable("An engine account is changing. Try again after it finishes.")
+        self._starting_turns += 1
+        try:
+            return await self._send_turn(*args, **kwargs)
+        finally:
+            self._starting_turns -= 1
+
+    async def _send_turn(
         self,
         thread_id: int,
         prompt_text: str,

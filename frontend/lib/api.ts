@@ -881,6 +881,8 @@ export const api = {
   roomExportUrl: (id: number, format: "md" | "json") => requestBlobUrl(`/rooms/${id}/export?format=${format}`),
   requestTeamLead: (agentId: number) => request<{ id: number; lead_agent_id: number }>("/team/lead", { method: "POST", body: JSON.stringify({ agent_id: agentId }) }),
   getEngines: (refresh = false) => request<Engine[]>(`/engines${refresh ? "?refresh=true" : ""}`),
+  logoutClaudeEngine: () => request<void>("/engines/claude/logout", { method: "POST" }),
+  logoutCodexEngine: () => request<void>("/engines/codex/logout", { method: "POST" }),
   startClaudeEngineLogin: () => request<ClaudeLoginOperation>("/engines/claude/login", { method: "POST" }),
   claudeLoginStatus: (id: string) => request<ClaudeLoginOperation>(`/engines/claude/login/${encodeURIComponent(id)}`),
   completeClaudeLogin: (id: string, code: string) => request<void>(`/engines/claude/login/${encodeURIComponent(id)}/code`, { method: "POST", body: JSON.stringify({ code }) }),

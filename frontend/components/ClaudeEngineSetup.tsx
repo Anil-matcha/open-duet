@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type ClaudeLoginOperation } from "@/lib/api";
+import { EngineSignOut } from "./EngineSignOut";
 
 const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:opacity-50";
 const HOSTS = new Set(["claude.ai", "claude.com", "console.anthropic.com", "platform.claude.com"]);
@@ -15,10 +16,11 @@ function trustedLink(value?: string): string | null {
   } catch { return null; }
 }
 
-export function ClaudeEngineSetup({ onChanged }: { onChanged: () => void }) {
+export function ClaudeEngineSetup({ onChanged, signedIn }: { onChanged: () => void; signedIn: boolean | null }) {
   const [flow, setFlow] = useState<ClaudeLoginOperation | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signOutPending, setSignOutPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const changed = useRef(onChanged);
   useEffect(() => { changed.current = onChanged; }, [onChanged]);
@@ -52,9 +54,10 @@ export function ClaudeEngineSetup({ onChanged }: { onChanged: () => void }) {
   const running = flow?.phase === "running";
   const link = trustedLink(flow?.authorization_url);
   return <div className="space-y-2">
-    <button className={BUTTON} disabled={busy || running} onClick={() => void act(async () => {
+    <button className={BUTTON} disabled={busy || running || signOutPending} onClick={() => void act(async () => {
       setCode(""); setFlow(await api.startClaudeEngineLogin());
     })}>Sign in to Claude</button>
+    {signedIn && <EngineSignOut label="Claude" disabled={busy || running} onSignOut={api.logoutClaudeEngine} onChanged={onChanged} onPendingChange={setSignOutPending} />}
     {running && <button className={`${BUTTON} ml-2`} disabled={busy} onClick={() => void act(async () => {
       await api.cancelClaudeLogin(flow.id); setCode(""); setFlow(null); changed.current();
     })}>Cancel Claude sign-in</button>}

@@ -21,9 +21,22 @@ UI do not know which engine they are talking to.
 
 Open **Settings → Engines** in the web UI or desktop app. **Check again**
 checks installation, login and endpoint readiness. An unavailable engine shows
-its reason without blocking the others. Sign in to Claude in a terminal; Codex
-has a device-code sign-in button in Settings. Antigravity has its own install
+its reason without blocking the others. Settings offers Claude browser sign-in
+and Codex device-code sign-in. Antigravity has its own install
 and Google sign-in controls below.
+
+For Claude and Codex, **Sign out** asks for confirmation before running the
+installed CLI's logout command. It affects the server's shared CLI account,
+including CLI use outside this app. Stop all active conversations first:
+account removal refuses running or starting turns, and new turns refuse while
+sign-out is pending. Pending sign-in also blocks sign-out for the same account
+folder. The CLI must confirm that it is signed out; an environment API key can
+keep it connected and cause an unconfirmed result. No raw CLI output is shown.
+
+To switch accounts, sign out explicitly, then use the existing sign-in button.
+There is one shared account per CLI, with no named-account selector. Existing
+provider sessions may need a new conversation after changing accounts. Real
+account switching, Windows and installed-app behavior have not been qualified.
 
 For ACP, save the command and optional display name. For an OpenAI-compatible
 endpoint, save its base URL (including `/v1` when required), optional default

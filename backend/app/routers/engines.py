@@ -186,6 +186,36 @@ def _login_owner(request: Request) -> str:
     return f"{principal.kind}:{principal.session_id}"
 
 
+@router.post("/{engine_id}/logout", status_code=204)
+async def logout_engine(engine_id: str, request: Request, response: Response, rt: ThreadRuntime = Depends(get_runtime)):
+    from app.services import engine_logout
+    from app.services.codex_login import LoginError
+    from app.services.codex_adapter import resolve_codex_executable
+    from app.services.local_claude_runner import resolve_claude_executable
+
+    _login_owner(request)
+    response.headers["Cache-Control"] = "no-store"
+    if engine_id not in {"claude", "codex"}:
+        raise HTTPException(status_code=404, detail="Engine not found")
+    if rt._closing or engine_id not in rt.adapters:
+        raise _error(409, "engine_unavailable", "This engine is unavailable on this server.")
+    executable = (resolve_codex_executable if engine_id == "codex" else resolve_claude_executable)()
+    if executable is None:
+        raise _error(409, "engine_unavailable", "Install the engine CLI on the server first.")
+    # A running turn can switch to a fallback engine. Reserve before yielding,
+    # and include turns still preparing readiness/context, before _runs exists.
+    if rt._closing or rt._runs or rt._starting_turns or rt._account_changing:
+        raise _error(409, "engine_busy", "Stop running conversations before signing out.")
+    rt._account_changing = True
+    try:
+        await engine_logout.logout(getattr(rt, f"{engine_id}_login"), engine_id, executable)
+    except (LoginError, OSError):
+        raise _error(409, "logout_unavailable", "Could not confirm sign-out. Finish pending sign-in, check the CLI and any configured API key, then try again.") from None
+    finally:
+        rt._account_changing = False
+        rt.engines.forget(engine_id)
+
+
 @router.post("/codex/login", status_code=202)
 async def start_codex_login(request: Request, response: Response, rt: ThreadRuntime = Depends(get_runtime)):
     from app.services.codex_adapter import resolve_codex_executable

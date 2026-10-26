@@ -252,7 +252,14 @@ The code goes once to the CLI over its private input pipe and is never saved
 by Open Duet. An existing working account is preserved. Both flows expire after
 five minutes, can be cancelled, and end when the backend shuts down. Their
 handles are process-local: keep this Settings page open, and use one worker or
-session affinity. There is no sign-out/account-switch control yet.
+session affinity. **Sign out** requires confirmation and uses the installed
+CLI to remove the shared server account, which can also affect terminal use.
+Stop active conversations first. Sign-out refuses pending/active turns and
+same-account sign-in; new turns refuse while sign-out runs. A CLI status check
+must confirm sign-out. An environment API key may keep the engine connected.
+To switch, sign out explicitly and start the normal sign-in flow again;
+existing provider sessions may require a new conversation. Named accounts are
+not supported.
 Real-account, Windows and packaged sign-in remain unqualified. Other CLI
 browser sign-ins still run from a terminal as the account
 running Open Duet; API keys are another option on headless servers. OpenRouter

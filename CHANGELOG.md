@@ -4,6 +4,15 @@
 
 ### Added
 
+- Sign out of the shared Claude or Codex CLI account from Settings after
+  confirmation, then sign in again to switch accounts. Account removal refuses
+  pending sign-in and active or starting conversations, bounds CLI execution,
+  and verifies sign-out without exposing provider output. Real-account,
+  Windows and packaged-app switching were not run.
+- Add a real Linux network sandbox integration check for host loopback denial,
+  private-destination proxy refusal and gate cleanup. Linux enforcement was not
+  run on this macOS host; the check requires bubblewrap and namespace support.
+
 - Let a Claude agent read your GitHub profile, repositories, issues and pull
   requests in chat, once you tick GitHub in that agent's settings (off by
   default). Reads only, one fixed set of tools; answers are trimmed to a short
@@ -38,7 +47,7 @@
 - Start Codex device-code sign-in from Settings, with a bounded process and
   status/code access restricted to the starting owner session. Existing working
   accounts are preserved. Real-account and packaged-app sign-in were not run;
-  Claude account switching and sign-out still require the terminal.
+  account switching qualification remains open.
 - Show when a conversation is using a shared screen and require a fresh
   screenshot before coordinate input after tracked control changes. Refused
   inputs are never queued or replayed. Real-provider, Docker desktop and
