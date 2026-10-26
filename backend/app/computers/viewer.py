@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 
 from app.computers import docker_cli
+from app.core import host_exec
 
 
 @dataclass(repr=False)
@@ -56,6 +57,7 @@ async def bridge(websocket, spec, docker, valid):
     """Bounded binary messages, backpressure, first-byte timeout and revalidation."""
     # No browser credentials or engine API keys reach the child process.
     env = {k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "SYSTEMROOT", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "SSH_AUTH_SOCK"}}
+    host_exec.ensure_allowed("a Docker command")
     proc = await asyncio.create_subprocess_exec(
         docker or docker_cli.docker_executable() or "docker", *docker_cli.rfb_args(spec.name, spec.run_as),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,

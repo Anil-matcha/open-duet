@@ -16,6 +16,7 @@ from app.core import data_lease, engine_processes
 from app.services import cli_probe
 from app.services.codex_login import LoginError
 from app.services.local_claude_runner import child_env
+from app.core import host_exec
 
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _HOSTS = {"claude.ai", "claude.com", "console.anthropic.com", "platform.claude.com"}
@@ -128,6 +129,7 @@ class ClaudeLogin:
                 # Prevent the server from opening a local browser; the owner
                 # opens the validated URL in their own browser instead.
                 env = {**env, "NO_COLOR": "1", "BROWSER": "true"}
+                host_exec.ensure_allowed("an engine sign-in")
                 starting = asyncio.create_task(asyncio.create_subprocess_exec(
                     str(executable), "auth", "login", stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,

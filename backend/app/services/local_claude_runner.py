@@ -29,6 +29,7 @@ from app.core import app_settings, engine_processes
 from app.core.engine_env import engine_environment
 from app.desktop import profile
 from app.services.approval_modes import cli_permission_mode
+from app.core import host_exec
 
 # Verified against Claude Code 2.1.232: init reported tools=[], mcp_servers=[],
 # skills=[], and a prompt asking to run a shell command wrote nothing.
@@ -366,6 +367,7 @@ def run_blocking(
     else:
         popen_kwargs["start_new_session"] = True
 
+    host_exec.ensure_allowed("an engine process")
     env = _child_env()
     if sandbox:
         from app.core import turn_sandbox

@@ -88,6 +88,11 @@ class LoopbackPolicy:
         principal = principal_of(request.scope)
         if principal is not None and principal.kind in ("browser", "device"):
             return _issue_grant()
+        # A hosted account (auth/tenancy.py). Safe only because the server then starts no engine
+        # or tool process on its own machine (core/host_exec.py); with that switch off it falls
+        # through to the loopback rules below and is refused.
+        if principal is not None and principal.kind == "account" and settings.HOST_EXECUTION_DISABLED:
+            return _issue_grant()
 
         client = request.client
         if client is None or not _is_loopback_address(client.host):

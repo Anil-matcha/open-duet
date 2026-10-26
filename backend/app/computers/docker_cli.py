@@ -14,6 +14,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from app.core import host_exec
 
 # Small, pinned by digest: the Debian 12 "slim" Python 3.12 image (bash,
 # coreutils, python3, pip; about 45 MB compressed). A tag can be moved to other
@@ -344,6 +345,7 @@ def run(args: list[str], *, timeout: float, input_bytes: bytes | None = None,
         kwargs["start_new_session"] = True
     env = dict(os.environ)
     env["PATH"] = os.pathsep.join([env.get("PATH", ""), *_EXTRA_PATHS])
+    host_exec.ensure_allowed("a Docker command")
     try:
         proc = subprocess.Popen(
             [executable, *args],

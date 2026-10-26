@@ -132,6 +132,10 @@ class Settings(BaseSettings):
     # Hosted deployments only: give each signed-in account its own PostgreSQL schema
     # (app/db/tenant_schema.py). Off for the desktop app and self-hosting.
     TENANT_SCHEMAS_ENABLED: bool = False
+    # Hosted deployments: the server never starts engine, tool or helper processes on its own
+    # machine (app/core/host_exec.py). Signed-in accounts are then allowed through the
+    # local-execution policy, because nothing they do can run here.
+    HOST_EXECUTION_DISABLED: bool = False
     # Whether a request from this machine needs no sign-in:
     #   off       every request signs in (default; safest)
     #   programs  loopback programs (curl, scripts) act as the owner; browsers

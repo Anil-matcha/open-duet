@@ -15,6 +15,7 @@ import sys
 from app.core import engine_processes
 from app.services.cli_probe import kill_group
 from app.services.local_claude_runner import child_env
+from app.core import host_exec
 
 STDERR_TAIL_BYTES = 4000
 # One line can carry a whole command's output.
@@ -57,6 +58,7 @@ class StdioRpc:
 
     @classmethod
     async def spawn(cls, args: list[str], *, cwd: str, max_bytes: int, env: dict | None = None, diagnostic=None, sandbox: bool = False, sandbox_writable=(), sandbox_readonly=()) -> "StdioRpc":
+        host_exec.ensure_allowed("an engine process")
         env = env if env is not None else child_env()
         if sandbox:
             from app.core import turn_sandbox
