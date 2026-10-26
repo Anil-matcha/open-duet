@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from app.core import shutdown
+from app.core.tenant_keyed import TenantMap
 
 TURN_STARTED = "turn.started"
 TEXT_DELTA = "text.delta"
@@ -101,7 +102,7 @@ class _Run:
 
 class RunHub:
     def __init__(self) -> None:
-        self._runs: dict[int, _Run] = {}
+        self._runs: TenantMap[int, _Run] = TenantMap()
 
     def start(self, run_id: int) -> None:
         """Registers a run. Safe to call again for a run already registered."""

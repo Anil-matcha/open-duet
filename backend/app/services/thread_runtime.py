@@ -72,6 +72,8 @@ from app.services.provider_adapter import (
 )
 from app.services.thread_hub import ThreadHub
 from app.services.thread_hub import hub as default_hub
+from app.core.tenant_keyed import TenantMap
+from app.db import tenant_schema
 
 logger = get_logger(__name__)
 
@@ -177,6 +179,8 @@ class ActiveRun:
     # and whether the watchdog stopped it for doing nothing for too long.
     last_activity: float = 0.0
     stalled: bool = False
+    # The hosted account this turn belongs to (core/tenant_schema.py); None on the single-owner server.
+    tenant: str | None = field(default_factory=tenant_schema.current_tenant)
     adapter_task: asyncio.Task | None = None
     # The engine the turn runs on now (its conversation's, or the agent's
     # fallback after a switch), and the fallback the agent names, if any.
@@ -457,7 +461,7 @@ class ThreadRuntime:
     status_ttl: float = STATUS_CACHE_SECONDS
     instance_id: str = field(default_factory=lambda: uuid4().hex)
     owner_id: str = LOCAL_OWNER_ID
-    _runs: dict[int, ActiveRun] = field(default_factory=dict)
+    _runs: TenantMap[int, ActiveRun] = field(default_factory=TenantMap)
     _waiters: dict[str, asyncio.Future] = field(default_factory=dict)
     _status_cache: dict[str, tuple[float, ProviderStatus]] = field(default_factory=dict)
     _session_factory: object | None = None
@@ -472,7 +476,7 @@ class ThreadRuntime:
     # process only): engine id -> (EngineLimit, wall time noted, message).
     _limits: dict[str, tuple] = field(default_factory=dict)
     # Private chats already disclosed to a room by a recent-work brief: room thread id -> thread ids.
-    _announced: dict[tuple[int, bool], set[int]] = field(default_factory=dict)
+    _announced: TenantMap[tuple[int, bool], set[int]] = field(default_factory=TenantMap)
 
     def __post_init__(self) -> None:
         from app.rooms.service import Rooms
@@ -1506,16 +1510,18 @@ class ThreadRuntime:
         await self.claude_login.close()
         self.capture.close()
         await self.team_jobs.close()
-        runs = list(self._runs.values())
+        runs = self._runs.all_values()
         for run in runs:
             run.recorder.lose()
         for run in runs:
             try:
-                async with self.session() as db:
-                    await store.interrupt_own_turn(db, run.turn_id, run.owner_token, reason="shutdown")
+                # Each turn is settled in the account that owns it.
+                with tenant_schema.use_tenant(run.tenant):
+                    async with self.session() as db:
+                        await store.interrupt_own_turn(db, run.turn_id, run.owner_token, reason="shutdown")
+                    self.hub.notify(run.thread_id)
             except Exception:  # noqa: BLE001
                 logger.exception("could not interrupt a turn on shutdown", turn_id=run.turn_id)
-            self.hub.notify(run.thread_id)
         tasks = [run.task for run in runs if run.task is not None]
         if tasks:
             await asyncio.wait(tasks, timeout=SHUTDOWN_WAIT_SECONDS)

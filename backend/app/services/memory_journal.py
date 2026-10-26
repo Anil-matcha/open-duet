@@ -24,6 +24,7 @@ from uuid import uuid4
 from app.core.logging import get_logger
 from app.services import agent_memory, memory_topics
 from app.services.agent_memory import redact_secrets, text_hash
+from app.core import tenant_paths
 
 logger = get_logger(__name__)
 
@@ -47,6 +48,9 @@ def state_root() -> Path:
     agent's folder."""
     from app.services import attachments
 
+    mine = tenant_paths.root()
+    if mine is not None:
+        return mine / "memory-state"
     return attachments.root_dir().parent / "memory-state"
 
 

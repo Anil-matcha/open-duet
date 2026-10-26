@@ -43,6 +43,7 @@ from app.core.logging import get_logger
 from app.db.models import Agent, Computer
 from app.db.transactions import begin_write
 from app.desktop import profile
+from app.core import tenant_paths
 
 logger = get_logger(__name__)
 
@@ -93,6 +94,9 @@ class TurnComputer:
 
 
 def state_root() -> Path:
+    mine = tenant_paths.root()
+    if mine is not None:
+        return mine / "computers"
     desktop = profile.current()
     if desktop is not None:
         return desktop.data_dir / "computers"

@@ -6,10 +6,14 @@ check, so a sender elsewhere can reach it through the ingress
 is size-limited while it is read.
 """
 
+import re
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from app.core import tenant_jobs
 from app.core.config import settings
+from app.db import tenant_schema
 from app.services import routine_service as service
 
 router = APIRouter(tags=["Webhooks"])
@@ -43,6 +47,31 @@ async def _read_limited(request: Request, limit: int) -> bytes | None:
 async def receive(
     routine_id: int, request: Request, scheduler: service.RoutineScheduler = Depends(service.get_scheduler)
 ):
+    return await _deliver(routine_id, request, scheduler)
+
+
+@router.post("/hooks/t/{tenant_hex}/{routine_id}", status_code=202)
+async def receive_for_account(
+    tenant_hex: str, routine_id: int, request: Request,
+    scheduler: service.RoutineScheduler = Depends(service.get_scheduler),
+):
+    """A hosted deployment's webhook: the address names the account (its schema), because this route
+    is public and routine ids repeat across accounts. The routine's own secret still decides; a
+    malformed or unknown account, a routine that is not there and a wrong secret all answer the
+    same 401, and with TENANT_SCHEMAS_ENABLED off the route does not exist."""
+    if not settings.TENANT_SCHEMAS_ENABLED:
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    unknown = _refuse(401, "Unknown webhook or wrong secret")
+    if not re.fullmatch(r"[0-9a-f]{32}", tenant_hex):
+        return unknown
+    tenant = f"u_{tenant_hex}"
+    if tenant not in await tenant_jobs.tenants():
+        return unknown
+    with tenant_schema.use_tenant(tenant):
+        return await _deliver(routine_id, request, scheduler)
+
+
+async def _deliver(routine_id: int, request: Request, scheduler: service.RoutineScheduler):
     secret = _bearer(request)
     async with scheduler.session() as db:
         try:

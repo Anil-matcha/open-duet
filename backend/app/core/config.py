@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     # machine (app/core/host_exec.py). Signed-in accounts are then allowed through the
     # local-execution policy, because nothing they do can run here.
     HOST_EXECUTION_DISABLED: bool = False
+    # Hosted deployments: the folder holding one subfolder per account for its files (workspace,
+    # memory, attachments, decision log). Empty means ~/.open-dots/tenants.
+    TENANT_DATA_DIR: str = ""
     # Whether a request from this machine needs no sign-in:
     #   off       every request signs in (default; safest)
     #   programs  loopback programs (curl, scripts) act as the owner; browsers

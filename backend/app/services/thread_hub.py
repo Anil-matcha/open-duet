@@ -20,6 +20,7 @@ subscriber can neither miss nor repeat a delta.
 """
 
 import asyncio
+from app.core.tenant_keyed import TenantMap
 from dataclasses import dataclass, field
 
 SUBSCRIBER_QUEUE_SIZE = 256
@@ -82,7 +83,7 @@ class _Live:
 
 class ThreadHub:
     def __init__(self) -> None:
-        self._threads: dict[int, _Live] = {}
+        self._threads: TenantMap[int, _Live] = TenantMap()
 
     def _live(self, thread_id: int) -> _Live:
         return self._threads.setdefault(thread_id, _Live())

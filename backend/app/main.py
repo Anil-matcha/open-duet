@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.background import run_every
+from app.core.tenant_jobs import for_each, per_tenant
+from app.db import tenant_schema
 from app.core.config import settings
 from app.core import app_settings, data_lease, engine_processes, scheduler_lock, shutdown
 from app.desktop import profile
@@ -73,28 +75,30 @@ async def _serving(app: FastAPI):
     guard = scheduler_lock.SchedulerLock(settings.DATABASE_KIND)
     routines = _GuardedRoutines(app, guard)
     await routines.ensure()
+    # A hosted deployment (TENANT_SCHEMAS_ENABLED) runs every job below once per account schema;
+    # otherwise per_tenant returns the job unchanged (app/core/tenant_jobs.py).
     jobs = [
         asyncio.create_task(
-            run_every(BACKGROUND_INTERVAL_SECONDS, schedule_service.poll_due_schedules)
+            run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(schedule_service.poll_due_schedules))
         ),
         asyncio.create_task(
-            run_every(BACKGROUND_INTERVAL_SECONDS, task_execution_service.sync_active_tasks)
+            run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(task_execution_service.sync_active_tasks))
         ),
         asyncio.create_task(
-            run_every(BACKGROUND_INTERVAL_SECONDS, schedule_service.report_finished_runs)
+            run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(schedule_service.report_finished_runs))
         ),
         # Runs once at startup, then periodically.
-        asyncio.create_task(run_every(THREAD_SWEEP_INTERVAL_SECONDS, thread_runtime.sweep_stale)),
+        asyncio.create_task(run_every(THREAD_SWEEP_INTERVAL_SECONDS, per_tenant(thread_runtime.sweep_stale))),
         # Agent computers: finish interrupted removals, remove orphans once
         # Docker answers, stop idle ones. Does nothing while Docker is down.
-        asyncio.create_task(run_every(BACKGROUND_INTERVAL_SECONDS, thread_runtime.computers.upkeep)),
+        asyncio.create_task(run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(thread_runtime.computers.upkeep))),
         # The nightly memory tidy-up for agents that are due and idle (memory_capture.py).
-        asyncio.create_task(run_every(600, thread_runtime.capture.tick)),
+        asyncio.create_task(run_every(600, per_tenant(thread_runtime.capture.tick))),
         # The Needs you card: refreshed once a minute, started only for something
         # that needs the person (app/team/needs_you.py).
-        asyncio.create_task(run_every(60, _needs_you_tick)),
+        asyncio.create_task(run_every(60, per_tenant(_needs_you_tick))),
         # Local routines: due occurrences, starts, approvals, run limits, endings.
-        asyncio.create_task(run_every(settings.ROUTINE_POLL_SECONDS, routines.tick)),
+        asyncio.create_task(run_every(settings.ROUTINE_POLL_SECONDS, per_tenant(routines.tick))),
     ]
     yield
     # Stopping (SIGTERM, Ctrl+C, the desktop launcher going away). First the
@@ -110,7 +114,7 @@ async def _serving(app: FastAPI):
     # their notification, instead of at the next start. Only the scheduler's
     # holder settles runs; then it lets another backend take over.
     if guard.held:
-        await routine_service.scheduler.shutdown()
+        await for_each(routine_service.scheduler.shutdown)
     await guard.release()
 
 
@@ -130,12 +134,14 @@ class _GuardedRoutines:
     def __init__(self, app: FastAPI, guard: scheduler_lock.SchedulerLock) -> None:
         self.app = app
         self.guard = guard
-        self.recovered = False
+        # Accounts (schemas) whose leftover runs were settled; None is the default schema.
+        self.recovered: set[str | None] = set()
 
     async def ensure(self) -> bool:
         held = await self.guard.ensure()
-        if held and not self.recovered:
-            self.recovered = True
+        here = tenant_schema.current_schema()
+        if held and here not in self.recovered:
+            self.recovered.add(here)
             try:
                 await routine_service.scheduler.recover()
             except Exception:  # noqa: BLE001
@@ -143,7 +149,7 @@ class _GuardedRoutines:
         elif not held:
             # Recover again when the lock comes back: runs may have been left
             # by the backend that held it meanwhile.
-            self.recovered = False
+            self.recovered.clear()
         routine_service.scheduler.enabled = held
         self.app.state.routines_run_here = held
         return held

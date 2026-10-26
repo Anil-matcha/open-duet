@@ -41,6 +41,9 @@ def current_tenant_id() -> str | None:
     return f"u_{schema[2:]}" if schema else None
 
 
+current_tenant = current_tenant_id  # the name the background-job and file-path code uses
+
+
 @contextmanager
 def use_tenant(tenant_id: str | None):
     """Run the enclosed code (and tasks it starts) against one account's schema."""

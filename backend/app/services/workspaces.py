@@ -2,9 +2,14 @@
 
 import os
 from pathlib import Path
+from app.core import tenant_paths
 
 
 def canonical_workspace(root: str = "") -> Path:
+    mine = tenant_paths.root()
+    if mine is not None:
+        # An account never chooses a folder on the host: its workspace is always its own.
+        return (mine / "workspace").resolve()
     base = Path(root).expanduser() if root else Path.home() / ".open-dots" / "local"
     # resolve() uses the filesystem's spelling on Windows. Lowercasing the
     # entire string would change the cwd spelling used by existing CLI sessions.

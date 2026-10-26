@@ -17,6 +17,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.desktop import profile
+from app.core import tenant_paths
 
 IMAGE_MAX_BYTES = 10 * 1024 * 1024
 TEXT_MAX_BYTES = 1024 * 1024
@@ -81,6 +82,9 @@ class Attachment:
 
 
 def root_dir() -> Path:
+    mine = tenant_paths.root()
+    if mine is not None:
+        return mine / "attachments"
     desktop = profile.current()
     if desktop is not None:
         return desktop.data_dir / "attachments"

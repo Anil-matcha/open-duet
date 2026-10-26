@@ -28,6 +28,7 @@ from app.services import notification_feed
 from app.services import routine_schedule as schedules
 from app.services import routine_service as service
 from app.services.local_access_policy import require_local_access
+from app.db import tenant_schema
 
 router = APIRouter(tags=["Routines"], dependencies=[Depends(require_local_access)])
 
@@ -63,6 +64,12 @@ def _describe(routine, latest=None, now: datetime | None = None) -> RoutineRespo
 async def _one(db, routine) -> RoutineResponse:
     latest = (await service.latest_runs(db, [routine.id])).get(routine.id)
     return _describe(routine, latest)
+
+
+def _hook_path(routine_id: int) -> str:
+    """The address to give a sender. In a hosted deployment it names the account (routers/hooks.py)."""
+    tenant = tenant_schema.current_tenant()
+    return f"/hooks/t/{tenant[2:]}/{routine_id}" if tenant else f"/hooks/{routine_id}"
 
 
 @router.get("/routines", response_model=list[RoutineResponse])
@@ -213,7 +220,7 @@ async def enable_webhook(routine_id: int, sch: service.RoutineScheduler = Depend
         except service.RoutineNotFound:
             raise _not_found() from None
         described = await _one(db, routine)
-    return WebhookSecretResponse(routine=described, secret=secret, path=f"/hooks/{routine_id}")
+    return WebhookSecretResponse(routine=described, secret=secret, path=_hook_path(routine_id))
 
 
 @router.delete("/routines/{routine_id}/webhook", response_model=RoutineResponse)

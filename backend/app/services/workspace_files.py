@@ -25,6 +25,7 @@ import unicodedata
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from app.core import tenant_paths
 
 LIST_MAX_ENTRIES = 500
 TEXT_PREVIEW_BYTES = 256 * 1024
@@ -102,7 +103,7 @@ def canonical_root(workspace: str | None) -> Path:
         root = Path(os.path.realpath(workspace))
     except OSError:
         raise FileAccessError(404, "no_workspace", "This conversation's workspace is missing.") from None
-    if not root.is_dir():
+    if not root.is_dir() or not tenant_paths.contains(root):
         raise FileAccessError(404, "no_workspace", "This conversation's workspace is missing.")
     return root
 
