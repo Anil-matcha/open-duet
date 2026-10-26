@@ -93,6 +93,8 @@ class Principal:
     scopes: tuple[str, ...] = field(default=("admin", "chat"))
     session_id: int | None = None
     label: str | None = None
+    # Set only by a hosted deployment's resolver (auth/tenancy.py); None on the single-owner server.
+    tenant_id: str | None = None
 
     @property
     def is_admin(self) -> bool:

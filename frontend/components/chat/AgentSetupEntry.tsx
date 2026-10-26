@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError, type Agent, type Engine } from "@/lib/api";
 import { collaboration, type TeamState } from "@/lib/collaboration";
@@ -27,7 +28,7 @@ export function AgentSetupEntry({ agents, engines, onStart, onCreateLead }: {
     <strong>Create by chatting</strong>
     <p className="text-xs text-muted">Describe the job to your team lead. Review the starter before sending; opening chat creates no agent.</p>
     {team?.enabled === false ? <p className="text-xs text-warning">Team tools are disabled. Enable Teams in settings, or use the manual form.</p> : lead ? <>
-      {!ready && <p className="text-xs text-warning">{!engine?.available ? engine?.reason ?? "Checking the lead's engine…" : team?.lead_ready.reason} <a href="/settings/" className="underline">Engine settings</a></p>}
+      {!ready && <p className="text-xs text-warning">{!engine?.available ? engine?.reason ?? "Checking the lead's engine…" : team?.lead_ready.reason} <Link href="/settings/" className="underline">Engine settings</Link></p>}
       <button type="button" className="rounded-field border border-line px-3 py-1.5 disabled:opacity-50" disabled={!ready || busy} onClick={() => onStart(lead.id)}>Chat with {lead.name}</button>
     </> : team && <>
       <p className="text-xs text-muted">Choose a team lead (Chief of Staff) to help create and coordinate agents. This role replaces the current lead.</p>

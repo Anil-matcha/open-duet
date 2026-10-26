@@ -10,6 +10,7 @@ Order of checks:
 2. Host must be in TRUSTED_HOSTS (DNS rebinding), and Origin, when present,
    must be the frontend's or this server's own.
 3. Public routes pass (health, sign-in, pairing exchange, the Boat hook).
+   A hosted deployment's resolver (auth/tenancy.py), when registered, replaces step 4 and 5.
 4. A presented credential decides: a bearer token for a paired device, the
    session cookie for a browser. An invalid one is refused; it never falls back
    to loopback trust. A cookie write needs the CSRF header.
@@ -22,7 +23,7 @@ import json
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.auth import credentials, request_info, store
+from app.auth import credentials, request_info, store, tenancy
 from app.auth.policy import Principal, is_public, required_scope
 from app.core.config import settings
 from app.desktop import profile
@@ -137,6 +138,16 @@ class AuthMiddleware:
         method = scope.get("method", "GET").upper()
         path = scope.get("path", "")
         if is_public(method, path):
+            return None
+
+        resolver = tenancy.principal_resolver()
+        if resolver is not None:
+            hosted = await resolver(scope)
+            if hosted is None:
+                return (401, "auth_required", "Sign in to use this server.", False)
+            if required_scope(method, path) not in hosted.scopes:
+                return (403, "scope_denied", "This sign-in cannot do that.", False)
+            set_principal(scope, hosted)
             return None
 
         bearer = _bearer(scope)

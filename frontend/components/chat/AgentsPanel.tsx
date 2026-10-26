@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Dialog } from "@/components/ui/Dialog";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Agent, type AgentInput, type AgentMemory, type ApprovalMode, type Engine } from "@/lib/api";
@@ -702,7 +703,7 @@ export function AgentsPanel({
                         {agent.instructions && (
                           <p className="mt-1 line-clamp-2 text-xs text-muted">{agent.instructions}</p>
                         )}
-                        {engines.find((engine) => engine.id === agent.provider)?.available === false && <p className="mt-1 text-xs text-warning">Connect an AI: {engines.find((engine) => engine.id === agent.provider)?.reason} <a href="/settings/" className="underline">Open engine settings</a></p>}
+                        {engines.find((engine) => engine.id === agent.provider)?.available === false && <p className="mt-1 text-xs text-warning">Connect an AI: {engines.find((engine) => engine.id === agent.provider)?.reason} <Link href="/settings/" className="underline">Open engine settings</Link></p>}
                         <div className="mt-2 flex flex-wrap gap-1">
                           <button onClick={() => { setDraft(toDraft(agent)); setRoleChoice(null); setMemberChoices({}); }} disabled={busy} className={SMALL}>
                             Edit
