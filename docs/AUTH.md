@@ -200,6 +200,7 @@ All under `/api/v1`.
 | `GET /auth/devices` | admin | list sessions and devices |
 | `DELETE /auth/devices/{id}` | admin | revoke |
 | `PUT`/`DELETE /auth/identity` | admin | set or clear the web identity |
+| `GET`, `PUT`, `DELETE /integrations/composio…` | admin | the owner's Composio key, and connecting, listing and disconnecting apps |
 
 Also public, with their own credential: `POST /permissions/check/…` (Boat's
 `HOOK_TOKEN`) and `POST /hooks/{id}` (a routine's webhook secret). Everything

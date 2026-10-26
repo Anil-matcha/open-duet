@@ -78,11 +78,15 @@ metadata-only routing logs. Keep tool approval rules unchanged.
 
 ### P1 — Expand connected-app access after core trust work
 
-There is no first-party OAuth catalog for common apps such as Gmail, Calendar,
-Slack or Notion. Build on the first-party email/calendar work with scoped app
-connections, per-agent grants, custom MCP authentication and app-event
-triggers. Add idempotency, revocation, clear data provenance and bounded
-responses before expanding the catalog.
+GitHub is available through your own Composio key: connect it in Settings,
+then allow it per Claude agent as Read only or Read and change, where every
+change asks on a card (see [connected apps](CONNECTED_APPS.md)). Gmail and
+Calendar can be connected but have no agent tools. Next: other apps such as
+Gmail, Calendar, Slack and Notion, each with a fixed, reviewed tool list
+checked against the live app; Codex support; custom MCP authentication; and
+app-event triggers, which also need a way to receive events. Keep
+idempotency, revocation (check it at the provider), clear data provenance and
+bounded responses as the bar for every new app.
 
 ### P1 — Verify memory, teams and computers across engines
 

@@ -155,6 +155,7 @@ is needed for the agent workspace.
 - [Memory and context](docs/MEMORY.md)
 - [Routines](docs/ROUTINES.md)
 - [Tasks and calendar](docs/TASKS.md)
+- [Connected apps](docs/CONNECTED_APPS.md)
 - [Agent computers](docs/COMPUTERS.md) and [browser tools](docs/BROWSER.md)
 - [Self-hosting](docs/SELF-HOSTING.md)
 - [Contributing](docs/CONTRIBUTING.md)

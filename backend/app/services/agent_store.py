@@ -37,6 +37,7 @@ _EDITABLE = (
     "use_helper",
     "fallback_provider",
     "fallback_model",
+    "connector_scopes",
 )
 
 

@@ -23,6 +23,31 @@
   private-destination proxy refusal and gate cleanup. Linux enforcement was not
   run on this macOS host; the check requires bubblewrap and namespace support.
 
+- Let a Claude agent use your GitHub account in chat once you allow it on that
+  agent: Off, Read only or Read and change (off by default). It can read your
+  profile, repositories, issues, pull requests, comments, commits, branches and
+  files, and search issues and pull requests. With Read and change it can also
+  create issues, comment, and close or reopen issues. Every change shows a card
+  with the exact repository, title and text, runs only after you allow it, is
+  never approved by a saved rule, is refused in Plan mode, and is sent once and
+  never retried; if its answer is lost the agent is told the outcome is
+  unknown. Answers are trimmed to a short list of fields and marked as other
+  people's text. Not available to Codex or other engines, agents with a
+  computer, routines, or runs started from outside. Checked by hand on Windows
+  in the desktop app and the web build with the real Claude CLI and a private
+  test repository: reads, creating, commenting, closing and reopening after
+  Allow, Deny, and the Read-only refusal. A real lost-answer failure, the
+  packaged app, the Linux sandbox, macOS and Linux were not run.
+- Connect apps from Settings with your own Composio project key: save the key
+  (stored encrypted, never shown again), connect GitHub, Gmail or Google
+  Calendar through Composio's browser link, and list or disconnect accounts.
+  Owner only; paired chat devices are refused. Only GitHub has tools for agents
+  (see above); Gmail and Google Calendar connect but cannot be used yet. Checked
+  by hand on Windows in the desktop app and the web build with GitHub:
+  connecting, listing and disconnecting, which removed the account from
+  Composio's dashboard. Gmail and Google Calendar, revocation of the grant at
+  GitHub, packaged apps, macOS and Linux were not run. See
+  [connected apps](docs/CONNECTED_APPS.md).
 - Sign in to Claude from Settings using the installed CLI's browser link and
   pasted authorization code. The starting owner session controls the bounded
   flow; existing accounts are preserved and codes are submitted once. Real-account,
