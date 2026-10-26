@@ -87,3 +87,26 @@ export function pollDeadline(expiresInSeconds: number, now: number): number {
 export function accountsOf(accounts: ComposioAccount[], toolkit: string): ComposioAccount[] {
   return accounts.filter((account) => account.toolkit === toolkit);
 }
+
+// The apps an agent can be allowed to read in this version, and the engine that can use them.
+export const AGENT_APPS: { slug: string; label: string; help: string }[] = [
+  { slug: "github", label: "GitHub", help: "Read your repositories, issues and pull requests. It cannot change anything." },
+];
+export const APPS_ENGINE = "claude";
+
+export type Scopes = Record<string, string>;
+
+// The scopes after turning one app on or off. Only "read" exists; none is {}.
+export function withApp(scopes: Scopes | null | undefined, slug: string, on: boolean): Scopes {
+  const next: Scopes = { ...(scopes ?? {}) };
+  if (on) next[slug] = "read"; else delete next[slug];
+  return next;
+}
+
+// What to send when saving an agent: nothing for an engine that cannot use apps
+// (this also clears them if the engine was changed), else the chosen ones or null.
+export function scopesToSend(scopes: Scopes | null | undefined, provider: string): Scopes | null {
+  if (provider !== APPS_ENGINE) return null;
+  const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) => level === "read" && AGENT_APPS.some((app) => app.slug === slug)));
+  return Object.keys(known).length ? known : null;
+}

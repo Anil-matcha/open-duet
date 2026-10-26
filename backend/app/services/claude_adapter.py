@@ -25,6 +25,7 @@ import json
 from dataclasses import dataclass
 from uuid import uuid4
 
+from app import composio_tools
 from app.computers import grants
 from app.computers.service import COMPUTER_TOOL_PREFIX
 from app.core import app_settings
@@ -151,7 +152,7 @@ class ClaudeAdapter:
     # Tools with approvals (the CLI asks over stdio), the computer's MCP server,
     # `--resume`, agent computers, and images as stream-json content blocks.
     capabilities = Capabilities(
-        tools=True, approvals=True, mcp=True, images=True, resume=True, computers=True
+        tools=True, approvals=True, mcp=True, images=True, resume=True, computers=True, connected_apps=True
     )
     # The CLI's own aliases; any model id the CLI accepts also works.
     models = [
@@ -232,7 +233,7 @@ class ClaudeAdapter:
         # The memory search is an MCP tool asked about like any other: the turn
         # then runs with approvals, but with the host's own tools off unless
         # they were on already.
-        tools = host_tools or ctx.memory_launch is not None
+        tools = host_tools or ctx.memory_launch is not None or ctx.composio_launch is not None
         attempt = await self._attempt(ctx, sink, gate, resume=ctx.resume, tools=tools, host_tools=host_tools)
         if attempt.already_in_use and not attempt.resume and not ctx.aborted:
             attempt = await self._attempt(ctx, sink, gate, resume=True, tools=tools, host_tools=host_tools)
@@ -411,6 +412,9 @@ class ClaudeAdapter:
         if ctx.memory_launch is not None:
             servers["memory"] = ctx.memory_launch
             notes.append(memory_bridge.TOOL_NOTE)
+        if ctx.composio_launch is not None:
+            servers["composio"] = ctx.composio_launch
+            notes.append(composio_tools.tool_note(ctx.composio_apps or ()))
         if servers:
             extra["mcp_servers"] = servers
             if not host_tools:

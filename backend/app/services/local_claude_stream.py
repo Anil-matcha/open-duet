@@ -58,6 +58,10 @@ def summarize_tool(name: str, tool_input: dict) -> str:
         label = name[len("mcp__computer__"):]
         text = subject if label == "exec" else f"{label} {subject}"
         return "computer: " + _clip(text if isinstance(text, str) else label, SUMMARY_CHARS - 10)
+    if name.startswith("mcp__composio__"):
+        # A connected-app read: what, and which repository when it names one.
+        where = "/".join(str(tool_input[k]) for k in ("owner", "repo") if isinstance(tool_input.get(k), str))
+        return _clip(f"{name[len('mcp__composio__'):].replace('_', ' ')} {where}".strip(), SUMMARY_CHARS)
     key = {
         "Bash": "command",
         "Read": "file_path",

@@ -106,6 +106,8 @@ class AgentUpdateRequest(BaseModel):
     memory_upkeep: bool | None = None
     compaction_summary: bool | None = None
     use_helper: bool | None = None
+    # Connected apps this agent may read, {app: "read"}; {} or null turns them all off.
+    connector_scopes: dict[str, str] | None = None
     # An explicit null removes the fallback engine (and its model).
     fallback_provider: str | None = Field(default=None, min_length=1, max_length=64)
     fallback_model: str | None = Field(default=None, max_length=200)
@@ -158,6 +160,7 @@ class AgentResponse(BaseModel):
     use_helper: bool = True
     fallback_provider: str | None = None
     fallback_model: str | None = None
+    connector_scopes: dict | None = None
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime

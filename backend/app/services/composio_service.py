@@ -174,6 +174,95 @@ async def connect(db: AsyncSession, owner_id: str, make_client, toolkit: str, al
             raise _user_error(exc) from None
 
 
+def _agent_error(exc: ComposioError) -> dict:
+    """What an agent is told when Composio could not be used. No detail from the
+    response is passed on."""
+    said = {
+        "key_rejected": "The person's Composio key is no longer accepted. They need to replace it in Settings.",
+        "rate_limited": "Composio is rate limiting requests. Try again later.",
+        "unavailable": "Composio did not answer. Nothing was changed; the read may not have happened.",
+        "not_found": "That app, account or tool was not found at Composio.",
+    }
+    return {"error": said.get(exc.kind, "Composio could not run this."), "code": "composio_" + exc.kind}
+
+
+def _choose(active: list[Account], alias: str | None, app: str) -> tuple[Account | None, dict | None]:
+    if not active:
+        return None, {"error": f"No {app} account is connected. The person can connect one in Settings.", "code": "not_connected"}
+    names = sorted(a.alias or a.id for a in active)
+    if alias is not None:
+        match = [a for a in active if (a.alias or "").lower() == alias.lower()]
+        if len(match) != 1:
+            return None, {"error": "No connected account has that name. Connected: " + ", ".join(names), "code": "unknown_account"}
+        return match[0], None
+    if len(active) > 1:
+        return None, {"error": "More than one account is connected; say which with the account argument: " + ", ".join(names),
+                      "code": "account_required"}
+    return active[0], None
+
+
+async def connected_names(db: AsyncSession, owner_id: str, make_client, allowed_apps) -> dict:
+    """The names of the active accounts per allowed app, for the agent."""
+    record = await load(db, owner_id)
+    if record is None:
+        return {"error": "Connected apps are not set up. The person can add their Composio key in Settings.", "code": "not_configured"}
+    try:
+        found = await make_client(record["api_key"]).accounts(record["user_id"])
+    except ComposioError as exc:
+        return _agent_error(exc)
+    return {"apps": {app: sorted(a.alias or a.id for a in found if a.toolkit == app and a.status == "ACTIVE")
+                     for app in sorted(allowed_apps)}}
+
+
+async def _session(db: AsyncSession, owner_id: str, client: ComposioClient, record: dict, *, replace: str | None = None) -> tuple[str, dict]:
+    """The saved session, or a new one. `replace` names a session that just failed:
+    it is replaced only if nobody else already did."""
+    async with lock:
+        latest = await load(db, owner_id) or record
+        session_id = latest.get("session_id")
+        if session_id and session_id != replace:
+            return session_id, latest
+        session_id = await client.create_session(latest["user_id"])
+        latest = {**latest, "session_id": session_id}
+        await _save(db, owner_id, latest)
+        return session_id, latest
+
+
+async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None) -> dict:
+    """Run one allowed tool as one connected account and return what the agent may see.
+    Never raises for a Composio problem: the agent gets a short error instead."""
+    from app import composio_tools
+
+    record = await load(db, owner_id)
+    if record is None:
+        return {"error": "Connected apps are not set up. The person can add their Composio key in Settings.", "code": "not_configured"}
+    client = make_client(record["api_key"])
+    try:
+        active = [a for a in await client.accounts(record["user_id"], tool.app) if a.status == "ACTIVE"]
+        account, problem = _choose(active, alias, tool.app)
+        if problem:
+            return problem
+        session_id, record = await _session(db, owner_id, client, record)
+        try:
+            done = await client.execute(session_id, tool.slug, arguments, account.id)
+        except ComposioError as exc:
+            if exc.kind != "not_found":
+                raise
+            # A session Composio forgot is replaced once; the connection belongs to the user.
+            session_id, record = await _session(db, owner_id, client, record, replace=session_id)
+            done = await client.execute(session_id, tool.slug, arguments, account.id)
+    except ComposioError as exc:
+        return _agent_error(exc)
+    if done.result_type == "completed":
+        try:
+            return composio_tools.project(tool, done.data)
+        except composio_tools.BadArguments as exc:
+            return {"error": str(exc), "code": "unreadable_answer"}
+    if done.result_type == "failed":
+        return {"error": "The app refused or could not do that" + (f": {done.error}" if done.error else "."), "code": "app_error"}
+    return {"error": "Composio did not run this call.", "code": "not_run"}
+
+
 async def disconnect(db: AsyncSession, owner_id: str, make_client, account_id: str) -> None:
     record = await _needed(db, owner_id)
     client = make_client(record["api_key"])

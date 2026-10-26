@@ -4,6 +4,15 @@
 
 ### Added
 
+- Let a Claude agent read your GitHub profile, repositories, issues and pull
+  requests in chat, once you tick GitHub in that agent's settings (off by
+  default). Reads only, one fixed set of tools; answers are trimmed to a short
+  list of fields and marked as other people's text. Each call goes through the
+  approval gate and runs only while the agent is still allowed the app. Not
+  available to Codex or other engines, agents with a computer, routines, or
+  runs started from outside. Checked by hand on Windows with the real Claude CLI
+  in the desktop app and the web build. The packaged app, the Linux sandbox,
+  macOS and Linux were not run.
 - Connect apps from Settings with your own Composio project key: save the key
   (stored encrypted, never shown again), connect GitHub, Gmail or Google Calendar
   through Composio's browser link, and list or disconnect accounts. Owner only;

@@ -472,6 +472,8 @@ export type Agent = {
   memory_enabled?: boolean;
   // Off: no notes or earlier conversations are recalled before a turn.
   recall_enabled?: boolean;
+  // Connected apps (Composio) the agent may read, {app: "read"}; null for none.
+  connector_scopes?: Record<string, string> | null;
   // Off: no quick model call files facts noticed in its conversations.
   memory_upkeep?: boolean;
   compaction_summary?: boolean;
@@ -506,6 +508,8 @@ export type AgentInput = {
   use_helper?: boolean;
   fallback_provider?: string | null;
   fallback_model?: string | null;
+  // Update only: connected apps this agent may read, {app: "read"}; null or {} for none.
+  connector_scopes?: Record<string, string> | null;
   // Create only: the first contents of the agent's notes.
   starter_notes?: string | null;
 };

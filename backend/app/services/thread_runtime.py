@@ -32,6 +32,7 @@ from app.db.models import Room
 from app.db.transactions import begin_write
 from app.services import side_jobs
 from app.services.memory_bridge import MemoryBridge
+from app.services.composio_bridge import ComposioBridge, apps_for
 from app.services.memory_capture import MemoryCapture, Turn as MemoryTurn
 from app.services import thread_store as store
 from app.services import local_claude_runner
@@ -847,6 +848,28 @@ class ThreadRuntime:
         self.hub.notify(thread_id)
         return turn
 
+    async def _composio_apps(self, run, adapter) -> frozenset:
+        """The connected apps this turn's tools may read, or none. Only a turn a
+        person started, on an engine that can mount them, for an agent the person
+        allowed, with a Composio key saved, and not in an agent computer (its data
+        would leave the sandbox)."""
+        if run.agent_id is None or not capabilities_of(adapter).connected_apps or run.ctx.computer is not None:
+            return frozenset()
+        try:
+            from app.db.models import Agent, Turn
+            from app.services import composio_service
+
+            async with self.session() as db:
+                agent = await db.get(Agent, run.agent_id)
+                turn = await db.get(Turn, run.turn_id)
+                apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else frozenset()
+                if not apps or (turn is not None and turn.origin not in (None, "person")):
+                    return frozenset()
+                return apps if await composio_service.configured(db, self.owner_id) else frozenset()
+        except Exception:  # noqa: BLE001
+            logger.exception("could not work out connected apps; the turn goes on without them", thread_id=run.thread_id)
+            return frozenset()
+
     async def _recall(self, agent, thread_id: int, prompt_text: str):
         """Passages from the agent's topic notes and other conversations for
         this message (memory_recall.py), or None. Never fails a turn."""
@@ -1007,6 +1030,7 @@ class ThreadRuntime:
         binding = None
         team_bridge = None
         memory_bridge = None
+        composio_bridge = None
         try:
             try:
                 # An agent with a computer runs its tools there or not at all:
@@ -1034,6 +1058,11 @@ class ThreadRuntime:
                     memory_bridge = MemoryBridge(self, run)
                     run.ctx.memory_launch = memory_bridge.launch
                     memory_bridge.start()
+                composio_apps = await self._composio_apps(run, adapter)
+                if composio_apps:
+                    composio_bridge = ComposioBridge(self, run, composio_apps)
+                    run.ctx.composio_launch, run.ctx.composio_apps = composio_bridge.launch, composio_apps
+                    composio_bridge.start()
                 # Watched from here: starting a computer can take a while, and
                 # is not the engine doing nothing.
                 run.touch()
@@ -1068,6 +1097,8 @@ class ThreadRuntime:
                 await team_bridge.close()
             if memory_bridge is not None:
                 await memory_bridge.close()
+            if composio_bridge is not None:
+                await composio_bridge.close()
             await self.computers.release_turn(binding, run.turn_id)
         if run.stop_requested and outcome.status != "succeeded":
             # Killed on request. A turn that finished on its own just before the

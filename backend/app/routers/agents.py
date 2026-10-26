@@ -157,6 +157,25 @@ def _check_fallback(rt: ThreadRuntime, provider: str, fallback: str | None, mode
     _check_engine(rt, fallback, model)
 
 
+def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provider: str) -> dict | None:
+    """The connected apps an agent may read, checked and put in order; None when
+    there are none. Only apps with tools exist, read is the only level, and the
+    agent's engine must be able to mount them (409 `engine_without_connected_apps`)."""
+    from app import composio_tools
+
+    if not scopes:
+        return None
+    if set(scopes) - set(composio_tools.apps()) or any(level != "read" for level in scopes.values()):
+        raise _error(422, "invalid_connector_scopes", "Connected apps can only be allowed for reading, and only for apps this version supports.")
+    try:
+        mounts = rt.engines.capabilities(provider).connected_apps
+    except Exception:  # noqa: BLE001  (an unknown engine is reported by its own check)
+        mounts = False
+    if not mounts:
+        raise _error(409, "engine_without_connected_apps", "This engine cannot use connected apps yet. Use a Claude agent.")
+    return dict(sorted(scopes.items()))
+
+
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(payload: AgentCreateRequest, rt: ThreadRuntime = Depends(get_runtime)):
     if payload.make_lead:
@@ -242,9 +261,14 @@ async def update_agent(
             "use_helper",
             "fallback_provider",
             "fallback_model",
+            "connector_scopes",
         )
         if field in payload.model_fields_set
     }
+    if "connector_scopes" in changes:
+        changes["connector_scopes"] = _check_connector_scopes(rt, changes["connector_scopes"], changes.get("provider", agent.provider))
+    elif agent.connector_scopes and changes.get("provider", agent.provider) != agent.provider:
+        _check_connector_scopes(rt, agent.connector_scopes, changes["provider"])
     if "fallback_provider" in changes and changes["fallback_provider"] != agent.fallback_provider:
         changes.setdefault("fallback_model", None)  # the old fallback's model means nothing to the new one
     provider = changes.get("provider", agent.provider)

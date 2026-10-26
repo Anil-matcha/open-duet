@@ -28,7 +28,10 @@ PAGE_LIMIT = 100
 MAX_PAGES = 5
 MAX_MESSAGE = 200
 
+EXECUTE_TIMEOUT_SECONDS = 60.0
+
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_SLUG = re.compile(r"^[A-Z0-9_]{1,120}$")
 
 
 class ComposioError(Exception):
@@ -51,6 +54,13 @@ class Account:
     status: str
     created_at: str | None
     updated_at: str | None
+
+
+@dataclass(frozen=True)
+class Execution:
+    result_type: str   # completed | failed | blocked | anything else Composio adds
+    data: object
+    error: str | None
 
 
 @dataclass(frozen=True)
@@ -103,10 +113,11 @@ class ComposioClient:
         self._transport = transport
         self._base = base_url
 
-    async def _request(self, method: str, path: str, *, body: dict | None = None, params: dict | None = None):
+    async def _request(self, method: str, path: str, *, body: dict | None = None, params: dict | None = None,
+                       timeout: float = TIMEOUT_SECONDS):
         try:
             async with httpx.AsyncClient(
-                transport=self._transport, timeout=TIMEOUT_SECONDS, follow_redirects=False,
+                transport=self._transport, timeout=timeout, follow_redirects=False,
                 headers={"x-api-key": self._key, "accept": "application/json"},
             ) as client:
                 response = await client.request(method, self._base + path, json=body, params=params)
@@ -189,6 +200,25 @@ class ComposioClient:
             if not isinstance(cursor, str) or not cursor:
                 break
         return found
+
+    async def execute(self, session_id: str, tool_slug: str, arguments: dict, account_id: str) -> "Execution":
+        """Run one Composio tool as the account. `data` is Composio's raw answer: the
+        caller trims it before anything is shown, and it is never logged."""
+        if not _ID.match(session_id) or not _SLUG.match(tool_slug) or not _ID.match(account_id):
+            raise ComposioError("rejected", "This call was not sent.")
+        result = await self._request(
+            "POST", f"/tool_router/session/{session_id}/execute", timeout=EXECUTE_TIMEOUT_SECONDS,
+            body={"tool_slug": tool_slug, "arguments": arguments, "account": account_id},
+        )
+        result = result if isinstance(result, dict) else {}
+        error = result.get("error")
+        if isinstance(error, dict):
+            error = error.get("message")
+        return Execution(
+            result_type=_text(result.get("result_type"), 32) or "unknown",
+            data=result.get("data"),
+            error=_text(error.replace(self._key, "[key]") if isinstance(error, str) else None),
+        )
 
     async def delete_account(self, account_id: str) -> None:
         if not _ID.match(account_id):

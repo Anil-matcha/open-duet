@@ -14,6 +14,7 @@ import {
   redactionNotice,
 } from "@/lib/agents";
 import { computerStateLabel } from "@/lib/computers";
+import { AGENT_APPS, APPS_ENGINE, scopesToSend, withApp, type Scopes } from "@/lib/connected-apps";
 import { ComputerView } from "./ComputerPanel";
 import { EngineModelFields } from "./EngineModelFields";
 import { MemoryPanel } from "./MemoryPanel";
@@ -37,6 +38,8 @@ type Draft = {
   memory_enabled: boolean;
   fallback_provider: string | null;
   fallback_model: string | null;
+  // Connected apps this agent may read; changed only on an existing agent.
+  connector_scopes: Scopes;
   // Create only: the first contents of the agent's notes.
   starter_notes: string;
 };
@@ -54,6 +57,7 @@ const EMPTY: Draft = {
   memory_enabled: true,
   fallback_provider: null,
   fallback_model: null,
+  connector_scopes: {},
   starter_notes: "",
 };
 
@@ -71,6 +75,7 @@ function toDraft(agent: Agent): Draft {
     memory_enabled: agent.memory_enabled ?? true,
     fallback_provider: agent.fallback_provider ?? null,
     fallback_model: agent.fallback_model ?? null,
+    connector_scopes: agent.connector_scopes ?? {},
     starter_notes: "",
   };
 }
@@ -91,6 +96,7 @@ function toInput(draft: Draft): AgentInput {
     fallback_model: draft.fallback_provider && draft.fallback_provider !== draft.provider ? draft.fallback_model?.trim() || null : null,
   };
   if (draft.id === null && draft.starter_notes.trim()) input.starter_notes = draft.starter_notes;
+  if (draft.id !== null) input.connector_scopes = scopesToSend(draft.connector_scopes, draft.provider);
   return input;
 }
 
@@ -544,6 +550,15 @@ export function AgentsPanel({
                 </div>
                 {modeInfo && <p className="mt-2">{modeInfo.description}</p>}
               </fieldset>
+              {draft.id !== null && draft.provider === APPS_ENGINE && <fieldset className="space-y-2 text-xs text-muted">
+                <legend>Connected apps</legend>
+                {AGENT_APPS.map((app) => <label key={app.slug} className="flex cursor-pointer items-start gap-2">
+                  <input type="checkbox" className="mt-0.5" disabled={busy} checked={draft.connector_scopes[app.slug] === "read"}
+                    onChange={(event) => setDraft({ ...draft, connector_scopes: withApp(draft.connector_scopes, app.slug, event.target.checked) })} />
+                  <span><span className="text-sm text-ink">Let this agent use {app.label}</span><br />{app.help}</span>
+                </label>)}
+                <p>Connect apps first under Settings → Connected apps. Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
+              </fieldset>}
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                 <input
                   type="checkbox"
