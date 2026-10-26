@@ -418,6 +418,23 @@ backend; errors stop launch. It reports network access as **unrestricted**.
 The optional Linux test in `tests/core/test_turn_sandbox.py` additionally checks
 workspace writes; it is skipped on hosts without Linux/bubblewrap.
 
+Backend CI has a separate **Linux sandbox enforcement** job that installs
+bubblewrap and requires both real Linux tests to pass without skips. A missing
+runtime or refused namespace fails this job; it does not disable host security
+settings or fall back to an unboxed command. The job preserves its JUnit report.
+To run the same focused tests on your Linux server, from `backend`:
+
+```sh
+uv run pytest -v -rs \
+  tests/core/test_turn_sandbox.py::test_real_linux_private_files_process_namespace_and_writable_workspace \
+  tests/core/test_turn_egress.py::test_real_linux_network_box_blocks_host_loopback_and_gates_proxy
+```
+
+Both tests must show **PASSED**; a skip provides no enforcement evidence. This
+checks filesystem/PID isolation, workspace writes, host-loopback denial,
+private-destination proxy refusal and gate-directory cleanup. It does not
+qualify provider sign-in/resume, approvals, stop/timeouts or orphan cleanup.
+
 Stage C alone still allows loopback, the server API and metadata over the
 shared network. The separate stage D preview below restricts turn networking.
 Credential brokering and syscall filtering remain open; provider account

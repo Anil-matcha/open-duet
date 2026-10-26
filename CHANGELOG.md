@@ -4,6 +4,11 @@
 
 ### Added
 
+- Require the real Linux filesystem and network sandbox checks in backend CI,
+  with bubblewrap installed and skipped checks treated as failures. The new CI
+  job and real Linux enforcement were not run locally on this macOS host;
+  provider sessions and stop/orphan cleanup still need separate qualification.
+
 - Sign out of the shared Claude or Codex CLI account from Settings after
   confirmation, then sign in again to switch accounts. Account removal refuses
   pending sign-in and active or starting conversations, bounds CLI execution,

@@ -90,6 +90,52 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest -q
 
+  sandbox-linux:
+    name: Linux sandbox enforcement
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_BACKEND: sqlite
+      TOKEN_ENCRYPTION_KEYS: 3n3b2YkQd0xVv8m1c1m0nq1l4Z3xk9q0n7xv7y5q8wE=
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: astral-sh/setup-uv@v5.4.2
+      - name: Install namespace runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+          bwrap --version
+          uname -srmo
+      - run: uv sync --frozen
+      - name: Require real filesystem and network enforcement
+        run: |
+          uv run pytest -v -rs --junitxml=../sandbox-results.xml \
+            tests/core/test_turn_sandbox.py::test_real_linux_private_files_process_namespace_and_writable_workspace \
+            tests/core/test_turn_egress.py::test_real_linux_network_box_blocks_host_loopback_and_gates_proxy
+          uv run python - <<'PY'
+          import xml.etree.ElementTree as ET
+          cases = list(ET.parse('../sandbox-results.xml').iter('testcase'))
+          expected = {
+              'test_real_linux_private_files_process_namespace_and_writable_workspace',
+              'test_real_linux_network_box_blocks_host_loopback_and_gates_proxy',
+          }
+          if len(cases) != 2 or {case.get('name') for case in cases} != expected:
+              raise SystemExit('Expected both real Linux enforcement tests.')
+          if any(case.find(tag) is not None for case in cases for tag in ('skipped', 'failure', 'error')):
+              raise SystemExit('Both real Linux enforcement tests must pass without skips.')
+          PY
+      - name: Preserve enforcement report
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: linux-sandbox-enforcement
+          path: sandbox-results.xml
+
   backend-postgres:
     name: Backend tests (PostgreSQL)
     needs: changes
@@ -212,7 +258,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, backend-sqlite, backend-postgres, backend-smoke, server-smoke, frontend, desktop, browser]
+    needs: [changes, backend-sqlite, sandbox-linux, backend-postgres, backend-smoke, server-smoke, frontend, desktop, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Check results
