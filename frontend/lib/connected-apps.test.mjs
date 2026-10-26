@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AGENT_APPS, accountsOf, isComposioLink, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, withApp } from "./connected-apps.ts";
+import { AGENT_APPS, accountsOf, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, withApp } from "./connected-apps.ts";
 
 const LINK = "https://connect.composio.dev/link/lk_abc";
 const account = (id, status, toolkit = "github") => ({ id, status, toolkit, alias: null, created_at: null, updated_at: null });
@@ -82,21 +82,30 @@ test("the desktop app opens the link through its shell and opens no tab", async 
   assert.deepEqual(sent, [LINK]);
 });
 
-test("an app is allowed for reading or removed, without touching the others", () => {
-  assert.deepEqual(withApp(null, "github", true), { github: "read" });
-  assert.deepEqual(withApp({ github: "read" }, "github", false), {});
-  assert.deepEqual(withApp({ other: "read" }, "github", true), { other: "read", github: "read" });
+test("an app gets a level or is removed, without touching the others", () => {
+  assert.deepEqual(withApp(null, "github", "read"), { github: "read" });
+  assert.deepEqual(withApp({ github: "read" }, "github", "write"), { github: "write" });
+  assert.deepEqual(withApp({ github: "write" }, "github", "off"), {});
+  assert.deepEqual(withApp({ other: "read" }, "github", "write"), { other: "read", github: "write" });
   const before = { github: "read" };
-  withApp(before, "github", false);
+  withApp(before, "github", "off");
   assert.deepEqual(before, { github: "read" });
 });
 
-test("saving sends only known read scopes, and nothing for an engine that cannot use apps", () => {
+test("a level is read back as off unless it is a known one", () => {
+  assert.equal(levelOf({ github: "read" }, "github"), "read");
+  assert.equal(levelOf({ github: "write" }, "github"), "write");
+  for (const odd of [{ github: "admin" }, { github: "" }, {}, null, undefined]) assert.equal(levelOf(odd, "github"), "off");
+  assert.equal(levelOf({ gmail: "read" }, "github"), "off");
+});
+
+test("saving sends only known levels, and nothing for an engine that cannot use apps", () => {
   assert.deepEqual(scopesToSend({ github: "read" }, "claude"), { github: "read" });
+  assert.deepEqual(scopesToSend({ github: "write" }, "claude"), { github: "write" });
   assert.equal(scopesToSend({}, "claude"), null);
   assert.equal(scopesToSend(null, "claude"), null);
-  assert.equal(scopesToSend({ github: "read" }, "codex"), null);
-  assert.deepEqual(scopesToSend({ github: "read", gmail: "read", slack: "write" }, "claude"), { github: "read" });
-  assert.equal(scopesToSend({ github: "write" }, "claude"), null);
-  assert.ok(AGENT_APPS.every((app) => app.slug && app.label && app.help));
+  assert.equal(scopesToSend({ github: "write" }, "codex"), null);
+  assert.deepEqual(scopesToSend({ github: "write", gmail: "read", slack: "write" }, "claude"), { github: "write" });
+  assert.equal(scopesToSend({ github: "admin" }, "claude"), null);
+  assert.ok(AGENT_APPS.every((app) => app.slug && app.label && app.read && app.write));
 });

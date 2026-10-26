@@ -182,7 +182,7 @@ class TurnContext:
     # The MCP server giving the turn read access to connected apps (composio_bridge.py)
     # and the apps it was started for. Both None unless the agent was allowed some.
     composio_launch: object | None = None
-    composio_apps: frozenset | None = None
+    composio_apps: dict | None = None  # {app: "read" | "write"}
     hold_clock: Callable[[], Callable[[], None]] | None = None
     # Images attached to this message, as {"path", "mime", "name"}. Only ever
     # set for an engine whose capabilities include `images`; attached text

@@ -35,11 +35,12 @@ PREFIX = f"mcp__{SERVER}__"
 MAX_REQUEST_BYTES = 16_000
 
 
-def apps_for(scopes: object) -> frozenset:
-    """The apps a stored `connector_scopes` value lets an agent read (v1: "read")."""
+def apps_for(scopes: object) -> dict:
+    """What a stored `connector_scopes` value lets an agent do: {app: "read" | "write"},
+    for the apps that have tools. Anything else in it is ignored."""
     if not isinstance(scopes, dict):
-        return frozenset()
-    return frozenset(app for app, level in scopes.items() if level == "read" and app in composio_tools.apps())
+        return {}
+    return {app: level for app, level in scopes.items() if level in composio_tools.LEVELS and app in composio_tools.apps()}
 
 
 def make_client(key: str) -> ComposioClient:
@@ -47,7 +48,7 @@ def make_client(key: str) -> ComposioClient:
 
 
 class ComposioBridge:
-    def __init__(self, runtime, run, apps: frozenset, client_factory=None):
+    def __init__(self, runtime, run, apps: dict, client_factory=None):
         # Looked up when used, so a test can replace make_client.
         self.runtime, self.run, self.apps = runtime, run, apps
         self.client_factory = client_factory or (lambda key: make_client(key))
@@ -57,7 +58,7 @@ class ComposioBridge:
 
     @property
     def launch(self):
-        apps = ",".join(sorted(self.apps))
+        apps = ",".join(f"{app}={level}" for app, level in sorted(self.apps.items()))
         if getattr(sys, "frozen", False):
             return SimpleNamespace(command=sys.executable, args=["--composio-mcp", "--mailbox", str(self.folder), "--apps", apps], env={})
         root = str(Path(__file__).resolve().parents[2])
@@ -110,13 +111,16 @@ class ComposioBridge:
         os.replace(tmp, response)
         path.unlink(missing_ok=True)
 
-    async def allowed_now(self) -> frozenset:
-        """What the agent may read right now, from the database."""
+    async def allowed_now(self) -> dict:
+        """What the agent may do right now, from the database: never more than the
+        turn started with, so lowering a level mid-turn takes effect at once."""
         from app.db.models import Agent
 
         async with self.runtime.session() as db:
             agent = await db.get(Agent, self.run.agent_id)
-        return apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else frozenset()
+        current = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else {}
+        return {app: ("write" if level == "write" and self.apps.get(app) == "write" else "read")
+                for app, level in current.items() if app in self.apps}
 
     async def execute(self, name: str, args: dict) -> dict:
         from app.team.bridge import consume_allowed_approval
@@ -128,15 +132,15 @@ class ComposioBridge:
             approved = await consume_allowed_approval(db, run.turn_id, run.owner_token, PREFIX + name, args)
         if not approved:
             return {"error": "This call has no matching, unused approval.", "code": "not_approved"}
-        allowed = await self.allowed_now() & self.apps
+        allowed = await self.allowed_now()
         if name == composio_tools.LIST_ACCOUNTS:
             if not allowed:
                 return {"error": "This agent is no longer allowed to use connected apps.", "code": "not_allowed"}
             async with rt.session() as db:
-                return await composio_service.connected_names(db, rt.owner_id, self.client_factory, allowed)
+                return await composio_service.connected_names(db, rt.owner_id, self.client_factory, set(allowed))
         tool = composio_tools.BY_NAME.get(name)
-        if tool is None or tool.app not in allowed:
-            return {"error": "This agent is not allowed to use that app.", "code": "not_allowed"}
+        if tool is None or not composio_tools.allows(allowed.get(tool.app), tool.kind):
+            return {"error": "This agent is not allowed to do that with that app.", "code": "not_allowed"}
         try:
             sent, account = composio_tools.clean_arguments(tool, args)
         except composio_tools.BadArguments as exc:

@@ -228,11 +228,31 @@ async def _session(db: AsyncSession, owner_id: str, client: ComposioClient, reco
         return session_id, latest
 
 
+OUTCOME_UNKNOWN = {
+    "error": "The request was sent but no answer came back, so the change may or may not have been made. "
+             "Do not repeat it; ask the person to check.",
+    "code": "outcome_unknown",
+}
+SESSION_EXPIRED = {
+    "error": "Composio's session had expired and nothing was changed. Ask the person before trying again.",
+    "code": "session_expired",
+}
+DONE_UNREADABLE = {
+    "result": "done", "code": "done_unreadable",
+    "note": "The change was made, but GitHub's answer could not be read. Do not repeat it; ask the person to check.",
+}
+
+
 async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None) -> dict:
     """Run one allowed tool as one connected account and return what the agent may see.
-    Never raises for a Composio problem: the agent gets a short error instead."""
+    Never raises for a Composio problem: the agent gets a short error instead.
+
+    A read may be retried once on a forgotten session. A change never is: it is sent
+    once, and a failure that leaves it unknown is reported as unknown, so the agent is
+    told not to repeat it. A change that went through is never reported as a failure."""
     from app import composio_tools
 
+    write = tool.kind == "write"
     record = await load(db, owner_id)
     if record is None:
         return {"error": "Connected apps are not set up. The person can add their Composio key in Settings.", "code": "not_configured"}
@@ -243,21 +263,28 @@ async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments
         if problem:
             return problem
         session_id, record = await _session(db, owner_id, client, record)
-        try:
-            done = await client.execute(session_id, tool.slug, arguments, account.id)
-        except ComposioError as exc:
-            if exc.kind != "not_found":
-                raise
-            # A session Composio forgot is replaced once; the connection belongs to the user.
-            session_id, record = await _session(db, owner_id, client, record, replace=session_id)
-            done = await client.execute(session_id, tool.slug, arguments, account.id)
-    except ComposioError as exc:
+    except ComposioError as exc:  # nothing was sent for the tool yet
         return _agent_error(exc)
+    try:
+        done = await client.execute(session_id, tool.slug, arguments, account.id)
+    except ComposioError as exc:
+        if write and exc.kind in ("unavailable", "bad_response"):
+            return dict(OUTCOME_UNKNOWN)
+        if exc.kind != "not_found":
+            return _agent_error(exc)
+        # Composio forgot the session (the connection belongs to the user, so it is replaced).
+        try:
+            session_id, record = await _session(db, owner_id, client, record, replace=session_id)
+            if write:
+                return dict(SESSION_EXPIRED)
+            done = await client.execute(session_id, tool.slug, arguments, account.id)
+        except ComposioError as again:
+            return _agent_error(again)
     if done.result_type == "completed":
         try:
             return composio_tools.project(tool, done.data)
         except composio_tools.BadArguments as exc:
-            return {"error": str(exc), "code": "unreadable_answer"}
+            return dict(DONE_UNREADABLE) if write else {"error": str(exc), "code": "unreadable_answer"}
     if done.result_type == "failed":
         return {"error": "The app refused or could not do that" + (f": {done.error}" if done.error else "."), "code": "app_error"}
     return {"error": "Composio did not run this call.", "code": "not_run"}

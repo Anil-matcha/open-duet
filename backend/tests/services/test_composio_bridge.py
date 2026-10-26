@@ -8,7 +8,7 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
-from app.db.models import Agent
+from app.db.models import Agent, Approval
 from app.db.models.user_credential import UserCredential
 from app.services import agent_store, composio_bridge, composio_service
 from app.services.composio_client import ComposioClient
@@ -32,6 +32,8 @@ class FakeComposio:
         self.answer: dict = {"result_type": "completed", "data": REPOS, "error": None}
         self.session_ok = True
         self.down = False
+        self.execute_attempts = 0
+        self.execute_fault: str | None = None  # down | 500 | junk | 401
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         if self.down:
@@ -43,6 +45,15 @@ class FakeComposio:
         if route == "POST /tool_router/session":
             return httpx.Response(201, json={"session_id": "sess_new"})
         if route.endswith("/execute"):
+            self.execute_attempts += 1
+            if self.execute_fault == "down":
+                raise httpx.ConnectError("down " + KEY)
+            if self.execute_fault == "500":
+                return httpx.Response(500, json={"error": {"message": "boom"}})
+            if self.execute_fault == "junk":
+                return httpx.Response(200, content=b"<html>")
+            if self.execute_fault == "401":
+                return httpx.Response(401, json={"error": {"message": "no"}})
             if not self.session_ok:
                 return httpx.Response(404, json={"error": {"message": "no session"}})
             self.executes.append({"route": route, **json.loads(request.content)})
@@ -143,7 +154,7 @@ async def test_an_approved_read_runs_as_the_account_and_comes_back_trimmed(world
         return TurnOutcome("succeeded", result="ok")
 
     await one_turn(world, handler)
-    assert seen["apps"] == frozenset({"github"})
+    assert seen["apps"] == {"github": "read"}
     assert seen["answer"]["count"] == 1 and seen["answer"]["result"][0]["full_name"] == "o/r"
     assert fake.executes == [{"route": "POST /tool_router/session/sess_1/execute", "tool_slug": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
                               "arguments": {"per_page": 2}, "account": "ca_1"}]
@@ -246,7 +257,7 @@ async def test_the_agent_can_see_account_names_but_not_ids_or_tokens(world, fake
     ({"result_type": "failed", "data": {}, "error": "Not Found"}, "app_error"),
     ({"result_type": "blocked", "reason": "hook", "message": "no"}, "not_run"),
     ({"result_type": "input_required"}, "not_run"),
-    ({"result_type": "completed", "data": {"unexpected": 1}, "error": None}, "unreadable_answer"),
+    ({"result_type": "completed", "data": {"weird_field": "VALUE_MUST_NOT_APPEAR"}, "error": None}, "unreadable_answer"),
     ({"result_type": "completed", "data": "text", "error": None}, "unreadable_answer"),
 ])
 async def test_anything_but_a_readable_completed_answer_is_a_short_error(world, fake, answer, code):
@@ -259,7 +270,10 @@ async def test_anything_but_a_readable_completed_answer_is_a_short_error(world, 
 
     await one_turn(world, handler)
     assert seen["answer"]["code"] == code and "error" in seen["answer"]
-    assert TOKEN not in json.dumps(seen["answer"]) and "unexpected" not in json.dumps(seen["answer"])
+    text = json.dumps(seen["answer"])
+    assert TOKEN not in text and "VALUE_MUST_NOT_APPEAR" not in text  # an answer's values never come back, even in an error
+    if code == "unreadable_answer" and isinstance(answer["data"], dict):
+        assert "fields: weird_field" in seen["answer"]["error"]  # its field names do, so a shape can be reported
 
 
 async def test_composio_trouble_is_reported_without_details(world, fake):
@@ -378,3 +392,228 @@ async def test_the_mailbox_folder_is_removed_when_the_turn_ends(world, fake):
 
     await one_turn(world, handler)
     assert not seen["box"].exists()
+
+
+# -- changes (write tools): a person decides on a card, once, for exactly what is shown ----------
+
+ISSUE_ARGS = {"owner": "o", "repo": "r", "title": "Crash on start", "body": "Steps:\n1. open", "labels": ["bug"]}
+MADE = {"result_type": "completed", "error": None,
+        "data": {"number": 12, "title": "Crash on start", "state": "open", "html_url": "https://github.com/o/r/issues/12",
+                 "body": "SHOULD NOT COME BACK", "user": {"login": "me"}}}
+
+
+async def set_level(sessions, agent, level):
+    async with sessions() as db:
+        await agent_store.update_agent(db, agent.id, connector_scopes={"github": level} if level else None)
+
+
+async def card(runtime, ctx, gate, name, args, decision="allow", sent=None):
+    """The engine asks about a change, the card waits, a person answers, then the shim's request."""
+    handle = await gate.open(request_id=uuid4().hex, tool=PREFIX + name, input=args, summary=None, kind=None)
+    async with runtime.session() as db:
+        status = (await db.get(Approval, handle.approval_id)).status
+    out = {"status_when_asked": status}
+    if status == "pending":
+        assert await runtime.answer_approval(handle.approval_id, decision)
+    out["decision"] = (await gate.decide(handle)).kind
+    if out["decision"] == ALLOW:
+        out["answer"] = await ask(ctx, gate, name, args if sent is None else sent, approve=False)
+    return out
+
+
+async def test_a_change_waits_for_a_person_runs_once_and_returns_only_its_link(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    fake.answer = MADE
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["levels"] = ctx.composio_apps
+        seen["card"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS)
+        seen["again"] = await ask(ctx, gate, "github_create_issue", ISSUE_ARGS, approve=False)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["levels"] == {"github": "write"}
+    assert seen["card"]["status_when_asked"] == "pending"  # no policy and no saved rule decided it
+    assert seen["card"]["decision"] == ALLOW
+    assert seen["card"]["answer"]["result"] == {"number": 12, "title": "Crash on start", "state": "open", "html_url": "https://github.com/o/r/issues/12"}
+    assert "SHOULD NOT COME BACK" not in json.dumps(seen["card"]["answer"])
+    assert seen["again"]["code"] == "not_approved"  # the approval was spent
+    assert len(fake.executes) == 1
+    assert fake.executes[0]["tool_slug"] == "GITHUB_CREATE_AN_ISSUE" and fake.executes[0]["arguments"] == ISSUE_ARGS
+    assert fake.executes[0]["account"] == "ca_1"
+
+
+async def test_a_refused_change_never_runs_even_if_the_request_is_forged(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["card"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS, decision="deny")
+        seen["forged"] = await ask(ctx, gate, "github_create_issue", ISSUE_ARGS, approve=False)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["card"]["status_when_asked"] == "pending" and seen["card"]["decision"] == "deny"
+    assert seen["forged"]["code"] == "not_approved" and fake.executes == []
+
+
+async def test_the_card_covers_exactly_what_was_shown(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["changed"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS, sent={**ISSUE_ARGS, "title": "Something else"})
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["changed"]["answer"]["code"] == "not_approved" and fake.executes == []
+
+
+async def test_at_the_read_level_a_change_is_denied_without_a_card_and_not_even_offered(world, fake):
+    runtime, engine, agent = world
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["levels"] = ctx.composio_apps
+        seen["args"] = ctx.composio_launch.args
+        seen["card"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["levels"] == {"github": "read"} and "github=read" in seen["args"]
+    assert seen["card"]["status_when_asked"] == "denied" and seen["card"]["decision"] == "deny"
+    assert fake.executes == []
+
+
+async def test_plan_mode_denies_a_change_without_a_card(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    async with sessions() as db:
+        await agent_store.update_agent(db, agent.id, approval_mode="plan")
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["card"] = await card(runtime, ctx, gate, "github_comment_on_issue", {"owner": "o", "repo": "r", "issue_number": 1, "body": "hi"})
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["card"]["status_when_asked"] == "denied" and fake.executes == []
+
+
+async def test_lowering_the_level_after_the_person_approved_stops_the_change(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        handle = await gate.open(request_id=uuid4().hex, tool=PREFIX + "github_close_issue", input={"owner": "o", "repo": "r", "issue_number": 3}, summary=None, kind=None)
+        assert await runtime.answer_approval(handle.approval_id, "allow")
+        assert (await gate.decide(handle)).kind == ALLOW
+        await set_level(sessions, agent, "read")
+        seen["answer"] = await ask(ctx, gate, "github_close_issue", {"owner": "o", "repo": "r", "issue_number": 3}, approve=False)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["answer"]["code"] == "not_allowed" and fake.executes == []
+
+
+@pytest.mark.parametrize("fault", ["down", "500", "junk"])
+async def test_a_change_that_may_have_gone_through_is_reported_unknown_and_sent_once(world, fake, sessions, fault):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    fake.execute_fault = fault
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["card"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    answer = seen["card"]["answer"]
+    assert answer["code"] == "outcome_unknown" and "Do not repeat it" in answer["error"]
+    assert fake.execute_attempts == 1  # never retried
+    assert KEY not in json.dumps(answer)
+
+
+async def test_a_read_that_fails_the_same_way_is_an_ordinary_error(world, fake):
+    fake.execute_fault = "500"
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["answer"] = await ask(ctx, gate, "github_get_authenticated_user", {})
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["answer"]["code"] == "composio_unavailable" and "outcome" not in json.dumps(seen["answer"])
+
+
+async def test_a_refused_key_on_a_change_means_it_did_not_happen(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    fake.execute_fault = "401"
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["card"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["card"]["answer"]["code"] == "composio_key_rejected" and fake.execute_attempts == 1
+
+
+async def test_a_forgotten_session_on_a_change_is_replaced_but_the_change_is_not_retried(world, fake, sessions, owner):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    fake.session_ok = False
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["first"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS)
+        fake.session_ok = True
+        fake.answer = MADE
+        seen["second"] = await card(runtime, ctx, gate, "github_create_issue", ISSUE_ARGS)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["first"]["answer"]["code"] == "session_expired" and "nothing was changed" in seen["first"]["answer"]["error"]
+    assert fake.execute_attempts == 2  # one failed attempt, then the second approved change; no hidden retry
+    assert seen["second"]["answer"]["result"]["number"] == 12
+    async with sessions() as db:
+        assert (await composio_service.load(db, owner))["session_id"] == "sess_new"
+
+
+async def test_a_change_that_went_through_is_never_reported_as_a_failure(world, fake, sessions):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    fake.answer = {"result_type": "completed", "data": "not what we expected", "error": None}
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["card"] = await card(runtime, ctx, gate, "github_comment_on_issue", {"owner": "o", "repo": "r", "issue_number": 1, "body": "hi"})
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    answer = seen["card"]["answer"]
+    assert answer["code"] == "done_unreadable" and "error" not in answer and "Do not repeat it" in answer["note"]
+
+
+@pytest.mark.parametrize("result, code", [
+    ({"result_type": "failed", "data": {}, "error": "Validation Failed"}, "app_error"),
+    ({"result_type": "blocked", "reason": "hook", "message": "no"}, "not_run"),
+])
+async def test_a_change_the_app_refuses_is_reported_as_such(world, fake, sessions, result, code):
+    runtime, engine, agent = world
+    await set_level(sessions, agent, "write")
+    fake.answer = result
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["card"] = await card(runtime, ctx, gate, "github_reopen_issue", {"owner": "o", "repo": "r", "issue_number": 1})
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["card"]["answer"]["code"] == code

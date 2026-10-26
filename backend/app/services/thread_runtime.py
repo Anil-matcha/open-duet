@@ -348,7 +348,8 @@ class ThreadApprovalGate:
                 self._log("auto_allowed" if status == "allowed" else "denied", approval.id, source=source)
             runtime.hub.notify(run.thread_id)
             return ApprovalHandle(approval_id=approval.id, request_id=request_id, tool=tool)
-        rule = None if tool.startswith("mcp__team__") or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
+        # A change to a connected app (mcp__composio__) is only ever allowed on its own card, never by a saved rule.
+        rule = None if tool.startswith(("mcp__team__", "mcp__composio__")) or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
         held = None
         if rule is not None:
             # A command on the safety floor, or one that could not be read, is
@@ -860,13 +861,13 @@ class ThreadRuntime:
         self.hub.notify(thread_id)
         return turn
 
-    async def _composio_apps(self, run, adapter) -> frozenset:
-        """The connected apps this turn's tools may read, or none. Only a turn a
+    async def _composio_apps(self, run, adapter) -> dict:
+        """The connected apps this turn's tools may use, {app: level}, or none. Only a turn a
         person started, on an engine that can mount them, for an agent the person
         allowed, with a Composio key saved, and not in an agent computer (its data
         would leave the sandbox)."""
         if run.agent_id is None or not capabilities_of(adapter).connected_apps or run.ctx.computer is not None:
-            return frozenset()
+            return {}
         try:
             from app.db.models import Agent, Turn
             from app.services import composio_service
@@ -874,13 +875,13 @@ class ThreadRuntime:
             async with self.session() as db:
                 agent = await db.get(Agent, run.agent_id)
                 turn = await db.get(Turn, run.turn_id)
-                apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else frozenset()
+                apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else {}
                 if not apps or (turn is not None and turn.origin not in (None, "person")):
-                    return frozenset()
-                return apps if await composio_service.configured(db, self.owner_id) else frozenset()
+                    return {}
+                return apps if await composio_service.configured(db, self.owner_id) else {}
         except Exception:  # noqa: BLE001
             logger.exception("could not work out connected apps; the turn goes on without them", thread_id=run.thread_id)
-            return frozenset()
+            return {}
 
     async def _recall(self, agent, thread_id: int, prompt_text: str):
         """Passages from the agent's topic notes and other conversations for

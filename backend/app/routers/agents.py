@@ -158,15 +158,15 @@ def _check_fallback(rt: ThreadRuntime, provider: str, fallback: str | None, mode
 
 
 def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provider: str) -> dict | None:
-    """The connected apps an agent may read, checked and put in order; None when
-    there are none. Only apps with tools exist, read is the only level, and the
+    """The connected apps an agent may use, checked and put in order; None when
+    there are none. Only apps with tools exist, the levels are read and write, and the
     agent's engine must be able to mount them (409 `engine_without_connected_apps`)."""
     from app import composio_tools
 
     if not scopes:
         return None
-    if set(scopes) - set(composio_tools.apps()) or any(level != "read" for level in scopes.values()):
-        raise _error(422, "invalid_connector_scopes", "Connected apps can only be allowed for reading, and only for apps this version supports.")
+    if set(scopes) - set(composio_tools.apps()) or any(level not in composio_tools.LEVELS for level in scopes.values()):
+        raise _error(422, "invalid_connector_scopes", "Connected apps can be allowed for reading, or for reading and changing, and only for apps this version supports.")
     try:
         mounts = rt.engines.capabilities(provider).connected_apps
     except Exception:  # noqa: BLE001  (an unknown engine is reported by its own check)

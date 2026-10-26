@@ -14,7 +14,7 @@ import {
   redactionNotice,
 } from "@/lib/agents";
 import { computerStateLabel } from "@/lib/computers";
-import { AGENT_APPS, APPS_ENGINE, scopesToSend, withApp, type Scopes } from "@/lib/connected-apps";
+import { AGENT_APPS, APPS_ENGINE, levelOf, scopesToSend, withApp, type Level, type Scopes } from "@/lib/connected-apps";
 import { ComputerView } from "./ComputerPanel";
 import { EngineModelFields } from "./EngineModelFields";
 import { MemoryPanel } from "./MemoryPanel";
@@ -550,13 +550,16 @@ export function AgentsPanel({
                 </div>
                 {modeInfo && <p className="mt-2">{modeInfo.description}</p>}
               </fieldset>
-              {draft.id !== null && draft.provider === APPS_ENGINE && <fieldset className="space-y-2 text-xs text-muted">
+              {draft.id !== null && draft.provider === APPS_ENGINE && <fieldset className="space-y-3 text-xs text-muted">
                 <legend>Connected apps</legend>
-                {AGENT_APPS.map((app) => <label key={app.slug} className="flex cursor-pointer items-start gap-2">
-                  <input type="checkbox" className="mt-0.5" disabled={busy} checked={draft.connector_scopes[app.slug] === "read"}
-                    onChange={(event) => setDraft({ ...draft, connector_scopes: withApp(draft.connector_scopes, app.slug, event.target.checked) })} />
-                  <span><span className="text-sm text-ink">Let this agent use {app.label}</span><br />{app.help}</span>
-                </label>)}
+                {AGENT_APPS.map((app) => <div key={app.slug} className="space-y-1">
+                  <p className="text-sm text-ink">{app.label}</p>
+                  {(["off", "read", "write"] as Level[]).map((level) => <label key={level} className="flex cursor-pointer items-start gap-2">
+                    <input type="radio" name={`app-${app.slug}`} className="mt-0.5" disabled={busy} checked={levelOf(draft.connector_scopes, app.slug) === level}
+                      onChange={() => setDraft({ ...draft, connector_scopes: withApp(draft.connector_scopes, app.slug, level) })} />
+                    <span>{level === "off" ? "Off" : level === "read" ? <>Read only. {app.read}</> : <>Read and change. {app.write}</>}</span>
+                  </label>)}
+                </div>)}
                 <p>Connect apps first under Settings → Connected apps. Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
               </fieldset>}
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">

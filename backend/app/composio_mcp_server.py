@@ -1,12 +1,12 @@
-"""A small stdio MCP server giving a turn read access to the person's connected
-apps (Composio; .internal/design/composio-integration.md).
+"""A small stdio MCP server giving a turn the person's connected apps, at the
+level the agent was allowed (Composio; .internal/design/composio-integration.md).
 
 It holds no key and makes no network call. Each tool call is a request file in
 the turn's private mailbox folder; the backend checks it against the agent's
 app scope, claims the matching one-use approval, runs it with the person's key
 and writes the reply beside it (app/services/composio_bridge.py). The same
-transport as the memory and team tools. The apps listed with --apps are the
-only ones whose tools it shows.
+transport as the memory and team tools. The apps listed with --apps, as
+app=level pairs, are the only ones whose tools it shows, at that level.
 """
 import argparse
 import json
@@ -20,9 +20,9 @@ from app import composio_tools
 
 
 class Server:
-    def __init__(self, mailbox, allowed_apps):
+    def __init__(self, mailbox, levels):
         self.mailbox = Path(mailbox)
-        self.tools = composio_tools.mcp_tools(set(allowed_apps))
+        self.tools = composio_tools.mcp_tools(levels)
         self.names = {tool["name"] for tool in self.tools}
 
     def call(self, name, arguments):
@@ -69,7 +69,8 @@ def main():
     parser.add_argument("--mailbox", required=True)
     parser.add_argument("--apps", default="")
     arguments = parser.parse_args()
-    server = Server(arguments.mailbox, [app for app in arguments.apps.split(",") if app])
+    levels = dict(pair.split("=", 1) for pair in arguments.apps.split(",") if "=" in pair)
+    server = Server(arguments.mailbox, levels)
     for line in sys.stdin:
         try:
             if len(line) > 100000:

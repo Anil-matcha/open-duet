@@ -17,7 +17,9 @@ from app.services.composio_client import ComposioClient
 from app.services.thread_hub import ThreadHub
 from app.services.thread_runtime import ThreadRuntime
 from tests.services.test_composio_bridge import KEY, TOKEN, FakeComposio
-from tests.services.thread_harness import FAKE_CLI, Cli, ReadyClaude, cleanup, events_of, finished, owner, sessions  # noqa: F401
+from tests.services.thread_harness import (  # noqa: F401
+    FAKE_CLI, Cli, ReadyClaude, cleanup, events_of, finished, owner, pending_approval, sessions,
+)
 
 
 @pytest.fixture
@@ -95,7 +97,7 @@ async def test_an_allowed_agent_reads_github_in_chat_without_a_card(rt, sessions
     assert args[args.index("--tools") + 1] == ""  # the host's own tools stay off
     assert "connected apps (github)" in launch["system_prompt"]
     server = config["mcpServers"]["composio"]
-    assert server["args"][-2:] == ["--apps", "github"] and KEY not in json.dumps(config)
+    assert server["args"][-2:] == ["--apps", "github=read"] and KEY not in json.dumps(config)
 
     result = cli.log("mcp_result")[0]
     assert not result["is_error"]
@@ -131,3 +133,49 @@ async def test_a_tool_the_agent_invents_is_denied_even_with_the_app_allowed(rt, 
     assert cli.log("mcp_result") == [] and composio.executes == []
     resolved = [e for e in await events_of(sessions, thread.id) if e.type == "approval.resolved"]
     assert [(e.data["status"], e.data.get("by")) for e in resolved] == [("denied", "unknown_composio_tool")]
+
+
+async def test_a_change_shows_a_card_and_runs_only_on_allow(rt, sessions, cli, composio):  # noqa: F811
+    agent = await agent_with(rt, sessions, {"github": "write"})
+    composio.answer = {"result_type": "completed", "error": None,
+                       "data": {"number": 5, "title": "Crash", "state": "open", "html_url": "https://github.com/o/r/issues/5"}}
+    cli.script(tool_step("github_create_issue", {"owner": "o", "repo": "r", "title": "Crash", "body": "It fails."}))
+    thread = await rt.create_thread(agent_id=agent.id)
+    await rt.send_turn(thread.id, "file an issue")
+    approval = await pending_approval(sessions, thread.id)
+    assert approval.tool == "mcp__composio__github_create_issue"
+    assert approval.input == {"owner": "o", "repo": "r", "title": "Crash", "body": "It fails."}
+    assert approval.summary.startswith("github create issue o/r: Crash")
+    assert composio.executes == []  # nothing happened before the Allow
+    assert await rt.answer_approval(approval.id, "allow")
+    await finished(sessions, thread.id)
+
+    result = cli.log("mcp_result")[0]
+    assert not result["is_error"] and json.loads(result["content"])["result"]["number"] == 5
+    assert [e["tool_slug"] for e in composio.executes] == ["GITHUB_CREATE_AN_ISSUE"]
+    args = cli.launches[-1]["args"]
+    server = json.loads(args[args.index("--mcp-config") + 1])["mcpServers"]["composio"]
+    assert server["args"][-2:] == ["--apps", "github=write"]
+    assert "ask the person first" in cli.launches[-1]["system_prompt"]
+
+
+async def test_a_denied_change_does_nothing(rt, sessions, cli, composio):  # noqa: F811
+    agent = await agent_with(rt, sessions, {"github": "write"})
+    cli.script(tool_step("github_comment_on_issue", {"owner": "o", "repo": "r", "issue_number": 2, "body": "hello"}))
+    thread = await rt.create_thread(agent_id=agent.id)
+    await rt.send_turn(thread.id, "comment")
+    approval = await pending_approval(sessions, thread.id)
+    assert await rt.answer_approval(approval.id, "deny")
+    await finished(sessions, thread.id)
+    assert cli.log("mcp_result") == [] and composio.executes == []
+
+
+async def test_a_read_level_agent_cannot_change_anything_in_chat(rt, sessions, cli, composio):  # noqa: F811
+    agent = await agent_with(rt, sessions, {"github": "read"})
+    cli.script(tool_step("github_create_issue", {"owner": "o", "repo": "r", "title": "x"}))
+    thread = await rt.create_thread(agent_id=agent.id)
+    await rt.send_turn(thread.id, "file an issue")
+    await finished(sessions, thread.id)
+    assert cli.log("mcp_result") == [] and composio.executes == []
+    resolved = [e for e in await events_of(sessions, thread.id) if e.type == "approval.resolved"]
+    assert [(e.data["status"], e.data.get("by")) for e in resolved] == [("denied", "write_not_allowed")]

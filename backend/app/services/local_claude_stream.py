@@ -61,7 +61,10 @@ def summarize_tool(name: str, tool_input: dict) -> str:
     if name.startswith("mcp__composio__"):
         # A connected-app read: what, and which repository when it names one.
         where = "/".join(str(tool_input[k]) for k in ("owner", "repo") if isinstance(tool_input.get(k), str))
-        return _clip(f"{name[len('mcp__composio__'):].replace('_', ' ')} {where}".strip(), SUMMARY_CHARS)
+        number = f"#{tool_input['issue_number']}" if isinstance(tool_input.get("issue_number"), int) else ""
+        what = tool_input.get("title") if isinstance(tool_input.get("title"), str) else tool_input.get("body")
+        label = f"{name[len('mcp__composio__'):].replace('_', ' ')} {where}{number}".strip()
+        return _clip(f"{label}: {what}" if isinstance(what, str) and what else label, SUMMARY_CHARS)
     key = {
         "Bash": "command",
         "Read": "file_path",

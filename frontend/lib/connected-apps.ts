@@ -88,25 +88,36 @@ export function accountsOf(accounts: ComposioAccount[], toolkit: string): Compos
   return accounts.filter((account) => account.toolkit === toolkit);
 }
 
-// The apps an agent can be allowed to read in this version, and the engine that can use them.
-export const AGENT_APPS: { slug: string; label: string; help: string }[] = [
-  { slug: "github", label: "GitHub", help: "Read your repositories, issues and pull requests. It cannot change anything." },
+// The apps an agent can be allowed to use in this version, and the engine that can use them.
+export const AGENT_APPS: { slug: string; label: string; read: string; write: string }[] = [
+  {
+    slug: "github", label: "GitHub",
+    read: "Read your profile, repositories, issues, pull requests, commits and files, and search.",
+    write: "Also create issues, comment, and close or reopen issues. You approve each change first.",
+  },
 ];
 export const APPS_ENGINE = "claude";
 
+export type Level = "off" | "read" | "write";
 export type Scopes = Record<string, string>;
 
-// The scopes after turning one app on or off. Only "read" exists; none is {}.
-export function withApp(scopes: Scopes | null | undefined, slug: string, on: boolean): Scopes {
+export function levelOf(scopes: Scopes | null | undefined, slug: string): Level {
+  const level = scopes?.[slug];
+  return level === "read" || level === "write" ? level : "off";
+}
+
+// The scopes after setting one app's level. "off" removes it; the others are untouched.
+export function withApp(scopes: Scopes | null | undefined, slug: string, level: Level): Scopes {
   const next: Scopes = { ...(scopes ?? {}) };
-  if (on) next[slug] = "read"; else delete next[slug];
+  if (level === "off") delete next[slug]; else next[slug] = level;
   return next;
 }
 
 // What to send when saving an agent: nothing for an engine that cannot use apps
-// (this also clears them if the engine was changed), else the chosen ones or null.
+// (this also clears them if the engine was changed), else the known levels or null.
 export function scopesToSend(scopes: Scopes | null | undefined, provider: string): Scopes | null {
   if (provider !== APPS_ENGINE) return null;
-  const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) => level === "read" && AGENT_APPS.some((app) => app.slug === slug)));
+  const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) =>
+    (level === "read" || level === "write") && AGENT_APPS.some((app) => app.slug === slug)));
   return Object.keys(known).length ? known : null;
 }
