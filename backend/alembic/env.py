@@ -1,6 +1,7 @@
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import engine_from_config, text
 from sqlalchemy import pool
 
 from alembic import context
@@ -10,6 +11,7 @@ from sqlalchemy.engine import make_url
 
 from app.core.config import settings
 from app.db.base import Base
+from app.db import tenant_schema
 from app.db.engine import create_app_sync_engine, is_sqlite, prepare_sqlite_file
 from app.db.sqlite_baseline import BASELINE_REVISION, create_baseline, sqlite_file_state
 from app.db.models import UserSandbox, UserCredential, Tasks, LinkCode, Schedule, PermissionRule, PermissionAsk, Thread, Turn, Event, Approval # noqa: F401
@@ -93,6 +95,12 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         on_sqlite = connection.dialect.name == "sqlite"
+        # A hosted deployment migrates one account's schema at a time (app/db/tenant_schema.py);
+        # the version table then lives in that schema too.
+        tenant = os.environ.get("OPEN_DOTS_MIGRATE_TENANT")
+        if tenant and not on_sqlite:
+            connection.execute(text(f'SET search_path TO "{tenant_schema.schema_for(tenant)}"'))
+            connection.commit()
         if sqlite_state == "new":
             _initialize_empty_sqlite(connection)
         context.configure(

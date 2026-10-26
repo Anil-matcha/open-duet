@@ -12,6 +12,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.core.config import settings
+from app.db import tenant_schema
 
 # How long a writer waits for another writer before "database is locked".
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -68,7 +69,10 @@ def configure_sqlite(engine: Engine) -> None:
 def create_app_async_engine(url: str | None = None, **kwargs) -> AsyncEngine:
     url = url or settings.ASYNC_DATABASE_URL
     if not is_sqlite(url):
-        return create_async_engine(url, **kwargs)
+        engine = create_async_engine(url, **kwargs)
+        if settings.TENANT_SCHEMAS_ENABLED:
+            tenant_schema.install(engine.sync_engine)
+        return engine
     prepare_sqlite_file(url)
     engine = create_async_engine(url, **kwargs)
     configure_sqlite(engine.sync_engine)
@@ -78,7 +82,10 @@ def create_app_async_engine(url: str | None = None, **kwargs) -> AsyncEngine:
 def create_app_sync_engine(url: str | None = None, **kwargs) -> Engine:
     url = url or settings.SYNC_DATABASE_URL
     if not is_sqlite(url):
-        return create_engine(url, **kwargs)
+        engine = create_engine(url, **kwargs)
+        if settings.TENANT_SCHEMAS_ENABLED:
+            tenant_schema.install(engine)
+        return engine
     prepare_sqlite_file(url)
     engine = create_engine(url, **kwargs)
     configure_sqlite(engine)

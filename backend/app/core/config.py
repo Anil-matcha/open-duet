@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     # is answered to as if it were listed in TRUSTED_HOSTS, and pairing links
     # printed on the server use it. Empty for the desktop app and local use.
     OPEN_DOTS_PUBLIC_URL: str = ""
+    # Hosted deployments only: give each signed-in account its own PostgreSQL schema
+    # (app/db/tenant_schema.py). Off for the desktop app and self-hosting.
+    TENANT_SCHEMAS_ENABLED: bool = False
     # Whether a request from this machine needs no sign-in:
     #   off       every request signs in (default; safest)
     #   programs  loopback programs (curl, scripts) act as the owner; browsers

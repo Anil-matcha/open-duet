@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.auth import credentials, request_info, store, tenancy
+from app.db import tenant_schema
 from app.auth.policy import Principal, is_public, required_scope
 from app.core.config import settings
 from app.desktop import profile
@@ -116,7 +117,12 @@ class AuthMiddleware:
 
         refusal = await self._authorize(scope)
         if refusal is None:
-            await self.app(scope, receive, send)
+            principal = principal_of(scope)
+            if settings.TENANT_SCHEMAS_ENABLED and principal is not None and principal.tenant_id:
+                with tenant_schema.use_tenant(principal.tenant_id):
+                    await self.app(scope, receive, send)
+            else:
+                await self.app(scope, receive, send)
         elif scope["type"] == "websocket":
             await _close_socket(receive, send)
         else:
