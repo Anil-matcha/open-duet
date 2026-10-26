@@ -66,9 +66,12 @@ export async function migrateLegacyIdentity(
 }
 
 // Only a same-site path: never send someone to another site after sign-in.
-export function safeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return "/chat";
-  if (raw.startsWith("/login") || raw.startsWith("/pair")) return "/chat";
+// `base` is the prefix the pages are served under (lib/paths.ts), "" unless a deployment sets one.
+export function safeNextPath(raw: string | null, base = ""): string {
+  const chat = `${base}/chat`;
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return chat;
+  const inside = base && raw.startsWith(`${base}/`) ? raw.slice(base.length) : raw;
+  if (inside.startsWith("/login") || inside.startsWith("/pair")) return chat;
   return raw;
 }
 

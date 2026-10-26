@@ -36,30 +36,57 @@ PAGE_HEADERS = (
 IMMUTABLE = (b"cache-control", b"public, max-age=31536000, immutable")
 
 
-def is_page_request(scope: Scope) -> bool:
+def normalize_base_path(value: str) -> str:
+    """`app`, `/app` and `/app/` all mean `/app`; empty means the pages are at the root."""
+    value = (value or "").strip().strip("/")
+    if value and not all(part and part not in (".", "..") for part in value.split("/")):
+        raise ValueError("The base path must be plain path segments, like /app.")
+    return f"/{value}" if value else ""
+
+
+def _inside(path: str, base_path: str) -> bool:
+    return not base_path or path == base_path or path.startswith(base_path + "/")
+
+
+def is_page_request(scope: Scope, base_path: str = "") -> bool:
     if scope["type"] != "http" or scope["method"] not in PAGE_METHODS:
         return False
     path = scope["path"]
-    return path not in APP_PATHS and not path.startswith(APP_PREFIXES)
+    return _inside(path, base_path) and path not in APP_PATHS and not path.startswith(APP_PREFIXES)
 
 
-def _relative(location: str) -> str:
+def _relative(location: str, base_path: str = "") -> str:
     """`http://host/chat/?x=1` becomes `/chat/?x=1`: the visitor's own address
-    is the only one that is right, and the proxy in front may have changed it."""
+    is the only one that is right, and the proxy in front may have changed it.
+    Under a base path the file server saw the path without it, so it is put back."""
     parts = urlsplit(location)
-    return parts.path + (f"?{parts.query}" if parts.query else "")
+    path = parts.path
+    if base_path and not (path == base_path or path.startswith(base_path + "/")):
+        path = base_path + path
+    return path + (f"?{parts.query}" if parts.query else "")
 
 
-def serve_ui(app: ASGIApp, ui_dir) -> ASGIApp:
-    """`app` with the pages in `ui_dir` answered before it. Raises if the folder is missing."""
+def serve_ui(app: ASGIApp, ui_dir, base_path: str = "") -> ASGIApp:
+    """`app` with the pages in `ui_dir` answered before it. Raises if the folder is missing.
+
+    With a `base_path` (a build made with OD_BASE_PATH=/app) the pages are answered only under
+    that prefix, so another site can own `/`; the export itself has no prefix folder, so it is
+    stripped before the files are looked up. Empty (the default) is the unchanged behavior."""
+    base_path = normalize_base_path(base_path)
     pages = StaticFiles(directory=ui_dir, html=True)
 
     async def asgi(scope: Scope, receive: Receive, send: Send) -> None:
-        if not is_page_request(scope):
+        if not is_page_request(scope, base_path):
             await app(scope, receive, send)
             return
+        if base_path:
+            if scope["path"] == base_path:  # `/app` is the folder `/app/`
+                await PlainTextResponse("", status_code=308, headers={"location": base_path + "/"})(scope, receive, send)
+                return
+            stripped = scope["path"][len(base_path):]
+            scope = {**scope, "path": stripped, "raw_path": stripped.encode()}
 
-        immutable = scope["path"].startswith("/_next/static/")
+        immutable = scope["path"].startswith("/_next/static/")  # no prefix here: stripped above
 
         async def tidy(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -67,7 +94,7 @@ def serve_ui(app: ASGIApp, ui_dir) -> ASGIApp:
                 status = message["status"]
                 if 300 <= status < 400:
                     headers = [
-                        (k, _relative(v.decode("latin-1")).encode("latin-1")) if k.lower() == b"location" else (k, v)
+                        (k, _relative(v.decode("latin-1"), base_path).encode("latin-1")) if k.lower() == b"location" else (k, v)
                         for k, v in headers
                     ]
                 else:

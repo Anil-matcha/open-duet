@@ -6,6 +6,8 @@ const basePath = process.env.OD_BASE_PATH ?? "";
 
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath } : {}),
+  // Lets the page's own code build addresses for window.location (lib/paths.ts).
+  env: { NEXT_PUBLIC_BASE_PATH: basePath },
   // Set only when building the files the desktop app serves itself: the page is
   // plain client-side code, so it exports to static files in `out/`. A trailing
   // slash makes `/chat` the folder `chat/index.html`, which a plain file server

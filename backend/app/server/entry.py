@@ -12,6 +12,7 @@ Settings (bootstrap class, D-008: needed before the database is opened):
     OPEN_DOTS_HOST   address to listen on, default 127.0.0.1
     OPEN_DOTS_PORT   port, default 8000
     OPEN_DOTS_UI_DIR folder holding the exported pages (a build with a relative API path)
+    OPEN_DOTS_BASE_PATH  optional prefix the pages are served under, e.g. /app (build with OD_BASE_PATH)
     OPEN_DOTS_ALLOW_PUBLIC_BIND=1   needed to listen on anything but this machine's own address
     TRUSTED_PROXIES  addresses, besides loopback, whose X-Forwarded-For and X-Forwarded-Proto are
                      believed (a proxy in another container or machine). Name the proxy's own address,
@@ -56,6 +57,7 @@ class ServerOptions:
     port: int
     ui_dir: Path
     trusted_proxies: tuple[str, ...] = proxies.LOOPBACK
+    base_path: str = ""  # pages served under this prefix (a build made with OD_BASE_PATH); "" = at the root
 
 
 def _is_loopback(host: str) -> bool:
@@ -72,6 +74,7 @@ def read_options(argv: Sequence[str], environ: Mapping[str, str]) -> ServerOptio
     parser.add_argument("--host", default=environ.get("OPEN_DOTS_HOST", "127.0.0.1"))
     parser.add_argument("--port", default=environ.get("OPEN_DOTS_PORT", "8000"))
     parser.add_argument("--ui-dir", default=environ.get("OPEN_DOTS_UI_DIR", ""))
+    parser.add_argument("--base-path", default=environ.get("OPEN_DOTS_BASE_PATH", ""))
     try:
         args = parser.parse_args(list(argv))
     except SystemExit as exc:  # argparse already printed the usage
@@ -107,7 +110,13 @@ def read_options(argv: Sequence[str], environ: Mapping[str, str]) -> ServerOptio
         trusted = proxies.parse(environ.get(proxies.ENV_NAME))
     except proxies.ProxyListError as exc:
         raise ServerConfigError(str(exc)) from None
-    return ServerOptions(host=host, port=port, ui_dir=ui_dir, trusted_proxies=trusted)
+    from app.server.static_ui import normalize_base_path
+
+    try:
+        base_path = normalize_base_path(args.base_path)
+    except ValueError as exc:
+        raise ServerConfigError(str(exc)) from None
+    return ServerOptions(host=host, port=port, ui_dir=ui_dir, trusted_proxies=trusted, base_path=base_path)
 
 
 def build_app(options: ServerOptions):
@@ -122,7 +131,7 @@ def build_app(options: ServerOptions):
     added = augment_path()
     if added:
         get_logger(__name__).info(f"Added to the PATH for engines: {', '.join(added)}")
-    return check_forwarded_headers(serve_ui(app, options.ui_dir))
+    return check_forwarded_headers(serve_ui(app, options.ui_dir, options.base_path))
 
 
 def migrate() -> int:

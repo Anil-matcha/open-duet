@@ -2,6 +2,7 @@
 //
 //   node scripts/build-ui.js                    # frontend/out, for `python -m app.server` and the desktop app
 //   node scripts/build-ui.js --frontend ../x    # another checkout of the frontend
+//   OD_BASE_PATH=/app node scripts/build-ui.js  # pages meant to be served under /app (or --base-path /app)
 //
 // One recipe for every way of serving the pages: the pages are exported as static
 // files and talk to the server they were loaded from, so the same build works on any
@@ -24,7 +25,18 @@ const SERVER_PAGES = [
 class UiBuildError extends Error {}
 
 // Throws UiBuildError (its message says what to do) if the pages cannot be built.
-function buildUi({ frontend, out = path.join(frontend, "out"), pages = SERVER_PAGES, log = console.log } = {}) {
+// `basePath` (for example "/app") builds the pages to be served under that prefix; empty is the
+// unchanged build. The export has no prefix folder: only the links inside the pages carry it.
+function normalizeBasePath(value) {
+  const trimmed = (value || "").trim().replace(/^\/+|\/+$/g, "");
+  if (trimmed && !/^[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/.test(trimmed)) {
+    throw new UiBuildError("The base path must be plain path segments, like /app.");
+  }
+  return trimmed ? `/${trimmed}` : "";
+}
+
+function buildUi({ frontend, out = path.join(frontend, "out"), pages = SERVER_PAGES, log = console.log, basePath = process.env.OD_BASE_PATH || "" } = {}) {
+  basePath = normalizeBasePath(basePath);
   const next = path.join(frontend, "node_modules", "next", "dist", "bin", "next");
   if (!fs.existsSync(next)) {
     throw new UiBuildError(`The page's dependencies are not installed in ${frontend}. Run \`npm ci\` there first.`);
@@ -43,6 +55,7 @@ function buildUi({ frontend, out = path.join(frontend, "out"), pages = SERVER_PA
       // whatever port that turns out to be.
       OD_STATIC_EXPORT: "1",
       NEXT_PUBLIC_API_BASE_URL: "/api/v1",
+      OD_BASE_PATH: basePath,
     },
   });
   if (result.error || result.status !== 0) throw new UiBuildError("The page did not build.");
@@ -50,6 +63,13 @@ function buildUi({ frontend, out = path.join(frontend, "out"), pages = SERVER_PA
   for (const page of pages) {
     if (!fs.existsSync(path.join(out, page))) {
       throw new UiBuildError(`The build finished but ${page} is missing from ${out}.`);
+    }
+  }
+  if (basePath) {
+    // Pages must point at their own prefix, or they load nothing when served under it.
+    const home = fs.readFileSync(path.join(out, "index.html"), "utf8");
+    if (!home.includes(`${basePath}/_next/`)) {
+      throw new UiBuildError(`The build finished but its pages do not use the ${basePath} prefix. Check frontend/next.config.ts.`);
     }
   }
   return out;
@@ -65,8 +85,17 @@ function main(argv) {
     }
     frontend = path.resolve(argv[flag + 1]);
   }
+  let basePath = process.env.OD_BASE_PATH || "";
+  const baseFlag = argv.indexOf("--base-path");
+  if (baseFlag !== -1) {
+    if (!argv[baseFlag + 1]) {
+      console.error("--base-path needs a path like /app.");
+      return 2;
+    }
+    basePath = argv[baseFlag + 1];
+  }
   try {
-    const out = buildUi({ frontend });
+    const out = buildUi({ frontend, basePath });
     console.log(`\nBuilt ${out}\nServe it with: OPEN_DOTS_UI_DIR=${out} python -m app.server`);
     return 0;
   } catch (error) {
@@ -76,6 +105,6 @@ function main(argv) {
   }
 }
 
-module.exports = { buildUi, SERVER_PAGES, UiBuildError };
+module.exports = { buildUi, normalizeBasePath, SERVER_PAGES, UiBuildError };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

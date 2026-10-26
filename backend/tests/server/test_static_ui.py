@@ -154,3 +154,56 @@ async def test_in_front_of_the_real_application_pages_load_and_the_api_still_ask
         refused = await api.get("/api/v1/agents")
         assert refused.status_code == 401 and refused.json()["detail"]["error_code"] == "auth_required"
         assert (await api.post("/login/", json={})).status_code == 401  # not a page request
+
+
+# --- served under a prefix (a hosted deployment keeps another site at /) -----------------
+
+def client_under(ui_dir, base_path="/app") -> httpx.AsyncClient:
+    transport = httpx.ASGITransport(serve_ui(inner_app, ui_dir, base_path))
+    return httpx.AsyncClient(transport=transport, base_url="http://dots.example.com")
+
+
+async def test_under_a_prefix_pages_answer_only_there(ui):
+    async with client_under(ui) as api:
+        assert "home" in (await api.get("/app/")).text
+        assert "login" in (await api.get("/app/login/")).text
+        assert (await api.get("/app/_next/static/app.js")).status_code == 200
+        for path in ("/", "/login/", "/appx/", "/_next/static/app.js"):
+            response = await api.get(path)
+            assert response.status_code == 401 and response.json()["inner"] is True, path
+
+
+async def test_under_a_prefix_the_api_still_goes_to_the_application(ui):
+    async with client_under(ui) as api:
+        for path in ("/api/v1/agents", "/hooks/7"):
+            response = await api.get(path)
+            assert response.status_code == 401, path
+
+
+async def test_the_bare_prefix_redirects_to_its_folder(ui):
+    async with client_under(ui) as api:
+        response = await api.get("/app")
+        assert response.status_code == 308 and response.headers["location"] == "/app/"
+
+
+async def test_redirects_keep_the_prefix(ui):
+    async with client_under(ui) as api:
+        response = await api.get("/app/login")  # the file server redirects to the folder form
+        assert response.status_code in (301, 307, 308)
+        assert response.headers["location"] == "/app/login/"
+
+
+async def test_an_empty_prefix_is_the_old_behaviour(ui):
+    async with client_under(ui, "") as api:
+        assert "home" in (await api.get("/")).text
+        assert (await api.get("/login")).headers["location"] == "/login/"
+
+
+def test_prefix_spellings_are_normalised_and_bad_ones_refused():
+    from app.server.static_ui import normalize_base_path
+
+    assert normalize_base_path("app") == normalize_base_path("/app/") == "/app"
+    assert normalize_base_path("") == ""
+    for bad in ("/../x", "/a//b", "/./x"):
+        with pytest.raises(ValueError):
+            normalize_base_path(bad)

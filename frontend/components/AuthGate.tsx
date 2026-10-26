@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { isSignedOutError, setSignedOutHandler } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { SIGN_IN_URL } from "@/lib/paths";
 import { migrateLegacyIdentity, type SessionInfo } from "@/lib/session";
 
 type SessionContextValue = {
@@ -30,7 +31,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     let cancelled = false;
     setSignedOutHandler(() => {
       const next = `${window.location.pathname}${window.location.search}`;
-      router.replace(`/login/?next=${encodeURIComponent(next)}`);
+      if (SIGN_IN_URL) window.location.replace(`${SIGN_IN_URL}?next=${encodeURIComponent(next)}`);
+      else router.replace(`/login/?next=${encodeURIComponent(next)}`);
     });
     (async () => {
       try {

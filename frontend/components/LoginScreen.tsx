@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { BASE_PATH } from "@/lib/paths";
 import { safeNextPath, type AuthStatus } from "@/lib/session";
 
 const inputClass = "block w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm";
 const buttonClass = "w-full cursor-pointer rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 bg-accent text-accent-fg hover:opacity-90";
 
 function nextPath(): string {
-  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+  return safeNextPath(new URLSearchParams(window.location.search).get("next"), BASE_PATH);
 }
 
 function message(err: unknown, fallback: string): string {

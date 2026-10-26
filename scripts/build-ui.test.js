@@ -10,17 +10,17 @@ const { buildUi, SERVER_PAGES, UiBuildError } = require("./build-ui");
 
 // A frontend folder whose "next" writes the pages named in FAKE_PAGES to out/ and
 // writes the environment it was given to env.json.
-function fakeFrontend({ pages = SERVER_PAGES, exitCode = 0 } = {}) {
+function fakeFrontend({ pages = SERVER_PAGES, exitCode = 0, html = "<html></html>" } = {}) {
   const frontend = fs.mkdtempSync(path.join(os.tmpdir(), "od-ui-"));
   const bin = path.join(frontend, "node_modules", "next", "dist", "bin");
   fs.mkdirSync(bin, { recursive: true });
   fs.writeFileSync(
     path.join(bin, "next"),
     `const fs = require("fs"), path = require("path");
-fs.writeFileSync("env.json", JSON.stringify({ args: process.argv.slice(2), export: process.env.OD_STATIC_EXPORT, base: process.env.NEXT_PUBLIC_API_BASE_URL }));
+fs.writeFileSync("env.json", JSON.stringify({ args: process.argv.slice(2), export: process.env.OD_STATIC_EXPORT, base: process.env.NEXT_PUBLIC_API_BASE_URL, prefix: process.env.OD_BASE_PATH }));
 for (const page of ${JSON.stringify(pages)}) {
   fs.mkdirSync(path.dirname(path.join("out", page)), { recursive: true });
-  fs.writeFileSync(path.join("out", page), "<html></html>");
+  fs.writeFileSync(path.join("out", page), ${JSON.stringify(html)});
 }
 process.exit(${exitCode});`,
   );
@@ -34,7 +34,7 @@ test("builds a static export that talks to the server it was loaded from", () =>
   const out = buildUi({ frontend, log: quiet });
   assert.equal(out, path.join(frontend, "out"));
   const seen = JSON.parse(fs.readFileSync(path.join(frontend, "env.json"), "utf8"));
-  assert.deepEqual(seen, { args: ["build", "--webpack"], export: "1", base: "/api/v1" });
+  assert.deepEqual(seen, { args: ["build", "--webpack"], export: "1", base: "/api/v1", prefix: "" });
 });
 
 test("the server needs the sign-in and pairing pages too", () => {
@@ -77,4 +77,28 @@ test("an old build is cleared first, and only the output folder is touched", () 
   buildUi({ frontend, log: quiet });
   assert.equal(fs.existsSync(path.join(frontend, "out", "stale.html")), false);
   assert.ok(fs.existsSync(path.join(frontend, "package.json")));
+});
+
+test("an empty base path builds exactly as before", () => {
+  const frontend = fakeFrontend();
+  buildUi({ frontend, log: quiet, basePath: "" });
+  const seen = JSON.parse(fs.readFileSync(path.join(frontend, "env.json"), "utf8"));
+  assert.equal(seen.prefix, "");
+});
+
+test("a base path is passed to the build and the pages are checked for it", () => {
+  const frontend = fakeFrontend({ html: '<script src="/app/_next/static/a.js"></script>' });
+  buildUi({ frontend, log: quiet, basePath: "app/" });
+  const seen = JSON.parse(fs.readFileSync(path.join(frontend, "env.json"), "utf8"));
+  assert.equal(seen.prefix, "/app");
+});
+
+test("a build whose pages ignore the base path is refused", () => {
+  const frontend = fakeFrontend();
+  assert.throws(() => buildUi({ frontend, log: quiet, basePath: "/app" }), UiBuildError);
+});
+
+test("a base path with odd characters is refused", () => {
+  assert.throws(() => buildUi({ frontend: fakeFrontend(), log: quiet, basePath: "/a b" }), UiBuildError);
+  assert.throws(() => buildUi({ frontend: fakeFrontend(), log: quiet, basePath: "/../x" }), UiBuildError);
 });

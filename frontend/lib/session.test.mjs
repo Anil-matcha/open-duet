@@ -47,6 +47,15 @@ test('after sign-in only same-site paths are followed', () => {
   }
 });
 
+test('under a base path the default and the sign-in loop guard use the prefix', () => {
+  assert.equal(safeNextPath(null, '/app'), '/app/chat');
+  assert.equal(safeNextPath('/app/settings', '/app'), '/app/settings');
+  for (const loop of ['/app/login', '/app/login/', '/app/pair']) {
+    assert.equal(safeNextPath(loop, '/app'), '/app/chat', loop);
+  }
+  assert.equal(safeNextPath('https://evil.example', '/app'), '/app/chat');
+});
+
 test('the pairing code is read from the URL fragment', () => {
   assert.equal(pairingCodeFromHash('#code=ABCD-EFGH'), 'ABCD-EFGH');
   assert.equal(pairingCodeFromHash('#x=1&code=AB%20CD'), 'AB CD');

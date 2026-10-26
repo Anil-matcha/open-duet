@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { withBase } from "@/lib/paths";
 import { pairingCodeFromHash } from "@/lib/session";
 
 const inputClass = "block w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm";
@@ -33,7 +34,7 @@ export function PairScreen() {
     setError(null);
     try {
       await auth.pair(code, label);
-      window.location.replace("/chat/");
+      window.location.replace(withBase("/chat/"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not pair. Check the code and try again.");
       setBusy(false);
