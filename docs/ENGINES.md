@@ -15,6 +15,7 @@ UI do not know which engine they are talking to.
 | `acp` | ACP agent | acp | any agent CLI that speaks the Agent Client Protocol, from a saved command |
 | `openai_compat` | OpenAI-compatible | api | `POST {base_url}/chat/completions`, streamed (Ollama, LM Studio, vLLM, hosted APIs) |
 | `openrouter` | OpenRouter | api | the OpenAI-compatible engine preset for `https://openrouter.ai/api/v1` |
+| `cheaperinference` | Cheaper Inference | api | the OpenAI-compatible engine preset for `https://api.cheaperinference.com/v1` |
 
 ## Choose and configure an engine
 
@@ -29,6 +30,7 @@ model and optional API key. Configuration is encrypted at rest. A blank key
 keeps the saved key for the same URL; changing the URL drops it unless you
 enter a key again. **Forget settings** deletes the configuration and credential.
 For OpenRouter, save an API key. The address is fixed to OpenRouter over HTTPS; configure a proxy with the generic OpenAI-compatible engine.
+For Cheaper Inference, save an API key. The address is fixed to Cheaper Inference over HTTPS; configure a proxy with the generic OpenAI-compatible engine.
 
 
 Settings forms come from each adapter's `config_fields` and `setup` descriptors.
@@ -198,6 +200,27 @@ differences:
 Tested against a mock endpoint only; no turn has been run against the real
 OpenRouter service yet.
 
+## Cheaper Inference
+
+A preset of the OpenAI-compatible engine (`CheaperInferenceAdapter` in
+`backend/app/services/openai_chat_adapter.py`), registered as its own engine
+`cheaperinference` with its own saved configuration (`engine:cheaperinference`),
+so it can be set up beside a local endpoint. Everything above applies, with
+these differences:
+
+- The address is fixed to `https://api.cheaperinference.com/v1`. Configuration
+  requests containing another `base_url` are rejected. Use the OpenAI-compatible
+  engine for a proxy.
+- A key is required. Saving without one answers 422 `invalid_engine_config`,
+  and the engine is unavailable until one is saved.
+- Model ids are Cheaper Inference's bare ids (`gpt-5.4-mini`, `claude-sonnet-5`).
+  Refresh status lists the catalog from `GET /models`.
+- Chat only, like any OpenAI-compatible endpoint: no tools, images or
+  computers. A 429 or `insufficient_quota` is a limit like any other (below).
+
+Tested against a mock endpoint only; no turn has been run against the real
+Cheaper Inference service yet.
+
 ## Limits and the fallback engine
 
 When an engine refuses a turn for a usage limit, a rate limit or a lack of
@@ -276,7 +299,7 @@ Gemini CLI (`gemini`) and Cursor (`cursor`) use the same ACP transport, approval
 - **Cursor:** install from [Cursor's CLI documentation](https://cursor.com/docs/cli), then `cursor-agent login` or save a key. Starts with `cursor-agent acp`, without automatic approval flags. Credentials suppress ACP browser authentication. Status and model discovery use bounded CLI commands. A selected model must be offered by the session and accepted by `session/set_model`; refusal ends the turn before the prompt. Cursor's `cursor/ask_question` extension is answered as unsupported, so it cannot hang waiting for a question card.
 - **OpenCode (experimental):** install `npm install -g opencode-ai` and run `opencode auth login`. Discovery uses `opencode models` without creating a session. A model must be offered by the session's configuration and confirmed by `session/set_config_option`. Additional saved provider-key maps are not implemented. OpenCode strips ambient foreign API keys and configuration overrides, pins project configuration off, and supplies `OPENCODE_PERMISSION` asking for every tool (edit/bash denied in plan mode, all tools denied when tools are off). This override has **not** been proven against hostile real CLI configuration; OpenCode is disabled by default.
 
-`OPEN_DOTS_PRESET_ENGINES` selects enabled presets by comma-separated ID. Unset enables `gemini,cursor,openrouter`. An empty value disables all presets; `gemini,cursor,openrouter,opencode` also enables experimental OpenCode. Custom ACP and OpenAI-compatible engines are always registered. Preset CLIs are not supported on Windows yet.
+`OPEN_DOTS_PRESET_ENGINES` selects enabled presets by comma-separated ID. Unset enables `gemini,cursor,openrouter,cheaperinference`. An empty value disables all presets; adding `opencode` also enables experimental OpenCode. Custom ACP and OpenAI-compatible engines are always registered. Preset CLIs are not supported on Windows yet.
 
 For ask and accept-edits modes, Gemini always uses `--approval-mode default`, Cursor receives no automatic approval flag, and OpenCode receives ask rules. Every permission request uses the existing approval gate; accept-edits only auto-allows edits whose listed locations all lie inside the workspace. Plan mode and tools-off refuse permission requests. A vendor's own configuration can allow tools without sending a request, especially Cursor allow rules; these presets do not provide a filesystem sandbox. Review CLI configuration before enabling tools.
 
@@ -290,5 +313,6 @@ For ask and accept-edits modes, Gemini always uses `--approval-mode default`, Cu
 | Cursor | Synthetic status/models discovery, credential isolation, model selection/refusal, generic ACP lifecycle regression tests | Real CLI/account, exact live model IDs, question behavior, permission bypass from user configuration |
 | OpenCode | Synthetic model discovery without sessions, model confirmation, pinned environment controls | Real CLI/account, permission overrides against hostile configuration, real resume; remains opt-in |
 | OpenRouter | Mock HTTP authentication, catalog, streaming and fallback tests | Real account and credits/limit behavior |
+| Cheaper Inference | Mock HTTP catalog, streaming and saved-config tests | Real account and credits/limit behavior |
 
 No real-account compatibility, Windows compatibility, optional Docker package build or approval bypass resistance is claimed by these checks. Real CLI runs must record version, redacted responses and permission behavior before changing this table or default-enabling OpenCode.

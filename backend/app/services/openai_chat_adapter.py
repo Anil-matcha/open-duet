@@ -15,7 +15,9 @@ error message from the endpoint has it removed before it is shown.
 
 `OpenRouterAdapter` at the end is a preset of the same engine: OpenRouter's
 address filled in, its key required, and OpenRouter's optional app-attribution
-headers (sent to openrouter.ai only).
+headers (sent to openrouter.ai only). `CheaperInferenceAdapter` is the same
+kind of preset for Cheaper Inference: its address filled in and its key
+required.
 """
 
 import asyncio
@@ -49,6 +51,8 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_HOST = "openrouter.ai"
 # OpenRouter's optional app attribution (its public app rankings).
 OPENROUTER_ATTRIBUTION = {"HTTP-Referer": "https://github.com/Anil-matcha/open-duet", "X-Title": "Open Duet"}
+
+CHEAPER_INFERENCE_BASE_URL = "https://api.cheaperinference.com/v1"
 
 
 class InvalidConfig(ValueError):
@@ -491,3 +495,45 @@ class OpenRouterAdapter(OpenAIChatAdapter):
             probe = await self._probe_config(config)
             ctx.model = next((model.id for model in probe.models or [] if model.default), None)
         return await super().run_turn(ctx, sink, gate)
+
+
+class CheaperInferenceAdapter(OpenAIChatAdapter):
+    preset = True
+    config_fields = [
+        {"name": "api_key", "label": "Cheaper Inference API key", "kind": "secret", "required": True},
+        {"name": "model", "label": "Default model", "placeholder": "gpt-5.4-mini"},
+    ]
+    setup = {
+        "credential": "api_key", "docs_url": "https://cheaperinference.com/docs",
+        "notes": ["Create a Cheaper Inference key and save it here. Chat only.",
+                  "Requests go to Cheaper Inference and its model providers. Check their data policies before sending private content."],
+    }
+    """Cheaper Inference (https://cheaperinference.com) as a preset of the
+    OpenAI-compatible engine: its own saved configuration
+    (`engine:cheaperinference`), so it can sit beside a local endpoint. The
+    address defaults to Cheaper Inference's, a key is required, and models are
+    Cheaper Inference ids such as `gpt-5.4-mini` or `claude-sonnet-5`."""
+
+    key = "cheaperinference"
+    label = "Cheaper Inference"
+    not_configured = "Add your Cheaper Inference API key in Settings → Engines."
+
+    def validate_config(self, payload: dict, current: dict | None) -> dict:
+        base = payload.get("base_url")
+        if base and base.strip().rstrip("/") != CHEAPER_INFERENCE_BASE_URL:
+            raise InvalidConfig("Cheaper Inference uses its fixed address. Use the OpenAI-compatible engine for a proxy.")
+        payload = {**payload, "base_url": CHEAPER_INFERENCE_BASE_URL}
+        config = super().validate_config(payload, current)
+        if not config.get("api_key"):
+            raise InvalidConfig("Give your Cheaper Inference API key (cheaperinference.com → sign up).")
+        return config
+
+    async def status(self) -> ProviderStatus:
+        if not (self.config or {}).get("api_key"):
+            return ProviderStatus(ready=False, error=self.not_configured, installed=False)
+        return await super().status()
+
+    async def probe(self) -> EngineProbe:
+        if not (self.config or {}).get("api_key"):
+            return EngineProbe(installed=False, ready=False, reason=self.not_configured)
+        return await super().probe()
