@@ -281,7 +281,7 @@ Each field has its own **Save** and **Discard**, source, effective value, defaul
 
 **One more launcher variable**, optional: `OPEN_DOTS_DATA_DIR` (a full path) uses another data folder, for tests or a second copy. Like `OPEN_DOTS_CLAUDE_PATH` it is read by the launcher, not by the backend, and is not a `.env` setting.
 
-**Quitting.** Closing the window stops the backend. If the app is killed, the backend notices and stops within seconds. A message Claude was answering at that moment is interrupted and is not sent again (see [Durable threads](#durable-threads-experimental)).
+**Quitting.** Closing the window hides it to a tray icon; the backend keeps running, so routines and a turn in progress are not interrupted. Reopen from the tray, or quit from there (or from the system) to stop the backend for real. On a Linux desktop with no tray support, closing the window quits immediately, as it always has. If the app is killed outright, the backend notices and stops within seconds. A message Claude was answering at that moment is interrupted and is not sent again (see [Durable threads](#durable-threads-experimental)).
 
 **Limits of this version**
 

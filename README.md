@@ -140,6 +140,10 @@ is needed for the agent workspace.
   desktop app.
 - Desktop installers are unsigned and have limited platform verification. See
   [desktop setup details](docs/SETUP.md#desktop-app-from-a-source-checkout-experimental).
+- Closing the desktop window hides it to a tray icon instead of quitting, so
+  routines and running turns keep going; quit from the tray (or the system)
+  to actually stop them. On a Linux desktop with no tray support, closing the
+  window still quits, same as before.
 - Open Duet does not provide model access. You are responsible for your model
   provider's account, terms, and usage costs.
 - A built-in catalog of integrations such as Gmail, Slack, and Notion is not
