@@ -10,7 +10,7 @@
 // Everything that can be tested without Electron is in src/. This file only
 // connects those pieces to Electron.
 
-const { app, BrowserWindow, dialog, safeStorage, session, ipcMain, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, safeStorage, session, ipcMain, shell, systemPreferences } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -24,6 +24,7 @@ const { lastReason, describeFailure, describeUnexpectedExit } = require("./src/m
 const { NativeControl, registerNativeControl } = require("./src/native-control");
 const { createUpdater } = require("./src/updater");
 const { registerUpdates } = require("./src/updates-ipc");
+const { trayIconPath, trayMenuTemplate } = require("./src/tray");
 
 const mode = process.argv.includes("--mode=dev") ? "dev" : "start";
 // An installed app carries its own frozen backend and page; a checkout uses its own folders.
@@ -51,6 +52,49 @@ let shutdown = null;
 let backendOrigin = null;
 let nativeControl = null;
 let updater = null;
+let tray = null;
+const appDisplayName = mode === "dev" ? "Open Duet (dev)" : "Open Duet";
+
+// Brings the window back after it was hidden to the tray, or focuses it if it
+// never left. Safe to call when there is no window (closing mid-startup).
+function showWindow() {
+  if (!window || window.isDestroyed()) return;
+  if (process.platform === "darwin") app.dock?.show();
+  if (!window.isVisible()) window.show();
+  if (window.isMinimized()) window.restore();
+  window.focus();
+}
+
+// A tray icon is what lets closing the window mean "keep running in the
+// background" instead of "quit": without one there would be no way to get
+// the window back, or to tell a merely-hidden app from a dead one. Some Linux
+// desktops have no tray at all, so this never stops startup on failure --
+// closing the window then falls back to quitting, exactly as it always did.
+function createTray() {
+  if (process.env.OPEN_DOTS_DISABLE_TRAY === "1") return null;
+  try {
+    const iconFile = trayIconPath(paths.ui);
+    const image = iconFile ? nativeImage.createFromPath(iconFile) : nativeImage.createEmpty();
+    const created = new Tray(image);
+    created.setToolTip(appDisplayName);
+    created.setContextMenu(
+      Menu.buildFromTemplate(
+        trayMenuTemplate({
+          appName: appDisplayName,
+          onOpen: showWindow,
+          onQuit: () => {
+            quitting = true;
+            app.quit();
+          },
+        }),
+      ),
+    );
+    created.on("click", showWindow);
+    return created;
+  } catch {
+    return null;
+  }
+}
 
 // Stops what this launch started, once: this app's own connections first (the
 // backend waits for its connected clients, and idle keep-alive sockets held here
@@ -58,6 +102,8 @@ let updater = null;
 function stopEverything() {
   shutdown ??= (async () => {
     quitting = true;
+    tray?.destroy();
+    tray = null;
     await nativeControl?.close();
     try {
       await session.defaultSession?.closeAllConnections?.();
@@ -129,9 +175,7 @@ async function main() {
     return;
   }
   app.on("second-instance", () => {
-    if (!window) return;
-    if (window.isMinimized()) window.restore();
-    window.focus();
+    showWindow();
   });
 
   await app.whenReady();
@@ -169,6 +213,19 @@ async function main() {
   window.on("closed", () => {
     window = null;
   });
+  tray = createTray();
+  if (tray) {
+    // With a tray available, closing the window hides it (agents, routines and
+    // any run in progress keep going) instead of ending the app. A real quit --
+    // the tray's own Quit item, the system, a menu -- sets `quitting` first, so
+    // this only intercepts the window's own close button / Cmd+Q-as-close-window.
+    window.on("close", (event) => {
+      if (quitting) return;
+      event.preventDefault();
+      if (process.platform === "darwin") app.dock?.hide();
+      window.hide();
+    });
+  }
 
   const dataDir = path.join(userData, "data");
   const logFile = path.join(userData, "logs", "backend.log");
@@ -255,6 +312,9 @@ function startUpdateChecks() {
   setInterval(() => void updater?.check(), 6 * 60 * 60 * 1000).unref();
 }
 
+// With a tray, the window is hidden rather than closed (above), so this only
+// fires when there is no tray to fall back to background running: quit, as
+// it always has.
 app.on("window-all-closed", () => {
   leave();
 });

@@ -4,6 +4,12 @@
 
 ### Added
 
+- Closing the desktop window now hides it to a tray icon instead of quitting,
+  so agents, routines and a turn in progress keep running with the window
+  closed; quit from the tray or the system to stop the backend. Falls back to
+  quitting on close where no tray is available. Real packaged-app behavior,
+  Windows and Linux tray support, and dock-icon handling on macOS were not
+  run.
 - Sign out of the shared Claude or Codex CLI account from Settings after
   confirmation, then sign in again to switch accounts. Account removal refuses
   pending sign-in and active or starting conversations, bounds CLI execution,
