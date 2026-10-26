@@ -4,8 +4,8 @@
 
 ### Added
 
-- Require the real Linux filesystem and network sandbox checks in backend CI,
-  with bubblewrap installed and skipped checks treated as failures. The new CI
+- Require the real Linux filesystem and network sandbox checks in backend CI on
+  Ubuntu 22.04, with bubblewrap installed and skipped checks treated as failures. The new CI
   job and real Linux enforcement were not run locally on this macOS host;
   provider sessions and stop/orphan cleanup still need separate qualification.
 
@@ -88,6 +88,10 @@
   and provider qualification remain open.
 
 ### Fixed
+
+- Resolve the Python interpreter's real path before launching the Linux network
+  sandbox bridge. Custom Python runtimes still need an explicit read-only grant;
+  provider sessions, stop/timeouts and orphan cleanup were not run.
 
 - Concurrent Today refreshes and first visits serialize their state and publish
   one card and notification. A failed publication rolls back its new chat too.

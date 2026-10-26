@@ -94,7 +94,9 @@ jobs:
     name: Linux sandbox enforcement
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-24.04
+    # Keep the test host's namespace policy intact. Ubuntu 24.04's hosted
+    # runner refused the real sandbox self-check; qualify on this host first.
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     defaults:
       run:
@@ -112,6 +114,27 @@ jobs:
           bwrap --version
           uname -srmo
       - run: uv sync --frozen
+      - name: Diagnose namespace availability without changing host policy
+        run: |
+          uv run python - <<'PY'
+          import subprocess
+          from app.core.config import settings
+          from app.core import turn_sandbox as box
+          settings.TURN_SANDBOX_ENABLED = True
+          for network in (False, True):
+              settings.TURN_SANDBOX_NETWORK_ENABLED = network
+              result = subprocess.run(
+                  [*box._base(), '--', '/bin/sh', '-c',
+                   'readlink /proc/self/ns/pid; readlink /proc/self/ns/net'],
+                  env={'PATH': '/usr/bin:/bin'}, capture_output=True,
+                  text=True, timeout=10,
+              )
+              print(f'network isolation={network}, exit={result.returncode}', flush=True)
+              print(result.stdout, end='', flush=True)
+              print(result.stderr, end='', flush=True)
+              if result.returncode:
+                  raise SystemExit(result.returncode)
+          PY
       - name: Require real filesystem and network enforcement
         run: |
           uv run pytest -v -rs --junitxml=../sandbox-results.xml \

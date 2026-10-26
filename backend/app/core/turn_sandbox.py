@@ -149,7 +149,10 @@ def command(args: list[str], *, cwd: str | Path, env: Mapping[str, str],
             result.extend(['--setenv', name, proxy])
         for name in ('NO_PROXY', 'no_proxy', 'ALL_PROXY', 'all_proxy'):
             result.extend(['--unsetenv', name])
-        result.extend(['--chdir', str(work), '--', sys.executable, helper, 'bridge', *args])
+        # Runtime mounts are canonicalized. A venv's interpreter symlink can
+        # reference an unmounted alias even when its real runtime was granted.
+        interpreter = str(Path(sys.executable).resolve(strict=True))
+        result.extend(['--chdir', str(work), '--', interpreter, helper, 'bridge', *args])
         return [sys.executable, helper, 'supervise', *result]
     result.extend(['--chdir', str(work), '--', *args])
     return result

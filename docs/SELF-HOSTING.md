@@ -401,7 +401,12 @@ agent folder stays hidden; the backend still answers that agent's memory tools
 through the mounted mailbox.
 
 Custom runtime installations outside standard system paths need explicit
-comma-separated `TURN_SANDBOX_READONLY_PATHS` entries. Additional account files
+comma-separated `TURN_SANDBOX_READONLY_PATHS` entries. For managed Python,
+grant the real base runtime directory reported by
+`python -c 'import pathlib, sys; print(pathlib.Path(sys.base_prefix).resolve())'`.
+The network bridge resolves its interpreter symlink before entering the box;
+it does not automatically grant the runtime or its parent directory.
+Additional account files
 (such as Claude's `~/.claude.json`) and ACP account directories can be granted
 with `TURN_SANDBOX_WRITABLE_PATHS`. Grant the narrowest path: a whole HOME,
 filesystem root or application data parent is rejected. These are trusted owner
@@ -418,9 +423,9 @@ backend; errors stop launch. It reports network access as **unrestricted**.
 The optional Linux test in `tests/core/test_turn_sandbox.py` additionally checks
 workspace writes; it is skipped on hosts without Linux/bubblewrap.
 
-Backend CI has a separate **Linux sandbox enforcement** job that installs
-bubblewrap and requires both real Linux tests to pass without skips. A missing
-runtime or refused namespace fails this job; it does not disable host security
+Backend CI has a separate **Linux sandbox enforcement** job on Ubuntu 22.04
+that installs bubblewrap and requires both real Linux tests to pass without
+skips. A missing runtime or refused namespace fails this job; it does not disable host security
 settings or fall back to an unboxed command. The job preserves its JUnit report.
 To run the same focused tests on your Linux server, from `backend`:
 
