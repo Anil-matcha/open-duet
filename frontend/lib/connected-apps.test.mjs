@@ -105,7 +105,7 @@ test("saving sends only known levels, and nothing for an engine that cannot use 
   assert.equal(scopesToSend({}, "claude"), null);
   assert.equal(scopesToSend(null, "claude"), null);
   assert.equal(scopesToSend({ github: "write" }, "codex"), null);
-  assert.deepEqual(scopesToSend({ github: "write", gmail: "read", slack: "write" }, "claude"), { github: "write" });
+  assert.deepEqual(scopesToSend({ github: "write", gmail: "read", slack: "write" }, "claude"), { github: "write", gmail: "read" });
   assert.equal(scopesToSend({ github: "admin" }, "claude"), null);
   assert.ok(AGENT_APPS.every((app) => app.slug && app.label && app.read && (app.write === null || typeof app.write === 'string')));
 });

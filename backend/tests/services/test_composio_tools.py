@@ -358,7 +358,9 @@ def test_the_shim_lists_only_allowed_apps_and_carries_a_call_through_the_mailbox
         {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "GITHUB_DELETE_A_REPOSITORY", "arguments": {}}},
     ], backend)
     assert replies[0]["result"]["serverInfo"]["name"] == "composio"
-    assert {t["name"] for t in replies[1]["result"]["tools"]} == {"list_accounts", *(t.name for t in tools.TOOLS if t.kind == "read")}
+    assert {t["name"] for t in replies[1]["result"]["tools"]} == {
+        "list_accounts", *(t.name for t in tools.TOOLS if t.app == "github" and t.kind == "read")
+    }
     assert seen == [{"name": "github_list_issues", "arguments": {"owner": "o", "repo": "r"}}]
     assert json.loads(replies[2]["result"]["content"][0]["text"])["count"] == 0
     assert replies[3]["result"]["isError"] is True  # not in its list: refused, no request file made

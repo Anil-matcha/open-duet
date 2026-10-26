@@ -30,14 +30,25 @@ async def test_a_new_agent_has_no_apps_and_they_can_be_allowed_and_removed(api):
 
 
 @pytest.mark.parametrize("scopes", [
-    {"github": "admin"}, {"github": True}, {"github": ""}, {"gmail": "read"}, {"slack": "read"},
-    {"github": "read", "gmail": "read"}, {"": "read"},
+    {"github": "admin"}, {"github": True}, {"github": ""}, {"slack": "read"},
+    {"github": "read", "slack": "read"}, {"": "read"}, {"googlecalendar": "write"},
 ])
 async def test_only_known_apps_and_known_levels_are_accepted(api, scopes):  # noqa: F811
     agent = await new_agent(api)
     response = await api.patch(f"/api/v1/agents/{agent['id']}", json={"connector_scopes": scopes})
     assert response.status_code in (422,), response.text
     assert (await api.get(f"/api/v1/agents/{agent['id']}")).json()["connector_scopes"] is None
+
+
+@pytest.mark.parametrize("scopes", [
+    {"gmail": "read"}, {"gmail": "write"}, {"googlecalendar": "read"},
+    {"github": "read", "gmail": "read", "googlecalendar": "read"},
+])
+async def test_supported_apps_can_be_allowed(api, scopes):  # noqa: F811
+    agent = await new_agent(api)
+    response = await api.patch(f"/api/v1/agents/{agent['id']}", json={"connector_scopes": scopes})
+    assert response.status_code == 200, response.text
+    assert response.json()["connector_scopes"] == scopes
 
 
 @pytest.mark.parametrize("scopes", [["github"], "github", 5])

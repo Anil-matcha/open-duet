@@ -202,10 +202,12 @@ async def test_an_app_the_agent_was_not_given_is_denied_at_the_gate(world, fake,
     async def handler(ctx, sink, gate):
         seen["apps"] = ctx.composio_apps
         seen["launch"] = ctx.composio_launch
+        seen["github"] = await ask(ctx, gate, "github_get_authenticated_user", {})
         return TurnOutcome("succeeded", result="ok")
 
     await one_turn(world, handler)
-    assert seen == {"apps": None, "launch": None}  # "gmail" has no tools yet: no server at all
+    assert seen["apps"] == {"gmail": "read"} and seen["launch"] is not None
+    assert seen["github"] == {"decision": "deny"} and fake.executes == []
 
 
 async def test_removing_the_app_mid_turn_stops_a_call_that_was_already_approved(world, fake, sessions):
