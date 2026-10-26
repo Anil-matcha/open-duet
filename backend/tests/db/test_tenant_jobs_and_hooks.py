@@ -61,6 +61,22 @@ async def test_a_job_runs_for_the_default_schema_and_every_account_even_a_new_on
 
 
 @pytest.mark.asyncio
+async def test_a_job_that_reaches_the_boat_adapter_sees_the_accounts_own_id(tenants):
+    """Routine runs and task sync start turns from these jobs; the Boat executor names the sandbox
+    owner from the context (services/boat_adapter.current_user), so it must be the account's."""
+    from app.services import boat_adapter
+
+    a, b = tenants(), tenants()
+    resolved: dict[str | None, str] = {}
+
+    async def job():
+        resolved[tenant_schema.current_tenant()] = boat_adapter.current_user()
+
+    await tenant_jobs.per_tenant(job)()
+    assert resolved[a] == a and resolved[b] == b and resolved[None] == "owner"
+
+
+@pytest.mark.asyncio
 async def test_one_accounts_failure_never_stops_the_others(tenants):
     a, b = tenants(), tenants()
     ran: list[str | None] = []
