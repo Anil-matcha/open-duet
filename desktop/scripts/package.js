@@ -10,6 +10,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { layout } = require("../src/paths");
+const { checkPackageSpace } = require("../src/package-space");
 
 const paths = layout();
 const builder = path.join(paths.desktop, "node_modules", "electron-builder", "cli.js");
@@ -30,6 +31,11 @@ if (!fs.existsSync(builder)) fail("electron-builder is not installed. Run: npm r
 
 const target = { win32: "--win", darwin: "--mac", linux: "--linux" }[process.platform];
 if (!target) fail(`No installer target for ${process.platform}.`);
+try {
+  checkPackageSpace(paths);
+} catch (error) {
+  fail(error.message);
+}
 run("Building the page", process.execPath, [path.join(__dirname, "build.js")], paths.desktop);
 run(
   "Freezing the backend",
