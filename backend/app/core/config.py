@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     # Opt-in web search and page fetching for Claude tasks, via HTTP MCP.
     PARALLEL_SEARCH_ENABLED: bool = False
+    # Opt-in publishing of HTML pages to a public deed.page URL for Claude
+    # tasks, via keyless HTTP MCP. Published pages are public.
+    DEEDPAGE_PUBLISH_ENABLED: bool = False
 
     # Which database to use: "sqlite" or "postgres". Empty means PostgreSQL, as
     # it always has, so no existing setup changes database unless this is set.

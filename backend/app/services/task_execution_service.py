@@ -144,6 +144,30 @@ async def _write_permission_hook_config(box_id: str, user_id: str, task_id: int)
     )
 
 
+_USER_AGENT = "OpenDuet/0.1 (+https://github.com/Anil-matcha/open-duet)"
+
+
+def _optional_mcp_servers(provider: str) -> dict:
+    """Opt-in HTTP MCP servers for Claude tasks, keyed by server name."""
+    servers: dict = {}
+    if provider != "claude":
+        return servers
+    if settings.PARALLEL_SEARCH_ENABLED:
+        servers["open-dots-parallel-search"] = {
+            "type": "http",
+            "url": "https://search.parallel.ai/mcp",
+            "headers": {"User-Agent": _USER_AGENT},
+        }
+    if settings.DEEDPAGE_PUBLISH_ENABLED:
+        # Publishes to a public https://<slug>.deed.page/ URL; no key needed.
+        servers["open-dots-deed-page"] = {
+            "type": "http",
+            "url": "https://deed.page/mcp",
+            "headers": {"User-Agent": _USER_AGENT},
+        }
+    return servers
+
+
 def _build_command(
     provider: str, prompt_text: str, *, session_id: str, resume: bool
 ) -> str:
@@ -151,19 +175,10 @@ def _build_command(
     if template is None:
         raise UnsupportedProviderError(f"Unsupported provider: {provider}")
     base = template.format(prompt=shlex.quote(prompt_text))
-    if provider == "claude" and settings.PARALLEL_SEARCH_ENABLED:
+    servers = _optional_mcp_servers(provider)
+    if servers:
         # Per-invocation config keeps saved MCP servers and credentials intact.
-        mcp_config = {
-            "mcpServers": {
-                "open-dots-parallel-search": {
-                    "type": "http",
-                    "url": "https://search.parallel.ai/mcp",
-                    "headers": {
-                        "User-Agent": "OpenDuet/0.1 (+https://github.com/Anil-matcha/open-duet)"
-                    },
-                }
-            }
-        }
+        mcp_config = {"mcpServers": servers}
         base += f" --mcp-config {shlex.quote(json.dumps(mcp_config))}"
     flag = "--resume" if resume else "--session-id"
     return f"{base} {flag} {shlex.quote(session_id)}"
