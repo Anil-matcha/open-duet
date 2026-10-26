@@ -175,7 +175,7 @@ def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provider: st
     except Exception:  # noqa: BLE001  (an unknown engine is reported by its own check)
         mounts = False
     if not mounts:
-        raise _error(409, "engine_without_connected_apps", "This engine cannot use connected apps yet. Use a Claude agent.")
+        raise _error(409, "engine_without_connected_apps", "This engine cannot use connected apps yet.")
     return dict(sorted(scopes.items()))
 
 

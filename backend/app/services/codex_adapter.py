@@ -22,12 +22,12 @@ checked before the turn starts (a mismatch fails the turn):
                   asked and nothing can be written
     tools off     (LOCAL_TOOLS_ENABLED unset, no agent computer) as plan
 
-Native-tool questions in plan or with local tools off are declined. Team MCP
-calls use the app's team policy: read calls can proceed while mutations are
-refused in plan. With team tools attached the upstream policy permits MCP
-elicitation even when the filesystem sandbox remains read-only. MCP
-tool approvals Codex raises for servers in the person's own Codex config go
-through the gate too; every other question this app does not know is
+Native-tool questions in plan or with local tools off are declined. Team and
+connected-app MCP calls use the app's scoped policies: reads can proceed while
+mutations are refused in plan. With these tools attached the upstream policy
+permits MCP elicitation even when the filesystem sandbox remains read-only.
+MCP tool approvals Codex raises for servers in the person's own Codex config
+go through the gate too; every other question this app does not know is
 refused. Codex reads files under its read-only sandbox without asking, more
 than Claude's ask mode allows; see docs/ENGINES.md.
 
@@ -46,12 +46,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from app import composio_tools
 from app.computers import grants
 from app.computers.policy import COMPUTER_TOOL_PREFIX
 from app.core import app_settings
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.services import cli_probe, local_claude_runner, memory_bridge
+from app.services import cli_probe, composio_bridge, local_claude_runner, memory_bridge
 from app.services.local_approval_broker import MAX_REVIEWABLE_INPUT_CHARS
 from app.services.local_claude_stream import summarize_tool
 from app.services.provider_adapter import (
@@ -87,6 +88,7 @@ COMMAND_REQUESTS = ("item/commandExecution/requestApproval", "execCommandApprova
 FILE_REQUESTS = ("item/fileChange/requestApproval", "applyPatchApproval")
 LEGACY_REQUESTS = ("execCommandApproval", "applyPatchApproval")
 COMPUTER_SERVER = local_claude_runner.COMPUTER_SERVER
+CODEX_COMPOSIO_SERVER = "open_dots_composio"
 # A computer turn runs only the computer's tools: Codex's own shell, unified
 # exec, image read and web search are switched off for the thread (checked
 # against codex-cli 0.164.0), and `environments: []` on every turn removes the
@@ -213,7 +215,8 @@ class CodexAdapter:
     label = "Codex"
     kind = "cli"
     capabilities = Capabilities(
-        tools=True, approvals=True, mcp=True, images=False, resume=True, computers=True, memory_tools=True
+        tools=True, approvals=True, mcp=True, images=False, resume=True, computers=True, memory_tools=True,
+        connected_apps=True,
     )
     models: list[ModelOption] = []
     custom_models = True
@@ -365,9 +368,10 @@ class _CodexTurn:
         self.tools = bool(app_settings.get("LOCAL_TOOLS_ENABLED")) or self.computer is not None
         self.mode = self.ctx.approval_mode or "ask"
         self.policy = codex_policy(self.mode, self.tools, self.computer is not None)
-        if self.ctx.team_launch is not None and (not self.tools or self.mode == 'plan'):
+        has_gated_mcp = self.ctx.team_launch is not None or self.ctx.composio_launch is not None
+        if has_gated_mcp and (not self.tools or self.mode == 'plan'):
             # Codex 0.164 refuses MCP elicitation with approvalPolicy=never. The
-            # app still gates every team call; native tools stay read-only/denied.
+            # app still gates every attached MCP call; native tools stay read-only/denied.
             self.policy = CodexPolicy('untrusted', 'read-only', 'readOnly')
         self.max_text = app_settings.get("LOCAL_MAX_OUTPUT_BYTES")
         self.clock = TurnClock(app_settings.get("LOCAL_TASK_TIMEOUT_SECONDS"))
@@ -386,7 +390,9 @@ class _CodexTurn:
                 cwd=str(self.workspace),
                 max_bytes=self.max_text * RAW_STREAM_SIZE_FACTOR,
                 sandbox=True,
-                sandbox_writable=turn_sandbox.mailbox_mounts((self.ctx.team_launch, self.ctx.memory_launch)),
+                sandbox_writable=turn_sandbox.mailbox_mounts((
+                    self.ctx.team_launch, self.ctx.memory_launch, self.ctx.composio_launch,
+                )),
                 sandbox_readonly=[Path(image["path"]) for image in (self.ctx.images or [])],
             )
         except turn_sandbox.SandboxUnavailable as exc:
@@ -487,6 +493,17 @@ class _CodexTurn:
                 "command": team_launch.command, "args": list(team_launch.args), "env": dict(team_launch.env),
                 "default_tools_approval_mode": "prompt",
             }
+        if self.ctx.composio_launch is not None:
+            app_launch = self.ctx.composio_launch
+            levels = self.ctx.composio_apps or {}
+            servers = common.setdefault("config", {}).setdefault("mcp_servers", {})
+            servers[CODEX_COMPOSIO_SERVER] = {
+                "command": app_launch.command, "args": list(app_launch.args), "env": dict(app_launch.env),
+                "enabled_tools": [tool["name"] for tool in composio_tools.mcp_tools(levels)],
+                "default_tools_approval_mode": "prompt",
+            }
+            note = composio_tools.tool_note(levels)
+            instructions = f"{instructions}\n\n{note}" if instructions else note
         if instructions:
             common["developerInstructions"] = instructions
         try:
@@ -721,6 +738,13 @@ class _CodexTurn:
             elif item.get("server") == "team" and self.ctx.team_launch is not None and isinstance(item.get("tool"), str):
                 name = "mcp__team__" + item["tool"]
                 summary = summarize_tool(name, tool_input)
+            elif (
+                item.get("server") == CODEX_COMPOSIO_SERVER
+                and self.ctx.composio_launch is not None
+                and isinstance(item.get("tool"), str)
+            ):
+                name = composio_bridge.PREFIX + item["tool"]
+                summary = summarize_tool(name, tool_input)
             else:
                 name = f"mcp:{item.get('server')}.{item.get('tool')}"
                 summary = name
@@ -803,8 +827,13 @@ class _CodexTurn:
             return {"decision": "accept" if allow else "decline"}
 
         team_call = kind == "mcp" and params.get("serverName") == "team" and self.ctx.team_launch is not None
-        # Team policy decides read/consult versus mutation even with local shell tools off.
-        if not team_call and (not self.tools or self.mode == "plan"):
+        composio_call = (
+            kind == "mcp"
+            and params.get("serverName") == CODEX_COMPOSIO_SERVER
+            and self.ctx.composio_launch is not None
+        )
+        # Attached MCP policy decides reads versus mutations with local tools off.
+        if not (team_call or composio_call) and (not self.tools or self.mode == "plan"):
             self.rpc.respond(rid, payload(False))
             return
 
@@ -847,6 +876,15 @@ class _CodexTurn:
                     self.rpc.respond(rid, payload(False))
                     return
                 tool, approval_kind = "mcp__team__" + name, "other"
+                summary = summarize_tool(tool, tool_input)
+            elif composio_call:
+                found = self._computer_call(server, text, meta)
+                if found is None:
+                    self.rpc.respond(rid, payload(False))
+                    return
+                name, tool_input = found
+                tool = composio_bridge.PREFIX + name
+                approval_kind = "other"
                 summary = summarize_tool(tool, tool_input)
             elif self.computer is not None:
                 # Only the computer's own tools can be asked about here.

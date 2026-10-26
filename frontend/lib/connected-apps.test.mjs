@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AGENT_APPS, accountsOf, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, withApp } from "./connected-apps.ts";
+import { AGENT_APPS, accountsOf, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, supportsConnectedApps, withApp } from "./connected-apps.ts";
 
 const LINK = "https://connect.composio.dev/link/lk_abc";
 const account = (id, status, toolkit = "github") => ({ id, status, toolkit, alias: null, created_at: null, updated_at: null });
@@ -99,13 +99,16 @@ test("a level is read back as off unless it is a known one", () => {
   assert.equal(levelOf({ gmail: "read" }, "github"), "off");
 });
 
-test("saving sends only known levels, and nothing for an engine that cannot use apps", () => {
+test("saving sends known levels for engines that support apps", () => {
   assert.deepEqual(scopesToSend({ github: "read" }, "claude"), { github: "read" });
   assert.deepEqual(scopesToSend({ github: "write" }, "claude"), { github: "write" });
+  assert.deepEqual(scopesToSend({ github: "write", gmail: "read" }, "codex"), { github: "write", gmail: "read" });
   assert.equal(scopesToSend({}, "claude"), null);
   assert.equal(scopesToSend(null, "claude"), null);
-  assert.equal(scopesToSend({ github: "write" }, "codex"), null);
+  assert.equal(scopesToSend({ github: "write" }, "openai_compat"), null);
   assert.deepEqual(scopesToSend({ github: "write", gmail: "read", slack: "write" }, "claude"), { github: "write", gmail: "read" });
   assert.equal(scopesToSend({ github: "admin" }, "claude"), null);
+  assert.equal(supportsConnectedApps("codex"), true);
+  assert.equal(supportsConnectedApps("openai_compat"), false);
   assert.ok(AGENT_APPS.every((app) => app.slug && app.label && app.read && (app.write === null || typeof app.write === 'string')));
 });

@@ -1,14 +1,15 @@
 # Connected apps
 
-Connect an app in Settings, then choose which Claude agents may use it. Apps
-are reached through [Composio](https://composio.dev) with **your own Composio
-project key**; there is no shared key and nothing is sent to a service run by
-this project.
+Connect an app in Settings, then choose which Claude or Codex agents may use
+it. Apps are reached through [Composio](https://composio.dev) with **your own
+Composio project key**; there is no shared key and nothing is sent to a
+service run by this project.
 
-GitHub, Gmail and Google Calendar are available to existing Claude agents.
+GitHub, Gmail and Google Calendar are available to existing Claude and Codex
+agents. The app mounts a turn-scoped, permission-filtered MCP server and sends
+Codex MCP approval requests through the same approval gate used for Claude.
 Gmail and Calendar tools are bounded read tools; Gmail can also save a draft
-reply after you approve it. Codex and the other engines cannot use connected
-apps yet.
+reply after you approve it. Other engines cannot use connected apps yet.
 
 ## Set it up
 
@@ -22,12 +23,12 @@ apps yet.
    approve. This page notices when you are done. You may give the account a
    name; with more than one account for an app (up to five) the agent must say
    which one to use.
-4. **Allow an agent.** Open an existing Claude agent, find Connected apps,
-   choose **Off** or **Read only** for each app; GitHub and Gmail also have
-   **Read and change**. Save, start a new conversation with that agent, and
-   ask naturally, for example, “Find the latest unread message from Alex and
-   summarize it,” “What is on my calendar tomorrow?” or “Draft a reply to that
-   email.” New agents and copies start with all apps Off. If the agent was
+4. **Allow an agent.** Open an existing Claude or Codex agent, find Connected
+   apps, choose **Off** or **Read only** for each app; GitHub and Gmail also
+   have **Read and change**. Save, start a new conversation with that agent,
+   and ask naturally, for example, “Find the latest unread message from Alex
+   and summarize it,” “What is on my calendar tomorrow?” or “Draft a reply to
+   that email.” New agents and copies start with all apps Off. If the agent was
    already chatting, start a new conversation so it receives the updated tool
    list.
 
@@ -96,9 +97,9 @@ at Composio, so disconnect them first if you want them gone.
 ## If something does not work
 
 - **The agent ignores a connected app.** Check the app is allowed on that
-  existing Claude agent, then start a new conversation. For GitHub, name the
-  repository as `owner/name`; for Gmail and Calendar, ask for a specific search
-  or date window.
+  existing Claude or Codex agent, then start a new conversation. For GitHub,
+  name the repository as `owner/name`; for Gmail and Calendar, ask for a
+  specific search or date window.
 - **"No account named …" or "more than one account".** Name the account to use,
   or disconnect the extra one.
 - **"answered in a form this app does not read".** The message lists the
@@ -118,12 +119,14 @@ at Composio, so disconnect them first if you want them gone.
 ## What has been checked
 
 Existing automated checks use a fake Composio and a real runtime, approval
-gate and Claude adapter. By hand, on Windows with the desktop app and the web
+gate and Claude adapter. The Codex adapter now mounts the same scoped tools
+and routes Codex's MCP request through that approval gate; live Codex use has
+not yet been checked. By hand, on Windows with the desktop app and the web
 build, the real Claude CLI, your own Composio project and a private test
 repository: GitHub connecting, listing, disconnecting and approved issue
 changes, plus Deny and the Read-only refusal. Gmail and Calendar agent tools
-were added in source but have not been run against live accounts. The desktop
-static UI build succeeded and the source-checkout Mac app was relaunched, but
-no Gmail or Calendar call was made in it. Not run for this change: tests, a
-packaged installer, Gmail or Calendar live calls, Linux and its sandbox, a
-real lost-answer failure, and revocation at GitHub.
+have not been run against live accounts. The desktop static UI build succeeded
+and the source-checkout Mac app was relaunched, but no Gmail or Calendar call
+was made in it. No automated tests were run for the Codex increment. A
+packaged installer, Gmail or Calendar live calls from Codex, Linux and its
+sandbox, a real lost-answer failure, and revocation at GitHub remain unchecked.

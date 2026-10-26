@@ -88,7 +88,7 @@ export function accountsOf(accounts: ComposioAccount[], toolkit: string): Compos
   return accounts.filter((account) => account.toolkit === toolkit);
 }
 
-// The apps an agent can be allowed to use in this version, and the engine that can use them.
+// The apps and engines an agent can be allowed to use in this version.
 export const AGENT_APPS: { slug: string; label: string; read: string; write: string | null }[] = [
   {
     slug: "github", label: "GitHub",
@@ -106,7 +106,11 @@ export const AGENT_APPS: { slug: string; label: string; read: string; write: str
     write: null,
   },
 ];
-export const APPS_ENGINE = "claude";
+const APPS_ENGINES = new Set(["claude", "codex"]);
+
+export function supportsConnectedApps(provider: string): boolean {
+  return APPS_ENGINES.has(provider);
+}
 
 export type Level = "off" | "read" | "write";
 export type Scopes = Record<string, string>;
@@ -126,7 +130,7 @@ export function withApp(scopes: Scopes | null | undefined, slug: string, level: 
 // What to send when saving an agent: nothing for an engine that cannot use apps
 // (this also clears them if the engine was changed), else the known levels or null.
 export function scopesToSend(scopes: Scopes | null | undefined, provider: string): Scopes | null {
-  if (provider !== APPS_ENGINE) return null;
+  if (!supportsConnectedApps(provider)) return null;
   const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) => {
     const app = AGENT_APPS.find((candidate) => candidate.slug === slug);
     return Boolean(app && (level === "read" || (level === "write" && app.write)));

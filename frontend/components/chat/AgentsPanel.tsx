@@ -14,7 +14,7 @@ import {
   redactionNotice,
 } from "@/lib/agents";
 import { computerStateLabel } from "@/lib/computers";
-import { AGENT_APPS, APPS_ENGINE, levelOf, scopesToSend, withApp, type Level, type Scopes } from "@/lib/connected-apps";
+import { AGENT_APPS, levelOf, scopesToSend, supportsConnectedApps, withApp, type Level, type Scopes } from "@/lib/connected-apps";
 import { ComputerView } from "./ComputerPanel";
 import { EngineModelFields } from "./EngineModelFields";
 import { MemoryPanel } from "./MemoryPanel";
@@ -550,7 +550,7 @@ export function AgentsPanel({
                 </div>
                 {modeInfo && <p className="mt-2">{modeInfo.description}</p>}
               </fieldset>
-              {draft.id !== null && draft.provider === APPS_ENGINE && <fieldset className="space-y-3 text-xs text-muted">
+              {draft.id !== null && supportsConnectedApps(draft.provider) && <fieldset className="space-y-3 text-xs text-muted">
                 <legend>Connected apps</legend>
                 {AGENT_APPS.map((app) => <div key={app.slug} className="space-y-1">
                   <p className="text-sm text-ink">{app.label}</p>

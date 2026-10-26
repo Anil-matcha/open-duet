@@ -78,15 +78,14 @@ metadata-only routing logs. Keep tool approval rules unchanged.
 
 ### P1 — Expand connected-app access after core trust work
 
-GitHub is available through your own Composio key: connect it in Settings,
-then allow it per Claude agent as Read only or Read and change, where every
-change asks on a card (see [connected apps](CONNECTED_APPS.md)). Gmail and
-Calendar can be connected but have no agent tools. Next: other apps such as
-Gmail, Calendar, Slack and Notion, each with a fixed, reviewed tool list
-checked against the live app; Codex support; custom MCP authentication; and
-app-event triggers, which also need a way to receive events. Keep
-idempotency, revocation (check it at the provider), clear data provenance and
-bounded responses as the bar for every new app.
+GitHub, Gmail and Calendar are available through your own Composio key: connect
+them in Settings, then allow each app per Claude or Codex agent. Bounded reads
+and one-use approvals for changes are described in
+[connected apps](CONNECTED_APPS.md). Next: other apps such as Slack and Notion,
+each with a fixed, reviewed tool list checked against the live app; custom MCP
+authentication; and app-event triggers, which also need a way to receive
+events. Keep idempotency, revocation (check it at the provider), clear data
+provenance and bounded responses as the bar for every new app.
 
 ### P1 — Verify memory, teams and computers across engines
 

@@ -4,6 +4,11 @@
 
 ### Added
 
+- Allow existing Codex agents to use the same per-agent GitHub, Gmail and
+  Google Calendar Composio grants as Claude agents. Codex mounts a scoped MCP
+  server per turn and routes tool requests through the existing one-use approval
+  gate. The Codex live-provider flow and Gmail calls have not been qualified.
+
 - Navigate saved skill suggestions in chat with Up/Down and choose one with
   Enter, Tab or a click. Escape keeps the draft, disabled/already chosen skills
   are hidden, and the three-skill limit is enforced before selection. Choosing
