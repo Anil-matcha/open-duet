@@ -51,6 +51,15 @@ OPENROUTER_HOST = "openrouter.ai"
 # OpenRouter's optional app attribution (its public app rankings).
 OPENROUTER_ATTRIBUTION = {"HTTP-Referer": "https://github.com/Anil-matcha/open-duet", "X-Title": "Open Duet"}
 
+MINIMAX_ENDPOINTS = {
+    "global_en": "https://api.minimax.io/v1",
+    "cn_zh": "https://api.minimaxi.com/v1",
+}
+MINIMAX_MODELS = [
+    ModelOption("MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash", True),
+    ModelOption("MiniMax-M3", "MiniMax-M3"),
+]
+
 
 class InvalidConfig(ValueError):
     pass
@@ -506,3 +515,42 @@ class OpenRouterAdapter(OpenAIChatAdapter):
             probe = await self._probe_config(config)
             ctx.model = next((model.id for model in probe.models or [] if model.default), None)
         return await super().run_turn(ctx, sink, gate)
+
+
+class MiniMaxAdapter(OpenAIChatAdapter):
+    """MiniMax's hosted OpenAI-compatible API as a first-class engine preset."""
+
+    preset = True
+    key = "minimax"
+    label = "MiniMax"
+    models = MINIMAX_MODELS
+    custom_models = False
+    config_fields = [
+        {"name": "base_url", "label": "API base URL", "kind": "url", "required": True,
+         "placeholder": MINIMAX_ENDPOINTS["global_en"]},
+        {"name": "api_key", "label": "MiniMax API key", "kind": "secret", "required": True},
+        {"name": "model", "label": "Default model", "placeholder": "MiniMax-M3.1-Flash"},
+    ]
+    setup = {
+        "credential": "api_key",
+        "docs_url": "https://platform.minimax.io/docs/api-reference/api-overview",
+        "notes": [
+            "Chat only. Use the global endpoint https://api.minimax.io/v1 or the China endpoint https://api.minimaxi.com/v1.",
+            "Available model presets: MiniMax-M3.1-Flash and MiniMax-M3.",
+        ],
+    }
+    not_configured = "Add a MiniMax API key and endpoint in Settings → Engines."
+
+    def validate_config(self, payload: dict, current: dict | None) -> dict:
+        current = current or {}
+        base = payload.get("base_url") or current.get("base_url")
+        if not isinstance(base, str) or base.rstrip("/") not in MINIMAX_ENDPOINTS.values():
+            raise InvalidConfig("Use the MiniMax global or China OpenAI endpoint.")
+        model = payload.get("model") or current.get("model") or MINIMAX_MODELS[0].id
+        if model not in {item.id for item in MINIMAX_MODELS}:
+            raise InvalidConfig("Choose MiniMax-M3.1-Flash or MiniMax-M3.")
+        payload = {**payload, "base_url": base, "model": model, "context_tokens": 1_000_000}
+        config = super().validate_config(payload, current)
+        if not config.get("api_key"):
+            raise InvalidConfig("Give your MiniMax API key.")
+        return config
