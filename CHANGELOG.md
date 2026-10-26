@@ -4,6 +4,14 @@
 
 ### Added
 
+- Connect apps from Settings with your own Composio project key: save the key
+  (stored encrypted, never shown again), connect GitHub, Gmail or Google Calendar
+  through Composio's browser link, and list or disconnect accounts. Owner only;
+  paired chat devices are refused. Agents cannot use connected apps yet.
+  Checked by hand on Windows in the desktop app and the web build with GitHub:
+  connecting, listing and disconnecting, which removed the account from Composio's
+  dashboard. Gmail and Google Calendar, revocation of the grant at the provider,
+  packaged apps, macOS and Linux were not run.
 - Sign in to Claude from Settings using the installed CLI's browser link and
   pasted authorization code. The starting owner session controls the bounded
   flow; existing accounts are preserved and codes are submitted once. Real-account,

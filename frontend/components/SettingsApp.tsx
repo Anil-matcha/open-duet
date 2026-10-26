@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type ApplicationSetting, type DesktopSettings } from "@/lib/api";
 import { ApprovalsTabs } from "@/components/approvals/ApprovalsPanel";
 import { EngineSettings } from "@/components/EngineSettings";
+import { ConnectedAppsSection } from "@/components/ConnectedAppsSection";
 import { DesktopSetup } from "@/components/DesktopSetup";
 import { DevicesSection } from "@/components/DevicesSection";
 import { AppUpdates } from "@/components/AppUpdates";
@@ -16,6 +17,7 @@ declare global {
     openDots?: {
       choosePath(kind: "file" | "folder"): Promise<string | null>;
       openGoogleSignIn(url: string): Promise<void>;
+      openComposioLink(url: string): Promise<void>;
       nativeControl(request: import("@/components/chat/NativeComputer").NativeRequest): Promise<import("@/components/chat/NativeComputer").NativeStatus | { held: boolean }>;
       updates?: import("@/components/AppUpdates").UpdatesBridge;
     };
@@ -155,6 +157,7 @@ export function SettingsApp() {
       {!settingUp && <>
         <DevicesSection />
         <EngineSettings />
+        <ConnectedAppsSection />
         <section className="rounded-lg border border-line p-5"><h3 className="mb-1 font-semibold">Approvals</h3><p className="mb-4 text-xs text-muted">Commands you always allow, every decision about a tool call, and a read-only health scan of recent conversations.</p><ApprovalsTabs /></section>
       </>}
     </main>

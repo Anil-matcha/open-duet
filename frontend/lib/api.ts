@@ -1,5 +1,6 @@
 import type { SkillDoc, SkillPreview, SkillSave, SkillSummary, SkillLearnPreview, SkillLearnSource } from "./skills";
 import type { TemplateCatalog, TemplateSkill } from "./templates";
+import type { ComposioAccount, ComposioApp, ComposioLink } from "./connected-apps";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -557,6 +558,8 @@ export type EngineConfigInput = {
   context_tokens?: number;
 };
 
+export type ComposioStatus = { configured: boolean; apps: ComposioApp[] };
+
 export type CodexLoginOperation = {
   id: string;
   phase: "running" | "succeeded" | "failed" | "expired" | "cancelled";
@@ -888,6 +891,13 @@ export const api = {
   saveEngineConfig: (engineId: string, config: EngineConfigInput) =>
     request<Engine>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "PUT", body: JSON.stringify(config) }),
   deleteEngineConfig: (engineId: string) => request<void>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "DELETE" }),
+  getComposioStatus: () => request<ComposioStatus>("/integrations/composio"),
+  saveComposioKey: (apiKey: string) => request<ComposioStatus>("/integrations/composio/key", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
+  deleteComposioKey: () => request<void>("/integrations/composio/key", { method: "DELETE" }),
+  listComposioAccounts: () => request<ComposioAccount[]>("/integrations/composio/accounts"),
+  connectComposioApp: (toolkit: string, alias?: string) =>
+    request<ComposioLink>("/integrations/composio/connect", { method: "POST", body: JSON.stringify(alias ? { toolkit, alias } : { toolkit }) }),
+  disconnectComposioAccount: (id: string) => request<void>(`/integrations/composio/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getDesktopSettings: () => request<DesktopSettings>("/settings"),
   saveDesktopSetting: (key: string, value: unknown, expectedVersion: number) =>
     request<ApplicationSetting>(`/settings/${encodeURIComponent(key)}`, {
