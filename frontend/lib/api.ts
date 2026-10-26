@@ -1,5 +1,6 @@
 import type { SkillDoc, SkillPreview, SkillSave, SkillSummary, SkillLearnPreview, SkillLearnSource } from "./skills";
 import type { TemplateCatalog, TemplateSkill } from "./templates";
+import type { ComposioAccount, ComposioApp, ComposioLink } from "./connected-apps";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -471,6 +472,8 @@ export type Agent = {
   memory_enabled?: boolean;
   // Off: no notes or earlier conversations are recalled before a turn.
   recall_enabled?: boolean;
+  // Connected apps (Composio) the agent may read, {app: "read"}; null for none.
+  connector_scopes?: Record<string, string> | null;
   // Off: no quick model call files facts noticed in its conversations.
   memory_upkeep?: boolean;
   compaction_summary?: boolean;
@@ -505,6 +508,8 @@ export type AgentInput = {
   use_helper?: boolean;
   fallback_provider?: string | null;
   fallback_model?: string | null;
+  // Update only: connected apps this agent may read, {app: "read"}; null or {} for none.
+  connector_scopes?: Record<string, string> | null;
   // Create only: the first contents of the agent's notes.
   starter_notes?: string | null;
 };
@@ -556,6 +561,8 @@ export type EngineConfigInput = {
   clear_api_key?: boolean;
   context_tokens?: number;
 };
+
+export type ComposioStatus = { configured: boolean; apps: ComposioApp[] };
 
 export type CodexLoginOperation = {
   id: string;
@@ -890,6 +897,13 @@ export const api = {
   saveEngineConfig: (engineId: string, config: EngineConfigInput) =>
     request<Engine>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "PUT", body: JSON.stringify(config) }),
   deleteEngineConfig: (engineId: string) => request<void>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "DELETE" }),
+  getComposioStatus: () => request<ComposioStatus>("/integrations/composio"),
+  saveComposioKey: (apiKey: string) => request<ComposioStatus>("/integrations/composio/key", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
+  deleteComposioKey: () => request<void>("/integrations/composio/key", { method: "DELETE" }),
+  listComposioAccounts: () => request<ComposioAccount[]>("/integrations/composio/accounts"),
+  connectComposioApp: (toolkit: string, alias?: string) =>
+    request<ComposioLink>("/integrations/composio/connect", { method: "POST", body: JSON.stringify(alias ? { toolkit, alias } : { toolkit }) }),
+  disconnectComposioAccount: (id: string) => request<void>(`/integrations/composio/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getDesktopSettings: () => request<DesktopSettings>("/settings"),
   saveDesktopSetting: (key: string, value: unknown, expectedVersion: number) =>
     request<ApplicationSetting>(`/settings/${encodeURIComponent(key)}`, {

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import expression
 
 from app.db.base import Base
-from app.db.types import BigIntPK, UTCDateTime
+from app.db.types import BigIntPK, JSONValue, UTCDateTime
 from sqlalchemy import Identity
 
 # How much an agent may do before asking. Keep in step with the mode names the
@@ -83,6 +83,9 @@ class Agent(Base):
     use_helper: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=expression.true()
     )
+    # Connected apps (Composio) this agent may read: {app: "read"}. Null or empty
+    # means none. Checked again on every call (services/composio_bridge.py).
+    connector_scopes: Mapped[dict | None] = mapped_column(JSONValue, nullable=True)
     # Pinned agents list first.
     pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=expression.false()

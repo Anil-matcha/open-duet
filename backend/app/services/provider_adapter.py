@@ -56,6 +56,8 @@ class Capabilities:
                an image sent to any other engine is refused before the turn
     resume     a conversation continues with the engine's earlier context
     computers  its turns can run their tools in an agent computer
+    connected_apps  it mounts the connected-apps tools (composio_bridge.py) for an agent the
+               person allowed to read some app. Left out of as_dict (the public description)
     """
 
     tools: bool = False
@@ -65,6 +67,7 @@ class Capabilities:
     resume: bool = False
     computers: bool = False
     memory_tools: bool = False
+    connected_apps: bool = False
 
     @property
     def can_search_history(self) -> bool:
@@ -176,6 +179,10 @@ class TurnContext:
     # The MCP server giving the turn the agent's past-conversation search
     # (memory_bridge.py), when the engine can mount one.
     memory_launch: object | None = None
+    # The MCP server giving the turn read access to connected apps (composio_bridge.py)
+    # and the apps it was started for. Both None unless the agent was allowed some.
+    composio_launch: object | None = None
+    composio_apps: dict | None = None  # {app: "read" | "write"}
     hold_clock: Callable[[], Callable[[], None]] | None = None
     # Images attached to this message, as {"path", "mime", "name"}. Only ever
     # set for an engine whose capabilities include `images`; attached text

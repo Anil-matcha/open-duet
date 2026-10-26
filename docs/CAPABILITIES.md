@@ -25,6 +25,10 @@ by engines advertising image support. Cross-chat history search is available
 through the memory bridge on Claude, Codex and ACP, subject to agent settings;
 it does not itself persist notes. See [memory](MEMORY.md).
 
+Connected apps (GitHub through your own Composio key) can be allowed per
+agent on Claude only, as Read only or Read and change; every change asks on
+a card. See [connected apps](CONNECTED_APPS.md).
+
 ## Evidence levels
 
 | Feature | Source / automated coverage | Live-provider evidence already recorded | Packaged release gate |
@@ -41,6 +45,7 @@ it does not itself persist notes. See [memory](MEMORY.md).
 | Webhook deduplication | Durable delivery receipts, concurrent SQLite admission, restart and authorization tests; PostgreSQL schema/migration checks | Live PostgreSQL concurrency remains open | Open |
 | Linux turn sandbox preview | Opt-in filesystem/PID box plus separately enabled private network namespace/public HTTP(S) gate; policy and transport tests, real namespace checks skip on macOS | Real Linux enforcement and engine lifecycle remain open | Open |
 | Routine change receipts and Undo | Dedicated source result card; revision/run/scope-bound Undo, paused restoration and concurrent SQLite checks | Real providers and PostgreSQL multi-backend Undo remain open | Open |
+| Connected apps (GitHub through Composio) | Client, routes, approval policy, bridge and real Claude adapter tests with a fake Composio: levels, one-use exact approvals, deny, Plan mode, changes never retried, unknown outcomes, result trimming | Windows, desktop and web, real Claude CLI, own Composio project and a private repository, 2026-10-26, by hand (see [connected apps](CONNECTED_APPS.md#what-has-been-checked)); not a recorded qualification run | Open; packaged shim, Linux sandbox, macOS and Linux not run |
 | Local Today brief | Durable approvals/questions, routine outcomes, engine failures and due tasks; source links, timezone and deduplication checks | Live-source and packaged UI qualification remain open; Calendar/Gmail unavailable | Open |
 
 Historical evidence belongs to the source and environment recorded in its

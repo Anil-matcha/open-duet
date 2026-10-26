@@ -1,5 +1,6 @@
 """Every automatic tool decision passes through the durable approval gate."""
 from app.computers import policy as computers
+from app.services import composio_policy
 from app.team import policy as teams
 
 
@@ -9,6 +10,9 @@ def automatic(tool, mode, run, arguments):
         return ('allowed', 'memory_read') if tool in ('mcp__memory__session_search', 'mcp__memory__session_read') else ('denied', 'unknown_memory_tool')
     if tool.startswith('mcp__team__'):
         return teams.automatic(tool, mode, run.ctx.team, arguments)
+    if tool.startswith(composio_policy.PREFIX):
+        # Connected apps (composio_bridge.py): decided here, never by a saved command rule.
+        return composio_policy.automatic(tool, mode, run.ctx.composio_apps)
     # Screen grants are turn scoped and are never persisted as command rules.
     if tool in computers.SCREEN_INPUT or tool in computers.SCREEN_READ:
         return computers.automatic(tool, mode, screen_granted=getattr(run, "screen_granted", False))
