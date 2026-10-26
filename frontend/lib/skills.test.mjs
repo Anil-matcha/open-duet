@@ -48,6 +48,8 @@ test('completions and toggling respect enabled state and the limit of three', ()
   ];
   assert.deepEqual(skillCompletions('/b', list).map((s) => s.name), ['brief', 'budget']);
   assert.deepEqual(skillCompletions('/b', list, ['brief']).map((s) => s.name), ['budget']);
+  assert.deepEqual(skillCompletions('/', list, ['brief', 'budget']).map((s) => s.name), ['other']);
+  assert.deepEqual(skillCompletions('/', list, ['brief', 'budget', 'other']), []);
   assert.deepEqual(skillCompletions('/brief now', list), []);
   assert.deepEqual(skillCompletions('hello', list), []);
   assert.deepEqual(toggleSkill(['a'], 'b'), ['a', 'b']);

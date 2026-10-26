@@ -89,7 +89,7 @@ export function parseSkillCommand(text: string, known: readonly string[]): { nam
 // Names to offer while the box holds a bare `/prefix` (no space yet), best match first.
 export function skillCompletions(text: string, available: readonly SkillSummary[], chosen: readonly string[] = []): SkillSummary[] {
   const match = /^\/([a-z0-9-]*)$/.exec(text);
-  if (!match) return [];
+  if (!match || chosen.length >= MAX_SKILLS_PER_MESSAGE) return [];
   return available.filter((s) => s.enabled && !chosen.includes(s.name) && s.name.startsWith(match[1]));
 }
 

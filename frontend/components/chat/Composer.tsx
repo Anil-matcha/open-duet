@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Paperclip, Sparkles, Square, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { MAX_SKILLS_PER_MESSAGE, skillCompletions, type SkillSummary } from "@/lib/skills";
 import { PendingAttachments } from "./Attachments";
@@ -67,11 +67,22 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const menuId = useId();
+  const [menu, setMenu] = useState({ context: "", index: 0, dismissed: false });
   const enabledSkills = (skills ?? []).filter((s) => s.enabled);
   const completions = onToggleSkill ? skillCompletions(value, enabledSkills, chosenSkills) : [];
+  // A changed query or available list starts at the first result, even after Escape.
+  const menuContext = JSON.stringify([value, completions.map((s) => s.name)]);
+  const activeIndex = menu.context === menuContext ? Math.min(menu.index, Math.max(0, completions.length - 1)) : 0;
+  const slashOpen = focused && !sending && !pickerOpen && !!onToggleSkill && /^\/[a-z0-9-]*$/.test(value)
+    && !(menu.context === menuContext && menu.dismissed);
+  const activeOption = slashOpen && completions.length > 0 ? `${menuId}-${activeIndex}` : undefined;
+  const dismissMenu = () => setMenu({ context: menuContext, index: activeIndex, dismissed: true });
   const pick = (name: string) => {
+    if (sending || (!chosenSkills.includes(name) && chosenSkills.length >= MAX_SKILLS_PER_MESSAGE)) return;
     onToggleSkill?.(name);
-    if (value.startsWith("/")) onChange("");
+    onChange("");
     box.current?.focus();
   };
 
@@ -126,24 +137,38 @@ export function Composer({
                 <li key={name} className="inline-flex max-w-full items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pl-2.5 pr-1 text-xs text-ink">
                   <Sparkles size={12} aria-hidden="true" className="shrink-0 text-accent" />
                   <span className="truncate font-mono">{name}</span>
-                  <button type="button" onClick={() => onToggleSkill(name)} aria-label={`Remove skill ${name}`} className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-hover hover:text-ink">
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onToggleSkill(name)} aria-label={`Remove skill ${name}`} className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-hover hover:text-ink">
                     <X size={12} aria-hidden="true" />
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          {completions.length > 0 && (
-            <ul role="listbox" aria-label="Skills" className="mx-2 mt-1 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm">
+          {slashOpen && completions.length > 0 && (
+            <ul id={menuId} role="listbox" aria-label="Skills" className="mx-2 mt-1 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm">
               {completions.map((s, i) => (
-                <li key={s.name} role="option" aria-selected={i === 0}>
-                  <button type="button" onClick={() => pick(s.name)} className={cn("flex w-full min-w-0 cursor-pointer flex-col px-3 py-1.5 text-left hover:bg-hover", i === 0 && "bg-hover")}>
+                <li key={s.name} role="presentation">
+                  <button id={`${menuId}-${i}`} type="button" role="option" aria-selected={i === activeIndex}
+                    tabIndex={-1}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setMenu({ context: menuContext, index: i, dismissed: false })}
+                    onClick={() => pick(s.name)}
+                    className={cn("flex w-full min-w-0 cursor-pointer flex-col px-3 py-1.5 text-left hover:bg-hover", i === activeIndex && "bg-hover")}>
                     <span className="font-mono text-xs">/{s.name}</span>
                     <span className="truncate text-xs text-muted">{s.description}</span>
                   </button>
                 </li>
               ))}
             </ul>
+          )}
+          {slashOpen && completions.length === 0 && (
+            <p role="status" className="px-3 py-2 text-xs text-muted">
+              {chosenSkills.length >= MAX_SKILLS_PER_MESSAGE
+                ? `Up to ${MAX_SKILLS_PER_MESSAGE} skills per message. Remove one to choose another.`
+                : enabledSkills.length === 0
+                  ? "No skills are switched on for this agent. Add one in the agent's settings."
+                  : "No matching skills available. Try another name or open the skill picker."}
+            </p>
           )}
           {pickerOpen && onToggleSkill && (
             <div role="group" aria-label="Pick skills" className="mx-2 mt-1 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm">
@@ -199,7 +224,7 @@ export function Composer({
             {onToggleSkill && (
               <button
                 type="button"
-                onClick={() => setPickerOpen((open) => !open)}
+                onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
                 disabled={sending}
                 aria-label="Pick skills"
                 aria-expanded={pickerOpen}
@@ -212,7 +237,19 @@ export function Composer({
             <textarea
               ref={box}
               value={value}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={(e) => {
+                setMenu({ context: "", index: 0, dismissed: false });
+                onChange(e.target.value);
+              }}
+              onFocus={() => {
+                setFocused(true);
+                setMenu({ context: "", index: 0, dismissed: false });
+              }}
+              onBlur={() => { setFocused(false); dismissMenu(); }}
+              aria-autocomplete={onToggleSkill ? "list" : undefined}
+              aria-haspopup={onToggleSkill ? "listbox" : undefined}
+              aria-controls={activeOption ? menuId : undefined}
+              aria-activedescendant={activeOption}
               onPaste={(e) => {
                 const pasted = Array.from(e.clipboardData.files);
                 if (!onAddFiles || pasted.length === 0) return;
@@ -220,12 +257,28 @@ export function Composer({
                 onAddFiles(pasted);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && completions.length > 0) {
+                if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+                if (slashOpen && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && completions.length > 0) {
+                  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const index = (activeIndex + (e.key === "ArrowDown" ? 1 : -1) + completions.length) % completions.length;
+                    setMenu({ context: menuContext, index, dismissed: false });
+                    document.getElementById(`${menuId}-${index}`)?.scrollIntoView({ block: "nearest" });
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    pick(completions[activeIndex].name);
+                    return;
+                  }
+                }
+                if (e.key === "Escape" && (slashOpen || pickerOpen)) {
                   e.preventDefault();
-                  pick(completions[0].name);
+                  e.stopPropagation();
+                  dismissMenu();
+                  setPickerOpen(false);
                   return;
                 }
-                if (e.key === "Escape" && pickerOpen) setPickerOpen(false);
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   if (canSend) onSend();

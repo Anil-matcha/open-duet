@@ -12,6 +12,20 @@ A skill is a saved set of instructions for one agent, such as "how I want the we
 
 ## Using a skill
 
+In an agent chat, type `/` at the start of an otherwise empty message to list
+that agent's enabled skills. Type more of the name to filter the list. Use
+Up/Down to move through the results, then Enter or Tab to attach the highlighted
+skill, or click a result. Escape dismisses the list and keeps your draft;
+changing the prefix opens suggestions again. Shift+Enter adds a line, and IME
+composition does not select a suggestion.
+
+Selection adds a removable skill chip and sends nothing. Write the request and
+send it when ready. The skill picker is also available beside the message box.
+Chosen skills are omitted from suggestions, and at most three can be attached
+to one message. Disabled skills are never offered; switching agents uses that
+agent's own list. A complete `/skill-name request` still uses the existing
+explicit invocation path, and unknown slash text is sent as ordinary text.
+
 Send a message with up to three skill names (`skills` on `POST /threads/{id}/turns`). The chosen skills' instructions are added before that one message, marked as guidance. They grant no permission and do not change the approval mode: every approval still works as it does without a skill. The next message carries no skill text unless you name one again. The transcript shows which skills a message used (`skill.used`, names only).
 
 A skill that is unknown, turned off, repeated, or chosen in a conversation with no agent refuses the message with `422 skill_unavailable`. Nothing is started.

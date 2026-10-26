@@ -4,6 +4,12 @@
 
 ### Added
 
+- Navigate saved skill suggestions in chat with Up/Down and choose one with
+  Enter, Tab or a click. Escape keeps the draft, disabled/already chosen skills
+  are hidden, and the three-skill limit is enforced before selection. Choosing
+  a skill sends nothing and leaves tool approvals unchanged. Real-provider,
+  Windows and packaged-app skill menu checks were not run.
+
 - Check available disk space before starting an installer build and explain
   which directory needs more room. Builds require at least 2 GiB available on
   every output/temporary volume; larger builds may need more. Installer creation,
