@@ -554,7 +554,7 @@ export function AgentsPanel({
                 <legend>Connected apps</legend>
                 {AGENT_APPS.map((app) => <div key={app.slug} className="space-y-1">
                   <p className="text-sm text-ink">{app.label}</p>
-                  {(["off", "read", "write"] as Level[]).map((level) => <label key={level} className="flex cursor-pointer items-start gap-2">
+                  {((app.write ? ["off", "read", "write"] : ["off", "read"]) as Level[]).map((level) => <label key={level} className="flex cursor-pointer items-start gap-2">
                     <input type="radio" name={`app-${app.slug}`} className="mt-0.5" disabled={busy} checked={levelOf(draft.connector_scopes, app.slug) === level}
                       onChange={() => setDraft({ ...draft, connector_scopes: withApp(draft.connector_scopes, app.slug, level) })} />
                     <span>{level === "off" ? "Off" : level === "read" ? <>Read only. {app.read}</> : <>Read and change. {app.write}</>}</span>

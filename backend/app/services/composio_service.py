@@ -27,8 +27,8 @@ from app.services.composio_client import Account, ComposioClient, ComposioError,
 PROVIDER = "integration:composio"
 _NOT_A_FILE = "-"
 
-# The apps Settings offers in this version. Agents cannot use them yet, so the
-# list stays short; a slug outside it is refused even if Composio knows it.
+# The apps Settings offers in this version. A slug outside this list is refused
+# even if Composio knows it; tool actions have a separate fixed allowlist below.
 SUPPORTED_APPS: tuple[tuple[str, str], ...] = (
     ("github", "GitHub"),
     ("gmail", "Gmail"),
@@ -119,9 +119,22 @@ async def _needed(db: AsyncSession, owner_id: str) -> dict:
 
 def _user_error(exc: ComposioError, *, saving: bool = False) -> UserError:
     if exc.kind == "key_rejected":
-        message = "Composio did not accept this key. Check that it is a project key." if saving else \
-            "Composio no longer accepts the saved key. Replace it in Settings."
+        message = (
+            "Composio did not accept this key. Check that it is a project key. A scoped key may also be missing "
+            "Connected accounts → Read; create a new key after changing scopes."
+        ) if saving else (
+            "Composio rejected this key. It may be invalid or a scoped permission may be missing. Check Connected "
+            "accounts → Read, Session management → Write, and Session tool execution → Write; Connected accounts "
+            "→ Write is needed to disconnect accounts. Create and save a new key after changing scopes."
+        )
         return UserError(422 if saving else 409, "composio_key_rejected", message)
+    if exc.kind == "permission_denied":
+        message = (
+            "Composio denied this key's permissions. For a scoped project key, enable Connected accounts → Read, "
+            "Session management → Write, and Session tool execution → Write. Connected accounts → Write is also "
+            "needed to disconnect accounts. Create a new key after changing scopes; permissions are set when the key is created."
+        )
+        return UserError(403, "composio_permission_denied", message)
     if exc.kind == "rate_limited":
         return UserError(429, "composio_rate_limited", exc.message)
     if exc.kind == "unavailable":
@@ -178,7 +191,8 @@ def _agent_error(exc: ComposioError) -> dict:
     """What an agent is told when Composio could not be used. No detail from the
     response is passed on."""
     said = {
-        "key_rejected": "The person's Composio key is no longer accepted. They need to replace it in Settings.",
+        "key_rejected": "Composio rejected the person's key. It may be invalid or a scoped permission may be missing. The owner should check Connected accounts read, Session management write, and Session tool execution write, then replace the key in Settings.",
+        "permission_denied": "Composio denied the saved key's permissions. The person needs a project key with Session management and Session tool execution write access; scoped keys also need Connected accounts read access.",
         "rate_limited": "Composio is rate limiting requests. Try again later.",
         "unavailable": "Composio did not answer. Nothing was changed; the read may not have happened.",
         "not_found": "That app, account or tool was not found at Composio.",
@@ -239,7 +253,7 @@ SESSION_EXPIRED = {
 }
 DONE_UNREADABLE = {
     "result": "done", "code": "done_unreadable",
-    "note": "The change was made, but GitHub's answer could not be read. Do not repeat it; ask the person to check.",
+    "note": "The change was made, but the app's answer could not be read. Do not repeat it; ask the person to check.",
 }
 
 

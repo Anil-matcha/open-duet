@@ -89,11 +89,21 @@ export function accountsOf(accounts: ComposioAccount[], toolkit: string): Compos
 }
 
 // The apps an agent can be allowed to use in this version, and the engine that can use them.
-export const AGENT_APPS: { slug: string; label: string; read: string; write: string }[] = [
+export const AGENT_APPS: { slug: string; label: string; read: string; write: string | null }[] = [
   {
     slug: "github", label: "GitHub",
     read: "Read your profile, repositories, issues, pull requests, commits and files, and search.",
     write: "Also create issues, comment, and close or reopen issues. You approve each change first.",
+  },
+  {
+    slug: "gmail", label: "Gmail",
+    read: "Search messages, read message threads, and see the connected account profile.",
+    write: "Also create a plain-text draft reply in an existing thread. You approve each draft; it is never sent.",
+  },
+  {
+    slug: "googlecalendar", label: "Google Calendar",
+    read: "List calendars and search event summaries in a date window of up to 31 days.",
+    write: null,
   },
 ];
 export const APPS_ENGINE = "claude";
@@ -117,7 +127,9 @@ export function withApp(scopes: Scopes | null | undefined, slug: string, level: 
 // (this also clears them if the engine was changed), else the known levels or null.
 export function scopesToSend(scopes: Scopes | null | undefined, provider: string): Scopes | null {
   if (provider !== APPS_ENGINE) return null;
-  const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) =>
-    (level === "read" || level === "write") && AGENT_APPS.some((app) => app.slug === slug)));
+  const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) => {
+    const app = AGENT_APPS.find((candidate) => candidate.slug === slug);
+    return Boolean(app && (level === "read" || (level === "write" && app.write)));
+  }));
   return Object.keys(known).length ? known : null;
 }

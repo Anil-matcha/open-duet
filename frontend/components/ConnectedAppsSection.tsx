@@ -15,7 +15,7 @@ type Waiting = { accountId: string; toolkit: string; expiresIn: number };
 const message = (err: unknown, fallback: string) => err instanceof Error ? err.message : fallback;
 
 // Settings: the owner's Composio key, and connecting, listing and disconnecting
-// apps. Apps are not yet usable by agents; this only manages the connections.
+// apps. Agent access is granted separately in each eligible agent's settings.
 export function ConnectedAppsSection() {
   const [status, setStatus] = useState<ComposioStatus | null>(null);
   const [accounts, setAccounts] = useState<ComposioAccount[] | null>(null);
@@ -126,7 +126,7 @@ export function ConnectedAppsSection() {
   return <section aria-labelledby="connected-apps-title" className="space-y-4 rounded-lg border border-line p-5">
     <div>
       <h3 id="connected-apps-title" className="font-semibold">Connected apps</h3>
-      <p className="mt-1 text-xs text-muted">Connect apps through your own Composio account. Your key is stored encrypted on this computer and never shown again. Agents cannot use these apps yet.</p>
+      <p className="mt-1 text-xs text-muted">Connect apps through your own Composio account. Your key is stored encrypted on this computer and never shown again. Then allow an app under Agents → choose an agent → Connected apps. Agents can use the allowed apps only in conversations you start.</p>
     </div>
     {error && <p role="alert" className="rounded-md border border-danger/50 p-3 text-sm text-danger">{error}</p>}
     {notice && <p role="status" className="rounded-md border border-line p-3 text-sm">{notice}</p>}
@@ -136,7 +136,7 @@ export function ConnectedAppsSection() {
       <label htmlFor="composio-key" className="block text-sm font-medium">{status.configured ? "New Composio project key" : "Composio project key"}</label>
       <input id="composio-key" type="password" className={FIELD} value={keyDraft} disabled={busy !== null} required minLength={11}
         onChange={(event) => setKeyDraft(event.target.value)} autoComplete="off" spellCheck={false} placeholder="ak_…" />
-      <p className="text-xs text-muted">Create a project key in your Composio dashboard (it starts with <code>ak_</code>). The key is checked with Composio before it is saved.</p>
+      <p className="text-xs text-muted">Create a project key in your Composio dashboard (it starts with <code>ak_</code>). The key is checked with Composio before it is saved. A scoped key needs Connected accounts: Read, Session management: Write, and Session tool execution: Write. Add Connected accounts: Write to disconnect accounts. Composio fixes scopes when you create a key, so make a new key after changing them.</p>
       <div className="flex gap-2">
         <button type="submit" className={BUTTON} disabled={busy !== null || keyDraft.trim().length < 11}>{busy === "key" ? "Checking…" : "Save key"}</button>
         {replacing && <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => { setReplacing(false); setKeyDraft(""); }}>Cancel</button>}

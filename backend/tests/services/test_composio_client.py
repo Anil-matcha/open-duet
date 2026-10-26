@@ -73,7 +73,7 @@ async def test_accounts_follow_the_cursor_with_a_page_limit():
 
 
 @pytest.mark.parametrize("status, kind", [
-    (401, "key_rejected"), (403, "key_rejected"), (404, "not_found"), (429, "rate_limited"),
+    (401, "key_rejected"), (403, "permission_denied"), (404, "not_found"), (429, "rate_limited"),
     (500, "unavailable"), (502, "unavailable"), (400, "rejected"), (409, "rejected"),
 ])
 async def test_errors_are_classified(status, kind):

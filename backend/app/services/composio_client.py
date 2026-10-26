@@ -36,7 +36,8 @@ _SLUG = re.compile(r"^[A-Z0-9_]{1,120}$")
 
 class ComposioError(Exception):
     """`kind` says what the app should do about it:
-    key_rejected (the key is wrong or lacks permission), not_found,
+    key_rejected (the key is wrong), permission_denied (the key is valid but
+    lacks a required permission), not_found,
     rate_limited, unavailable (network or Composio down), rejected (the
     request was refused), bad_response (an answer we will not trust)."""
 
@@ -145,8 +146,12 @@ class ComposioClient:
             # A message that repeats the key must not carry it to the browser or a log.
             detail = detail.replace(self._key, "[key]")
         status = response.status_code
-        if status in (401, 403):
+        if status == 401:
+            # Composio can report a scoped permission denial as a generic 401,
+            # so the settings layer must not imply that the key itself is bad.
             return ComposioError("key_rejected", detail or "Composio did not accept this key.")
+        if status == 403:
+            return ComposioError("permission_denied", detail or "Composio denied this key's permissions.")
         if status == 404:
             return ComposioError("not_found", detail or "Composio could not find that.")
         if status == 429:

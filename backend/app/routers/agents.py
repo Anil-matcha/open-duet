@@ -165,7 +165,10 @@ def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provider: st
 
     if not scopes:
         return None
-    if set(scopes) - set(composio_tools.apps()) or any(level not in composio_tools.LEVELS for level in scopes.values()):
+    if set(scopes) - set(composio_tools.apps()) or any(
+        level not in composio_tools.LEVELS or (level == "write" and not composio_tools.has_write_tools(app))
+        for app, level in scopes.items()
+    ):
         raise _error(422, "invalid_connector_scopes", "Connected apps can be allowed for reading, or for reading and changing, and only for apps this version supports.")
     try:
         mounts = rt.engines.capabilities(provider).connected_apps

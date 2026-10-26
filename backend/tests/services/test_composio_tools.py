@@ -48,12 +48,13 @@ def test_bad_arguments_are_refused_not_dropped(name, args):
         tools.clean_arguments(tool(name), args)
 
 
-def test_every_tool_is_one_fixed_github_tool_and_writes_are_a_short_list():
+def test_every_tool_is_one_fixed_tool_and_writes_are_a_short_list():
     assert tools.TOOLS and all(t.kind in tools.LEVELS for t in tools.TOOLS)
-    assert all(t.slug.startswith("GITHUB_") and t.slug.isupper() for t in tools.TOOLS)
+    prefixes = {"github": "GITHUB_", "gmail": "GMAIL_", "googlecalendar": "GOOGLECALENDAR_"}
+    assert all(t.slug.startswith(prefixes[t.app]) and t.slug.isupper() for t in tools.TOOLS)
     assert len({t.name for t in tools.TOOLS}) == len(tools.TOOLS) == len({t.slug for t in tools.TOOLS})
     writes = {t.name for t in tools.TOOLS if t.kind == "write"}
-    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue"}
+    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "gmail_create_draft_reply"}
     for word in ("delete", "merge", "push", "force", "settings", "collaborator", "secret", "token"):
         assert not any(word in t.name or word in t.slug.lower() for t in tools.TOOLS), word
 
