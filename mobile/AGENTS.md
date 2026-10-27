@@ -27,7 +27,7 @@ All of these work on Windows, macOS and Linux. Building or running the iOS app n
 ## Layout
 
 - `src/app/`: screens only (Expo Router). `_layout.tsx` guards the routes: paired phones see `index` (the conversation list), `thread/[id]` and `settings`; unpaired ones see `pair` and `scan`.
-- `src/components/`: pieces shared by screens (`transcript-row`, `composer`, `approval-card`, `keyboard-screen`).
+- `src/components/`: pieces shared by screens (`transcript-row`, `composer`, `approval-card`, `keyboard-screen`, `markdown`). `lib/markdown.ts` is the Markdown reader: no HTML, and only `http(s)` links are followed.
 - `src/lib/`: everything else. `server-url`, `pairing-link`, `pairing-api`, `api`, `sse` and `transcript` are plain TypeScript with no React Native imports, so they are easy to test; `credentials` is the only place the token is stored; `auth-context` holds the pairing state; `use-api` and `use-thread` tie the API to React.
 - The chat reads a thread by following its event stream from the last event seen (`sse.ts`). A reconnect sends `Last-Event-ID`, and `transcript.ts` applies each stored event at most once, so a replay can never show anything twice. If the platform cannot read a response as it arrives, `followThread` falls back to paging `GET /threads/{id}/events`. Event types the app does not draw become one muted row; metadata-only types are skipped.
 - Approvals: the oldest pending approval is pinned above the composer with every input of the call (long values cut, with "Show all") and Allow and Deny. The card never decides for the person: it waits for the stream's `approval.resolved` to show the result. "Always allow" rules are not part of the app.
@@ -35,7 +35,7 @@ All of these work on Windows, macOS and Linux. Building or running the iOS app n
 
 ## Rules for this package
 
-- Scope is fixed by the maintainer's design note: pair, threads, chat with stop, approvals. Do not add voice, push, rooms, settings editing or other features without a decision.
+- Scope is fixed by the maintainer's design note: pair, threads, chat with stop, approvals, plus the features added one by one afterwards (Markdown, attachments, dark theme, agent picker, rooms). Do not add voice, push, settings editing or other features without a decision.
 - The app is a chat-scope client. It must reject a pairing session that has admin scope, and must not rely on hiding screens as authorization.
 - The bearer token goes only into the OS secure store, never into logs, URLs or plain storage.
 - Release builds talk to the server over HTTPS only. Plain HTTP works only in development builds (`__DEV__`), and `pairDevice` re-checks this before it sends a code. Any wider exception needs a maintainer decision and platform configuration.

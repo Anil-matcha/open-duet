@@ -18,7 +18,9 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   history. A new conversation uses your server's default engine (Claude).
 - **Chat.** Send a message and watch the answer as it is written, with one-line
   tool steps. **Stop** ends a running answer. If the connection drops, the app
-  reconnects and carries on from the last event it saw.
+  reconnects and carries on from the last event it saw. Answers are shown as
+  Markdown (headings, lists, bold, italic, code, quotes, links). There is no HTML,
+  and only `http` and `https` links can be tapped; they open in your browser.
 - **Approvals.** When an agent asks to run a tool, the oldest waiting request is
   pinned above the message box with every input of the call, so you see exactly
   what would run. Allow or Deny. The first answer wins; a request already answered,
@@ -29,9 +31,8 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), agent, engine, routine, room or settings management, attachments, Markdown
-formatting of answers (answers show as plain text), more than one server, or a dark
-theme. "Always allow" rules are not offered; use the web app for those.
+open), agent, engine, routine, room or settings management, attachments, more than one
+server, or a dark theme. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
 

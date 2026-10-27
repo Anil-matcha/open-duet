@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { Markdown } from '@/components/markdown';
 import type { TranscriptItem } from '@/lib/transcript';
 
 export type Row = TranscriptItem | { kind: 'typing'; key: string; text: string };
@@ -25,7 +26,7 @@ export function TranscriptRow({ row }: { row: Row }) {
     case 'assistant':
       return (
         <View style={[styles.bubble, styles.assistant]}>
-          <Text style={styles.assistantText}>{row.text}</Text>
+          <Markdown text={row.text} />
           {row.incomplete ? <Text style={styles.muted}>(stopped before it finished)</Text> : null}
         </View>
       );
