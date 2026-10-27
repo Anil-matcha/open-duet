@@ -13,6 +13,8 @@ type Props = {
   item: Approval;
   /** How many are waiting in all, this one included. */
   waiting: number;
+  /** In a room, which agent is asking. */
+  agentName?: string;
   onAnswer: (decision: 'allow' | 'deny') => Promise<boolean>;
 };
 
@@ -36,7 +38,7 @@ function Field({ name, value }: { name: string; value: string }) {
 }
 
 // The oldest approval waiting for an answer, pinned above the composer so it cannot scroll out of sight.
-export function ApprovalCard({ item, waiting, onAnswer }: Props) {
+export function ApprovalCard({ item, waiting, agentName, onAnswer }: Props) {
   const styles = useStyles(createStyles);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<'allow' | 'deny' | null>(null);
@@ -53,7 +55,7 @@ export function ApprovalCard({ item, waiting, onAnswer }: Props) {
   return (
     <View style={styles.card} accessibilityLabel="Approval needed">
       <Text style={styles.title}>
-        Your agent wants to use <Text style={styles.mono}>{item.tool}</Text>
+        {agentName ?? 'Your agent'} wants to use <Text style={styles.mono}>{item.tool}</Text>
         {waiting > 1 ? `  (1 of ${waiting} waiting)` : ''}
       </Text>
       <Text style={styles.note}>It will not run until you allow it.</Text>

@@ -40,14 +40,21 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   pinned above the message box with every input of the call, so you see exactly
   what would run. Allow or Deny. The first answer wins; a request already answered,
   expired or cancelled is refused with an explanation.
+- **Rooms.** **Rooms** (top left of the conversation list) lists the rooms on your
+  server, with an unread mark and who is working. Open one to read it as it
+  happens, post to it, and tag agents with `@` (buttons add the names; `@everyone`
+  asks all of them). **Stop** ends what the agents are working on. When an agent
+  in the room asks to run a tool, the request is pinned with that agent's name
+  and you Allow or Deny it, as in a conversation. A chat-only phone cannot
+  create rooms or change who is in them; do that in the web app.
 - **Settings.** The server address, this phone's name and its access (chat only),
   and **Sign out and forget this server**, which also asks the server to end the
   session. If the phone cannot reach the server at that moment, it only forgets
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), creating or editing agents, engine, routine, room or settings management, or more
-than one server. "Always allow" rules are not offered; use the web app for those.
+open), creating or editing agents or rooms, engine, routine or settings management, or
+more than one server. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
 
@@ -125,12 +132,15 @@ Xcode. See `mobile/AGENTS.md` for how the code is laid out.
 |---|---|
 | Pairing, conversations, chat, approvals | Automated: Jest tests, lint, typecheck and a bundle export for both platforms, on Windows. The app's networking code was also run against a local backend (pairing, the live stream, a dropped connection resuming without a gap or repeat, approvals answered, errors explained). |
 | The app on a screen | An Android emulator in Expo Go, against a local backend: manual chat-only pairing, staying paired after a restart, creating and listing conversations, sending a message and getting the answer, reopening history, Settings, sign-out revoking the server session, Allow and Deny on approvals that were created directly in the database, and, with a real Claude turn, a Write tool call that waited for Allow and then created the file, and Stop on a running answer (the app showed "Stopped" and the server recorded it as cancelled). |
+| Markdown, attachments, dark theme, agent picker, rooms | Automated: Jest tests (including a 4.5:1 contrast check of every text and background pair in both looks), lint, typecheck and a bundle export. The app's networking code was run against a local backend: uploading a text file, a PNG, names with accents and quotes, an oversized file and an unsupported type, and reading an image back with the token; listing agents and starting a conversation from one; and, for rooms, the live stream of a room, posting, marking read, a pending request found on the right agent's thread and answered, and a chat-only device being refused when it tries to create a room. No agent was run for any of it. |
 
 Partly checked: the Android keyboard. The first fix moved the message box above
 the keyboard and Send worked, but its bottom edge stayed partly covered; a second
 change for that was made afterwards and has not been tried.
 
-Not checked: iOS; a physical phone; scanning the QR code; a custom link opening
+Not checked: any of the Markdown, attachments, dark theme, agent picker and rooms
+screens on a device or emulator (only by tests and against the server, as above);
+photos and files on iOS; a room with agents actually running in it; iOS; a physical phone; scanning the QR code; a custom link opening
 the app; a release build (the HTTPS-only behavior); very long conversations.
 Whether the new `mobile` CI job passes had not been checked when this was
 written.

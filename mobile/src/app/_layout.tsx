@@ -15,6 +15,15 @@ function SettingsLink() {
   );
 }
 
+function RoomsLink() {
+  const theme = useTheme();
+  return (
+    <Link href="/rooms" style={{ color: theme.accentText }}>
+      Rooms
+    </Link>
+  );
+}
+
 function RootStack() {
   const { state } = useAuth();
   const theme = useTheme();
@@ -29,7 +38,9 @@ function RootStack() {
   return (
     <Stack>
       <Stack.Protected guard={paired}>
-        <Stack.Screen name="index" options={{ title: 'Conversations', headerRight: SettingsLink }} />
+        <Stack.Screen name="index" options={{ title: 'Conversations', headerLeft: RoomsLink, headerRight: SettingsLink }} />
+        <Stack.Screen name="rooms/index" options={{ title: 'Rooms' }} />
+        <Stack.Screen name="rooms/[id]" options={{ title: 'Room' }} />
         <Stack.Screen name="thread/[id]" options={{ title: 'Conversation' }} />
         <Stack.Screen name="new" options={{ title: 'New conversation', presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />

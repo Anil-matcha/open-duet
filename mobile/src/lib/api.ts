@@ -3,6 +3,7 @@
 
 import type { Agent } from './agents';
 import { buildMultipart, type Attachment } from './attachments';
+import type { ApprovalRow, Room } from './rooms';
 
 export type Session = { server: string; token: string };
 
@@ -124,6 +125,16 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
       headers: { Authorization: `Bearer ${session.token}` },
     }),
     stopTurn: (id: number) => request<{ turn_id: number }>('POST', `/threads/${id}/stop`, {}),
+    // Rooms (docs/MOBILE.md): a chat-only device may read, post, stop and answer, not create or change them.
+    listRooms: () => request<Room[]>('GET', '/rooms'),
+    getRoom: (id: number) => request<Room>('GET', `/rooms/${id}`),
+    postRoomMessage: (id: number, text: string) => request<{ seq: number }>('POST', `/rooms/${id}/messages`, { text }),
+    // Stops every agent working in the room.
+    stopRoom: (id: number) => request<unknown>('POST', `/rooms/${id}/stop`, {}),
+    markRoomRead: (id: number, seq: number) => request<{ seq: number }>('POST', `/rooms/${id}/read`, { seq }),
+    // Without saying which thread each belongs to; see `loadRoomApprovals`.
+    listRoomApprovals: (id: number) => request<ApprovalRow[]>('GET', `/rooms/${id}/approvals`),
+    listThreadApprovals: (id: number) => request<ApprovalRow[]>('GET', `/threads/${id}/approvals?status=pending`),
     // First answer wins; one already answered, expired or cancelled is a 409 `approval_not_waiting`.
     answerApproval: (threadId: number, approvalId: string, decision: 'allow' | 'deny') =>
       request<{ status: string; decision: string }>('POST', `/threads/${threadId}/approvals/${encodeURIComponent(approvalId)}`, { decision }),
@@ -149,7 +160,8 @@ export function describeApiError(error: unknown): string {
     case 422:
       return message || 'Your server did not accept that request.';
     case 404:
-      return /approval/i.test(message) ? 'That request no longer exists.' : 'That conversation no longer exists.';
+      if (/approval/i.test(message)) return 'That request no longer exists.';
+      return /room/i.test(message) ? 'That room no longer exists.' : 'That conversation no longer exists.';
     case 409:
       if (error.errorCode === 'turn_running') return 'An answer is already running. Wait for it, or stop it.';
       if (error.errorCode === 'approval_not_waiting') return 'That request is no longer waiting for an answer.';

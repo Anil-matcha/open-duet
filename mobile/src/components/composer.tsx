@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MAX_ATTACHMENTS, type Attachment } from '@/lib/attachments';
 import { useStyles, useTheme, type Palette } from '@/lib/theme';
@@ -10,9 +10,13 @@ type Props = {
   onStop: () => Promise<void>;
   /** Opens a picker and uploads the choice; left out, the composer has no attach button. */
   onAttach?: (kind: 'photo' | 'file', room: number) => Promise<Attachment[]>;
+  /** Names that can be tagged with `@`; shown as buttons that add the name to the message. */
+  mentions?: string[];
+  /** A room's messages are at most 8,000 characters; a conversation's turn allows far more. */
+  maxLength?: number;
 };
 
-export function Composer({ running, onSend, onStop, onAttach }: Props) {
+export function Composer({ running, onSend, onStop, onAttach, mentions = [], maxLength = 20_000 }: Props) {
   const styles = useStyles(createStyles);
   const theme = useTheme();
   const [text, setText] = useState('');
@@ -43,6 +47,9 @@ export function Composer({ running, onSend, onStop, onAttach }: Props) {
     }
   };
 
+  // A name is added after a space, so it is never glued to the word before it.
+  const mention = (name: string) => setText((current) => `${current}${current && !/\s$/.test(current) ? ' ' : ''}@${name} `);
+
   const choose = () =>
     Alert.alert('Attach', undefined, [
       { text: 'Photo', onPress: () => void pick('photo') },
@@ -67,6 +74,15 @@ export function Composer({ running, onSend, onStop, onAttach }: Props) {
           {uploading ? <ActivityIndicator accessibilityLabel="Uploading" /> : null}
         </View>
       ) : null}
+      {mentions.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.mentions}>
+          {mentions.map((name) => (
+            <Pressable key={name} accessibilityRole="button" accessibilityLabel={`Mention ${name}`} style={styles.chip} onPress={() => mention(name)}>
+              <Text style={styles.chipText}>@{name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
       <View style={styles.bar}>
         {onAttach ? (
           <Pressable
@@ -79,7 +95,7 @@ export function Composer({ running, onSend, onStop, onAttach }: Props) {
           </Pressable>
         ) : null}
         <TextInput style={styles.input} value={text} onChangeText={setText} placeholder="Message"
-          placeholderTextColor={theme.muted} multiline maxLength={20_000} accessibilityLabel="Message" />
+          placeholderTextColor={theme.muted} multiline maxLength={maxLength} accessibilityLabel="Message" />
         {running ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Stop" style={[styles.button, styles.stop]} onPress={() => void onStop()}>
             <Text style={styles.buttonText}>Stop</Text>
@@ -100,6 +116,7 @@ const createStyles = (p: Palette) =>
     chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingTop: 8 },
     chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '60%', backgroundColor: p.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
     chipText: { fontSize: 13, color: p.text, flexShrink: 1 },
+    mentions: { gap: 6, paddingHorizontal: 8, paddingTop: 8 },
     chipRemove: { fontSize: 13, color: p.muted },
     bar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 8 },
     attach: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
