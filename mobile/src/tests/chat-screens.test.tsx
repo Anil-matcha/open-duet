@@ -7,7 +7,7 @@ import { emptyTranscript } from '@/lib/transcript';
 
 const mockPush = jest.fn();
 let mockThreadState: Record<string, unknown> = {};
-const mockApi = { listThreads: jest.fn(), createThread: jest.fn() };
+const mockApi = { listThreads: jest.fn(), createThread: jest.fn(), listAgents: jest.fn() };
 
 jest.mock('expo-router', () => {
   const { useEffect } = jest.requireActual<typeof import('react')>('react');
@@ -36,6 +36,7 @@ const thread = (id: number, title: string | null) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockApi.listAgents.mockResolvedValue([]);
   mockThreadState = {
     transcript: emptyTranscript(),
     thread: thread(3, 'Plan the week'),

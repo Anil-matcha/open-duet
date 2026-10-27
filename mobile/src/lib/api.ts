@@ -1,6 +1,7 @@
 // The authenticated calls the chat screens make, as a paired chat-scope device (docs/AUTH.md).
 // Responses are decoded tolerantly: only the fields the app uses are named, unknown ones are ignored.
 
+import type { Agent } from './agents';
 import { buildMultipart, type Attachment } from './attachments';
 
 export type Session = { server: string; token: string };
@@ -11,6 +12,8 @@ export type Thread = {
   provider: string;
   model: string | null;
   session_state: string;
+  /** The agent this conversation was started from, or null (none, or since deleted). */
+  agent_id?: number | null;
   last_seq: number;
   archived_at: string | null;
   created_at: string;
@@ -103,8 +106,10 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
   return {
     session,
     listThreads: () => request<Thread[]>('GET', '/threads?limit=100'),
-    // Engine, model and agent are left out, so the server's own default applies.
-    createThread: () => request<Thread>('POST', '/threads', {}),
+    // Engine and model are left out, so the server's own default (or the agent's) applies.
+    createThread: (agentId?: number) => request<Thread>('POST', '/threads', agentId === undefined ? {} : { agent_id: agentId }),
+    // Not archived ones, pinned first.
+    listAgents: () => request<Agent[]>('GET', '/agents'),
     getThread: (id: number) => request<ThreadDetail>('GET', `/threads/${id}`),
     listEvents: (id: number, after: number, limit = 500) =>
       request<EventsPage>('GET', `/threads/${id}/events?after=${after}&limit=${limit}`),
@@ -142,7 +147,7 @@ export function describeApiError(error: unknown): string {
     case 413:
       return message || 'That file is too large.';
     case 422:
-      return message || 'That file cannot be attached.';
+      return message || 'Your server did not accept that request.';
     case 404:
       return /approval/i.test(message) ? 'That request no longer exists.' : 'That conversation no longer exists.';
     case 409:

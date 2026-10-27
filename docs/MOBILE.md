@@ -15,7 +15,11 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 - **Pair** with your server by scanning a QR code or typing the server address and
   a pairing code.
 - **Conversations.** List your conversations, start a new one, open one to read its
-  history. A new conversation uses your server's default engine (Claude).
+  history. If you have agents, **New conversation** first asks which to use: the
+  server's default (Claude), or one of your agents, each shown with how it asks
+  before acting (asks first, accepts file edits, or plans only). Agents are made
+  and edited in the web app, not on the phone. The list names the agent a
+  conversation was started from.
 - **Chat.** Send a message and watch the answer as it is written, with one-line
   tool steps. **Stop** ends a running answer. If the connection drops, the app
   reconnects and carries on from the last event it saw. Answers are shown as
@@ -42,7 +46,8 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), agent, engine, routine, room or settings management, or more than one server. "Always allow" rules are not offered; use the web app for those.
+open), creating or editing agents, engine, routine, room or settings management, or more
+than one server. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
 

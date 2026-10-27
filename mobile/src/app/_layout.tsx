@@ -31,6 +31,7 @@ function RootStack() {
       <Stack.Protected guard={paired}>
         <Stack.Screen name="index" options={{ title: 'Conversations', headerRight: SettingsLink }} />
         <Stack.Screen name="thread/[id]" options={{ title: 'Conversation' }} />
+        <Stack.Screen name="new" options={{ title: 'New conversation', presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
