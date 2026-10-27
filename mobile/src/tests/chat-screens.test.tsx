@@ -45,6 +45,7 @@ beforeEach(() => {
     running: false,
     send: jest.fn().mockResolvedValue(true),
     stop: jest.fn().mockResolvedValue(undefined),
+    answerApproval: jest.fn().mockResolvedValue(true),
   };
 });
 
@@ -91,7 +92,7 @@ describe('Thread', () => {
           { kind: 'user', key: 'e1', turnId: 1, text: 'hello there' },
           { kind: 'assistant', key: 'e2', turnId: 1, text: 'hi, how can I help?', incomplete: false },
           { kind: 'tool', key: 'e3', turnId: 1, callId: 'c', name: 'Bash', summary: 'ls -la', state: 'running' },
-          { kind: 'approval', key: 'e4', turnId: 1, approvalId: 'a', tool: 'Bash', summary: 'rm -rf build', status: 'pending' },
+          { kind: 'approval', key: 'e4', turnId: 1, approvalId: 'a', tool: 'Bash', approvalKind: 'command', summary: 'rm -rf build', input: { command: 'rm -rf build' }, status: 'pending' },
           { kind: 'unsupported', key: 'e5', type: 'something.new' },
         ],
         typing: 'Working on it',
@@ -105,6 +106,25 @@ describe('Thread', () => {
     expect(screen.getByText(/cannot show \(something\.new\)/)).toBeTruthy();
     expect(screen.getByText('Working on it')).toBeTruthy();
     expect(screen.getByText('Reconnecting…')).toBeTruthy();
+  });
+
+  it('pins the oldest waiting approval above the composer and answers it', async () => {
+    const approval = (id: string, summary: string) => ({ kind: 'approval', key: id, turnId: 1, approvalId: id, tool: 'Bash', approvalKind: 'command', summary, input: { command: summary }, status: 'pending' });
+    mockThreadState = { ...mockThreadState, running: true, transcript: { ...emptyTranscript(), items: [approval('a1', 'first command'), approval('a2', 'second command')] } };
+    await render(<Thread />);
+    expect(screen.getByLabelText('Approval needed')).toBeTruthy();
+    expect(screen.getByText(/1 of 2 waiting/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Allow' }));
+    expect(mockThreadState.answerApproval).toHaveBeenCalledWith('a1', 'allow');
+  });
+
+  it('shows no approval card when nothing is waiting', async () => {
+    mockThreadState = {
+      ...mockThreadState,
+      transcript: { ...emptyTranscript(), items: [{ kind: 'approval', key: 'a', turnId: 1, approvalId: 'a', tool: 'Bash', approvalKind: 'command', summary: 'done', input: {}, status: 'allowed' }] },
+    };
+    await render(<Thread />);
+    expect(screen.queryByLabelText('Approval needed')).toBeNull();
   });
 
   it('invites the first message in an empty conversation', async () => {

@@ -103,6 +103,9 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
       request<EventsPage>('GET', `/threads/${id}/events?after=${after}&limit=${limit}`),
     sendTurn: (id: number, text: string) => request<{ id: number }>('POST', `/threads/${id}/turns`, { prompt_text: text }),
     stopTurn: (id: number) => request<{ turn_id: number }>('POST', `/threads/${id}/stop`, {}),
+    // First answer wins; one already answered, expired or cancelled is a 409 `approval_not_waiting`.
+    answerApproval: (threadId: number, approvalId: string, decision: 'allow' | 'deny') =>
+      request<{ status: string; decision: string }>('POST', `/threads/${threadId}/approvals/${encodeURIComponent(approvalId)}`, { decision }),
   };
 }
 
@@ -121,9 +124,10 @@ export function describeApiError(error: unknown): string {
         ? 'Your server has agents turned off. Set LOCAL_EXECUTION_ENABLED=true on the server.'
         : message || 'Your server refused this request.';
     case 404:
-      return 'That conversation no longer exists.';
+      return /approval/i.test(message) ? 'That request no longer exists.' : 'That conversation no longer exists.';
     case 409:
       if (error.errorCode === 'turn_running') return 'An answer is already running. Wait for it, or stop it.';
+      if (error.errorCode === 'approval_not_waiting') return 'That request is no longer waiting for an answer.';
       if (error.errorCode === 'no_running_turn') return 'Nothing is running in this conversation.';
       if (error.errorCode === 'session_broken') return 'This conversation could not be continued. Start a new one.';
       return message || 'That is not possible right now.';

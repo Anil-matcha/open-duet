@@ -2,19 +2,22 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useRef } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
+import { ApprovalCard } from '@/components/approval-card';
 import { Composer } from '@/components/composer';
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { TranscriptRow, type Row } from '@/components/transcript-row';
+import { pendingApprovals } from '@/lib/transcript';
 import { useThread } from '@/lib/use-thread';
 
 const BANNER: Record<string, string> = { connecting: 'Connecting…', reconnecting: 'Reconnecting…' };
 
 export default function Thread() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { transcript, thread, connection, error, loaded, running, send, stop } = useThread(Number(id));
+  const { transcript, thread, connection, error, loaded, running, send, stop, answerApproval } = useThread(Number(id));
   const list = useRef<FlatList<Row>>(null);
   const stuckToEnd = useRef(true);
 
+  const waiting = pendingApprovals(transcript.items);
   const rows: Row[] = transcript.typing ? [...transcript.items, { kind: 'typing', key: 'typing', text: transcript.typing }] : transcript.items;
 
   return (
@@ -51,6 +54,9 @@ export default function Thread() {
         <Text style={styles.error} accessibilityRole="alert">
           {error}
         </Text>
+      ) : null}
+      {waiting.length > 0 ? (
+        <ApprovalCard key={waiting[0].approvalId} item={waiting[0]} waiting={waiting.length} onAnswer={(decision) => answerApproval(waiting[0].approvalId, decision)} />
       ) : null}
       <Composer running={running} onSend={send} onStop={stop} />
     </KeyboardScreen>

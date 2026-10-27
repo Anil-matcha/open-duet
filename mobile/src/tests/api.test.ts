@@ -72,6 +72,14 @@ describe('createApi', () => {
     expect(plain.message).toBe('Local execution is disabled.');
   });
 
+  it('answers an approval with the decision and an encoded id', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: { status: 'recorded', decision: 'allow' } });
+    await createApi(session, { fetchImpl: impl }).answerApproval(4, 'toolu_01/ab', 'allow');
+    expect(calls[0].url).toBe('https://dots.example.com/api/v1/threads/4/approvals/toolu_01%2Fab');
+    expect(calls[0].init.method).toBe('POST');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ decision: 'allow' });
+  });
+
   it('reports an unreachable server', async () => {
     const error = await failure(createApi(session, { fetchImpl: fakeFetch(new TypeError('Network request failed')).impl }).listThreads());
     expect(error.status).toBe(0);
@@ -83,6 +91,9 @@ describe('describeApiError', () => {
     expect(describeApiError(new ApiError(0, 'unreachable', ''))).toMatch(/could not reach/i);
     expect(describeApiError(new ApiError(403, null, 'Local execution is disabled. Set LOCAL_EXECUTION_ENABLED=true ...'))).toMatch(/LOCAL_EXECUTION_ENABLED=true/);
     expect(describeApiError(new ApiError(409, 'turn_running', ''))).toMatch(/already running/i);
+    expect(describeApiError(new ApiError(409, 'approval_not_waiting', ''))).toMatch(/no longer waiting/i);
+    expect(describeApiError(new ApiError(404, null, 'Approval not found'))).toMatch(/request no longer exists/i);
+    expect(describeApiError(new ApiError(404, null, 'Thread not found'))).toMatch(/conversation no longer exists/i);
     expect(describeApiError(new ApiError(503, 'provider_unavailable', 'Claude is not installed.'))).toBe('Claude is not installed.');
     expect(describeApiError(new ApiError(500, null, ''))).toMatch(/server hit an error/i);
     expect(describeApiError(new Error('boom'))).toMatch(/something went wrong/i);

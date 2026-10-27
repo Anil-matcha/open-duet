@@ -27,9 +27,10 @@ All of these work on Windows, macOS and Linux. Building or running the iOS app n
 ## Layout
 
 - `src/app/`: screens only (Expo Router). `_layout.tsx` guards the routes: paired phones see `index` (the conversation list), `thread/[id]` and `settings`; unpaired ones see `pair` and `scan`.
-- `src/components/`: pieces shared by screens (`transcript-row`, `composer`).
+- `src/components/`: pieces shared by screens (`transcript-row`, `composer`, `approval-card`, `keyboard-screen`).
 - `src/lib/`: everything else. `server-url`, `pairing-link`, `pairing-api`, `api`, `sse` and `transcript` are plain TypeScript with no React Native imports, so they are easy to test; `credentials` is the only place the token is stored; `auth-context` holds the pairing state; `use-api` and `use-thread` tie the API to React.
 - The chat reads a thread by following its event stream from the last event seen (`sse.ts`). A reconnect sends `Last-Event-ID`, and `transcript.ts` applies each stored event at most once, so a replay can never show anything twice. If the platform cannot read a response as it arrives, `followThread` falls back to paging `GET /threads/{id}/events`. Event types the app does not draw become one muted row; metadata-only types are skipped.
+- Approvals: the oldest pending approval is pinned above the composer with every input of the call (long values cut, with "Show all") and Allow and Deny. The card never decides for the person: it waits for the stream's `approval.resolved` to show the result. "Always allow" rules are not part of the app.
 - `src/tests/`: Jest tests. Jest's React Native environment replaces `fetch` with a stub, so unit tests pass a fake `fetch` into the `lib` functions. To check against a real server, run the compiled `lib` code under plain Node against a throwaway backend (SQLite file, the CI test key, `python -m app.auth.cli pairing-code --scope chat`).
 
 ## Rules for this package

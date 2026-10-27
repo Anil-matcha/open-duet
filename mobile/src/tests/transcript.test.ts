@@ -1,5 +1,5 @@
 import type { ThreadEvent } from '@/lib/api';
-import { applyEvent, applyEvents, emptyTranscript } from '@/lib/transcript';
+import { applyEvent, applyEvents, emptyTranscript, pendingApprovals } from '@/lib/transcript';
 
 const ev = (seq: number, type: string, data: Record<string, unknown> = {}, turn_id: number | null = 1): ThreadEvent => ({ seq, type, turn_id, data });
 const typing = (text: string, mode = 'append'): ThreadEvent => ({ type: 'text.delta', turn_id: 1, data: { text, mode } });
@@ -61,6 +61,23 @@ describe('transcript', () => {
     expect(t.items[0]).toMatchObject({ kind: 'approval', status: 'pending', summary: 'rm -rf build' });
     t = applyEvent(t, ev(2, 'approval.resolved', { approval_id: 'a1', status: 'allow' }));
     expect(t.items[0]).toMatchObject({ status: 'allowed' });
+  });
+
+  it('keeps what an approval would run, so the card can show it', () => {
+    const t = applyEvent(
+      emptyTranscript(),
+      ev(1, 'approval.requested', { approval_id: 'a1', tool: 'Bash', summary: 'git status', kind: 'command', input: { command: 'git status', description: 'check' } }),
+    );
+    expect(t.items[0]).toMatchObject({ approvalKind: 'command', input: { command: 'git status', description: 'check' } });
+  });
+
+  it('lists the approvals still waiting, oldest first', () => {
+    const t = applyEvents(emptyTranscript(), [
+      ev(1, 'approval.requested', { approval_id: 'a1', tool: 'Bash', summary: 'one' }),
+      ev(2, 'approval.requested', { approval_id: 'a2', tool: 'Write', summary: 'two' }),
+      ev(3, 'approval.resolved', { approval_id: 'a1', status: 'deny' }),
+    ]);
+    expect(pendingApprovals(t.items).map((a) => a.approvalId)).toEqual(['a2']);
   });
 
   it('closes open approvals and tool steps when the turn ends', () => {

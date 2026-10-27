@@ -106,7 +106,22 @@ export function useThread(threadId: number) {
     }
   }, [api, threadId]);
 
+  const answerApproval = useCallback(
+    async (approvalId: string, decision: 'allow' | 'deny'): Promise<boolean> => {
+      if (!api) return false;
+      try {
+        await api.answerApproval(threadId, approvalId, decision);
+        setError(null);
+        return true;
+      } catch (err) {
+        setError(describeApiError(err));
+        return false;
+      }
+    },
+    [api, threadId],
+  );
+
   const loaded = thread !== null && transcript.lastSeq >= thread.last_seq;
 
-  return { transcript, thread, connection, error, loaded, running: transcript.runningTurnId !== null, send, stop };
+  return { transcript, thread, connection, error, loaded, running: transcript.runningTurnId !== null, send, stop, answerApproval };
 }

@@ -17,7 +17,7 @@ export type TranscriptItem =
   | { kind: 'user'; key: string; turnId: number | null; text: string }
   | { kind: 'assistant'; key: string; turnId: number | null; text: string; incomplete: boolean }
   | { kind: 'tool'; key: string; turnId: number | null; callId: string; name: string; summary: string; state: 'running' | 'done' | 'error' | 'stopped' }
-  | { kind: 'approval'; key: string; turnId: number | null; approvalId: string; tool: string; summary: string; status: ApprovalStatus }
+  | { kind: 'approval'; key: string; turnId: number | null; approvalId: string; tool: string; approvalKind: string; summary: string; input: Record<string, unknown>; status: ApprovalStatus }
   | { kind: 'turn_end'; key: string; turnId: number | null; status: Exclude<TurnEndStatus, 'completed'>; error: string }
   | { kind: 'note'; key: string; text: string }
   | { kind: 'unsupported'; key: string; type: string };
@@ -134,7 +134,20 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
     case 'approval.requested':
       return {
         ...base,
-        items: [...state.items, { kind: 'approval', key, turnId, approvalId: text(data.approval_id), tool: text(data.tool) || 'tool', summary: text(data.summary), status: 'pending' }],
+        items: [
+          ...state.items,
+          {
+            kind: 'approval',
+            key,
+            turnId,
+            approvalId: text(data.approval_id),
+            tool: text(data.tool) || 'tool',
+            approvalKind: text(data.kind) || 'other',
+            summary: text(data.summary),
+            input: record(data.input),
+            status: 'pending',
+          },
+        ],
       };
 
     case 'approval.resolved': {
@@ -168,6 +181,11 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
       if (SKIPPED.has(event.type)) return base;
       return { ...base, items: [...state.items, { kind: 'unsupported', key, type: event.type }] };
   }
+}
+
+/** The approvals still waiting for an answer, oldest first. */
+export function pendingApprovals(items: TranscriptItem[]): Extract<TranscriptItem, { kind: 'approval' }>[] {
+  return items.filter((item): item is Extract<TranscriptItem, { kind: 'approval' }> => item.kind === 'approval' && item.status === 'pending');
 }
 
 export function applyEvents(state: Transcript, events: ThreadEvent[]): Transcript {
