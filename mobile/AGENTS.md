@@ -24,12 +24,18 @@ npm run check:bundle   # exports the JS bundle for iOS and Android; no device or
 
 All of these work on Windows, macOS and Linux. Building or running the iOS app needs macOS; say which OS a check was actually run on. Running on a device needs a development build or Expo Go.
 
+## Layout
+
+- `src/app/`: screens only (Expo Router). `_layout.tsx` guards the routes: paired phones see `index` and `settings`, unpaired ones see `pair` and `scan`.
+- `src/lib/`: everything else. `server-url`, `pairing-link` and `pairing-api` are plain TypeScript with no React Native imports, so they are easy to test; `credentials` is the only place the token is stored; `auth-context` holds the pairing state.
+- `src/tests/`: Jest tests. Jest's React Native environment replaces `fetch` with a stub, so unit tests pass a fake `fetch` into the `lib` functions. To check against a real server, run the compiled `lib` code under plain Node against a throwaway backend (SQLite file, the CI test key, `python -m app.auth.cli pairing-code --scope chat`).
+
 ## Rules for this package
 
 - Scope is fixed by the maintainer's design note: pair, threads, chat with stop, approvals. Do not add voice, push, rooms, settings editing or other features without a decision.
 - The app is a chat-scope client. It must reject a pairing session that has admin scope, and must not rely on hiding screens as authorization.
 - The bearer token goes only into the OS secure store, never into logs, URLs or plain storage.
-- Cleartext HTTP is off by default. Any exception must be narrow and confirmed by the user.
+- Release builds talk to the server over HTTPS only. Plain HTTP works only in development builds (`__DEV__`), and `pairDevice` re-checks this before it sends a code. Any wider exception needs a maintainer decision and platform configuration.
 - Decode API responses tolerantly: ignore unknown fields and show unknown event types as a generic row.
 - No secrets in the repo. Signing keys, store credentials and push credentials are CI secrets only; a contributor must be able to build and run against their own server without any of them.
 - Bundle id `ai.suparagent.app` and URL scheme `suparagent` are fixed. The display name in `app.json` is a placeholder.
