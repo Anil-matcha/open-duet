@@ -44,6 +44,7 @@ from app.db.models import Agent, Computer
 from app.db.transactions import begin_write
 from app.desktop import profile
 from app.core import tenant_paths
+from app.core.config import settings
 
 logger = get_logger(__name__)
 
@@ -621,6 +622,8 @@ class ComputerService:
         """Background job: finish interrupted removals, remove orphans once
         Docker answers, and stop computers that have been idle too long."""
         self.expire_control()
+        if settings.HOST_EXECUTION_DISABLED:
+            return  # computers are Docker containers on this host, which a hosted server never runs
         health = await self.health(fresh=True)
         if not health.available:
             return
