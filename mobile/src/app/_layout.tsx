@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Link, Stack, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -28,6 +28,10 @@ function PairingLinkHandler() {
   return null;
 }
 
+function SettingsLink() {
+  return <Link href="/settings">Settings</Link>;
+}
+
 function RootStack() {
   const { state } = useAuth();
   if (state.status === 'loading') {
@@ -41,7 +45,8 @@ function RootStack() {
   return (
     <Stack>
       <Stack.Protected guard={paired}>
-        <Stack.Screen name="index" options={{ title: 'Open Dots' }} />
+        <Stack.Screen name="index" options={{ title: 'Conversations', headerRight: SettingsLink }} />
+        <Stack.Screen name="thread/[id]" options={{ title: 'Conversation' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>

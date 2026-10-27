@@ -15,7 +15,11 @@ type AuthValue = {
   notice: string | null;
   pair: (args: { server: string; code: string }) => Promise<void>;
   signOut: () => Promise<void>;
+  /** The server said this phone's token is no longer valid: forget it and go back to pairing. */
+  revoked: () => void;
 };
+
+const REVOKED_NOTICE = 'Your server signed this phone out. Pair it again to continue.';
 
 // Plain HTTP only in development builds, where the platform also allows it. Release builds are HTTPS only.
 export const ALLOW_HTTP = __DEV__;
@@ -45,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Open straight into the app, then find out in the background whether the server revoked this phone.
       if ((await checkSession(saved.server, saved.token)) === 'revoked' && !cancelled) {
         await clearCredentials();
-        setNotice('Your server signed this phone out. Pair it again to continue.');
+        setNotice(REVOKED_NOTICE);
         setState({ status: 'unpaired' });
       }
     })();
@@ -70,6 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: 'unpaired' });
   }, [state]);
 
-  const value = useMemo(() => ({ state, notice, pair, signOut }), [state, notice, pair, signOut]);
+  const revoked = useCallback(() => {
+    void clearCredentials();
+    setNotice(REVOKED_NOTICE);
+    setState({ status: 'unpaired' });
+  }, []);
+
+  const value = useMemo(() => ({ state, notice, pair, signOut, revoked }), [state, notice, pair, signOut, revoked]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

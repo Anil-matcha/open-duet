@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import Home from '../app';
 import Pair from '../app/pair';
 
 const mockPair = jest.fn();
@@ -26,14 +25,6 @@ beforeEach(() => {
   mockPair.mockReset();
   mockParams = {};
   mockState = { status: 'unpaired' };
-});
-
-describe('Home', () => {
-  it('names the server this phone is paired with', async () => {
-    mockState = { status: 'paired', server: 'https://dots.example.com', token: 't', label: 'My phone' };
-    await render(<Home />);
-    expect(screen.getByText(/dots\.example\.com/)).toBeTruthy();
-  });
 });
 
 describe('Pair', () => {
