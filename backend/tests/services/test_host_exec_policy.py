@@ -49,3 +49,27 @@ def test_every_process_start_is_refused_when_switched_off(monkeypatch):
         host_exec.ensure_allowed("anything")
     result = asyncio.run(cli_probe.run(["true"], timeout=2))
     assert result.failed_to_start
+
+
+def test_the_computer_tool_server_can_import_the_guard_without_app_settings():
+    # computers/mcp_server.py runs as a child with a minimal environment (no TOKEN_ENCRYPTION_KEYS),
+    # and imports docker_cli, which imports host_exec. That import must not load the app settings.
+    import subprocess
+    import sys
+
+    code = "import app.computers.docker_cli, sys; sys.exit(1 if 'app.core.config' in sys.modules else 0)"
+    done = subprocess.run([sys.executable, "-c", code], env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-500:]
+
+
+def test_the_environment_variable_answers_when_settings_are_not_loaded():
+    import subprocess
+    import sys
+
+    code = "from app.core import host_exec; host_exec.ensure_allowed('x')"
+    off = subprocess.run([sys.executable, "-c", code], env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True)
+    on = subprocess.run([sys.executable, "-c", code], env={"PATH": "/usr/bin:/bin", "HOST_EXECUTION_DISABLED": "true"},
+                        capture_output=True, text=True)
+    assert off.returncode == 0
+    assert on.returncode != 0
+    assert "HostExecutionDisabled" in on.stderr

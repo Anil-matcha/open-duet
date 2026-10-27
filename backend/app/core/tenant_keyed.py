@@ -46,6 +46,15 @@ class TenantMap(Generic[K, V]):
             return self._items.pop(self._key(key))
         return self._items.pop(self._key(key), default)
 
+    def clear(self) -> None:
+        """Drop the current account's entries (all of them on the single-owner server)."""
+        schema = tenant_schema.current_schema()
+        for key in [k for k in self._items if k[0] == schema]:
+            del self._items[key]
+
+    def keys(self):
+        return self._current().keys()
+
     def values(self) -> Iterator[V]:
         schema = tenant_schema.current_schema()
         return iter([v for (s, _k), v in list(self._items.items()) if s == schema])
