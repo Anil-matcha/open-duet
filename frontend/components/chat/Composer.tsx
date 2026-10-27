@@ -4,6 +4,7 @@ import { ArrowUp, Paperclip, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { MAX_SKILLS_PER_MESSAGE, skillCompletions, type SkillSummary } from "@/lib/skills";
+import { Button } from "@/components/ui/Button";
 import { PendingAttachments } from "./Attachments";
 
 const MAX_HEIGHT_PX = 200;
@@ -17,6 +18,7 @@ export function Composer({
   onSend,
   sending,
   blockedReason,
+  blockedAction,
   error,
   running,
   stopping,
@@ -39,6 +41,8 @@ export function Composer({
   // Why a message cannot be sent right now (a turn is running, the session is
   // broken, ...). Null when it can.
   blockedReason: string | null;
+  // A way to clear the block, such as signing the engine in (shown while the box is blocked).
+  blockedAction?: { label: string; onClick: () => void } | null;
   error: string | null;
   // An answer is being written: the button becomes Stop.
   running: boolean;
@@ -317,6 +321,11 @@ export function Composer({
             <button type="button" onClick={onSaveAsSkill} className="cursor-pointer text-xs text-muted underline-offset-2 hover:text-ink hover:underline">
               Save as skill
             </button>
+          </div>
+        )}
+        {blockedAction && blockedReason && (
+          <div className="mt-2 px-3">
+            <Button variant="primary" size="sm" onClick={blockedAction.onClick}>{blockedAction.label}</Button>
           </div>
         )}
         {blockedReason && value.trim() !== "" && <p className="mt-1.5 px-3 text-xs text-muted">{blockedReason}</p>}

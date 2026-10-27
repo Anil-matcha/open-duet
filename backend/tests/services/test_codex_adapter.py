@@ -327,7 +327,7 @@ async def test_probe_reports_signed_out(codex):
     codex.plan(login="out")
     probe = await CodexAdapter().probe()
     assert not probe.ready and probe.installed and probe.signed_in is False
-    assert "codex login" in probe.reason
+    assert "engine settings" in probe.reason and "terminal" not in probe.reason
     assert "example.com" not in json.dumps(probe.__dict__, default=str)
 
 

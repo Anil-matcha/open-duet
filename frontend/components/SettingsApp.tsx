@@ -150,7 +150,7 @@ export function SettingsApp() {
           })}
           <button className={buttonClass} disabled={checking || busy !== null} onClick={check}>{checking ? "Checking…" : "Check Claude status"}</button>
           {status && <p role="status" className="text-sm">{status}</p>}
-          <p className="text-xs text-muted">Checks saved settings. To sign in, run <code>claude auth login</code> in your terminal, then check again.</p>
+          <p className="text-xs text-muted">Checks saved settings. To sign in, use Sign in to Claude under Engines (or run <code>claude auth login</code> in a terminal), then check again.</p>
         </section>
         <section className="space-y-4 rounded-lg border border-line p-5"><h3 className="font-semibold">Storage</h3><p className="text-xs text-muted">Managed by the desktop app. These locations cannot be changed here.</p><dl className="space-y-3 text-sm">{Object.entries(data.storage).map(([name, value]) => <div key={name}><dt className="font-medium capitalize">{name.replaceAll("_", " ")}</dt><dd className="mt-1 break-all text-xs text-muted">{value}</dd></div>)}</dl></section>
       </>}

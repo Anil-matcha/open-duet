@@ -619,7 +619,7 @@ def _status_blocking() -> CliStatus:
         status.error = "Could not determine whether Claude is signed in."
         return status
     if not status.signed_in:
-        status.error = "Claude is not signed in. Run `claude auth login` in a terminal first."
+        status.error = "Claude is not signed in. Open engine settings to sign in."
     return status
 
 

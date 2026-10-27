@@ -412,6 +412,11 @@ export function ChatApp() {
   else if (transcript.runningTurnId !== null) blockedReason = "An answer is running…";
   else if (selectedEngine && !selectedEngine.available) blockedReason = selectedEngine.reason ?? "This engine is unavailable. Check its settings.";
 
+  // A signed-out engine gets a button to its sign-in; there may be no terminal to use.
+  const signInAction = selectedEngine && !selectedEngine.available && selectedEngine.signed_in === false
+    ? { label: `Sign in to ${selectedEngine.label}`, onClick: () => router.push("/settings/") }
+    : undefined;
+
   const imagesAttached = attached.some((file) => file.type.startsWith("image/"));
   const imagesRefused = imagesAttached && selectedEngine !== undefined && !selectedEngine.capabilities.images;
   if (blockedReason === null && imagesRefused)
@@ -794,6 +799,7 @@ export function ChatApp() {
             <Conversation
               threadId={threadId}
               agent={threadAgent ? { id: threadAgent.id, name: threadAgent.name } : startingAgent ? { id: startingAgent.id, name: startingAgent.name } : null}
+              emptyAction={signInAction}
               emptyHint={
                 selectedEngine && !selectedEngine.available
                   ? `${selectedEngine.label} is not ready: ${(selectedEngine.reason ?? "check it in Settings").replace(/\.+$/, "")}.`
@@ -832,6 +838,7 @@ export function ChatApp() {
             onSend={send}
             sending={sending}
             blockedReason={blockedReason}
+            blockedAction={signInAction}
             error={sendError}
             running={transcript.runningTurnId !== null}
             stopping={stoppingTurn !== null && stoppingTurn === transcript.runningTurnId}
