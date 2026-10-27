@@ -12,10 +12,12 @@
   created. Release builds connect over HTTPS only; there are no push
   notifications and no store release. Checked: 97 Jest tests, lint, typecheck,
   a bundle export for both platforms, the app's networking code against a local
-  backend, and an Android emulator run in Expo Go (pairing, chat, approvals).
-  Not run: iOS, a physical phone, QR scanning, a custom link opening the app, a
-  release build, Stop on a real running answer, an approval from a real Claude
-  turn, and the new `mobile` CI job at the time of writing. See
+  backend, and an Android emulator run in Expo Go (pairing, chat, an approval
+  from a real Claude turn, and Stop). The Android keyboard layout is only partly
+  fixed: after the first fix the message box's bottom edge was still partly
+  covered, and a second change has not been tried. Not run: iOS, a physical
+  phone, QR scanning, a custom link opening the app, a release build, and the
+  new `mobile` CI job at the time of writing. See
   [the phone app guide](docs/MOBILE.md).
 
 - Allow existing Codex agents to use the same per-agent GitHub, Gmail and
