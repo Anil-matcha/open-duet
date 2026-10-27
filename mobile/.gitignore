@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+expo-env.d.ts
+
+# Native projects are generated from app.json; never commit them
+/ios
+/android
+
+# Signing material and credentials never belong in the repo
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+.env*.local
+
+# Metro and debug
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# TypeScript and tests
+*.tsbuildinfo
+/coverage

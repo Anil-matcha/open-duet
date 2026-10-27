@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Open Dots",
+    "slug": "open-dots",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "suparagent",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "bundleIdentifier": "ai.suparagent.app",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "ai.suparagent.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
