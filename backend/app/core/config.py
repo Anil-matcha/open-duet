@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     # is answered to as if it were listed in TRUSTED_HOSTS, and pairing links
     # printed on the server use it. Empty for the desktop app and local use.
     OPEN_DOTS_PUBLIC_URL: str = ""
+    # Where senders reach this server's routine webhooks when that is not the server's own
+    # address, e.g. "https://dots.example.com/hooks/a/<key>" behind a gateway that forwards to
+    # "/hooks/<id>". The full address shown for a routine is "<base>/<id>". Empty: "/hooks/<id>".
+    OPEN_DOTS_WEBHOOK_BASE: str = ""
     # Hosted deployments only: give each signed-in account its own PostgreSQL schema
     # (app/db/tenant_schema.py). Off for the desktop app and self-hosting.
     TENANT_SCHEMAS_ENABLED: bool = False

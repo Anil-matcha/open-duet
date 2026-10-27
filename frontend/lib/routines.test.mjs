@@ -113,6 +113,7 @@ test('webhook url, curl and badge', () => {
   assert.equal(webhookUrl('/hooks/4', '/api/v1', 'http://127.0.0.1:8000'), 'http://127.0.0.1:8000/hooks/4');
   // A full backend address is still used as given, whatever page the browser is on.
   assert.equal(webhookUrl('/hooks/4', 'https://api.example.com/api/v1', 'https://dots.example.com'), 'https://api.example.com/hooks/4');
+  assert.equal(webhookUrl('https://dots.example.com/hooks/a/k/4', '/api/v1', 'http://x'), 'https://dots.example.com/hooks/a/k/4');
   assert.match(curlExample('http://x/hooks/4', 'rt_abc'), /Authorization: Bearer rt_abc/);
   assert.equal(badgeText(0), null);
   assert.equal(badgeText(7), '7');

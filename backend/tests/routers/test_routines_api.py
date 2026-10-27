@@ -205,6 +205,13 @@ async def test_webhook_secret_is_returned_once_and_rotation_replaces_it(api, age
     assert (await api.post(hook, headers={"Authorization": f"Bearer {second['secret']}"}, content="{}")).status_code == 401
 
 
+async def test_webhook_base_makes_the_shown_address_absolute(api, agent, monkeypatch):
+    monkeypatch.setattr(settings, "OPEN_DOTS_WEBHOOK_BASE", "https://dots.example.com/hooks/a/abc/")
+    created = await make(api, agent)
+    first = (await api.post(f"/api/v1/routines/{created['id']}/webhook")).json()
+    assert first["path"] == f"https://dots.example.com/hooks/a/abc/{created['id']}"
+
+
 async def test_webhook_auth_size_and_encoding(api, agent, scheduler, monkeypatch, sessions):
     created = await make(api, agent, schedule_kind="manual", schedule_spec={})
     secret = (await api.post(f"/api/v1/routines/{created['id']}/webhook")).json()["secret"]

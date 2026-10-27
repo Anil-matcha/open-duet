@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from app.core.config import settings
 from app.schemas.routine import (
     NotificationResponse,
     RoutineCreateRequest,
@@ -67,7 +68,10 @@ async def _one(db, routine) -> RoutineResponse:
 
 
 def _hook_path(routine_id: int) -> str:
-    """The address to give a sender. In a hosted deployment it names the account (routers/hooks.py)."""
+    """The address to give a sender. In a hosted deployment it names the account (routers/hooks.py).
+    A configured OPEN_DOTS_WEBHOOK_BASE wins and makes the address absolute."""
+    if settings.OPEN_DOTS_WEBHOOK_BASE:
+        return f"{settings.OPEN_DOTS_WEBHOOK_BASE.rstrip('/')}/{routine_id}"
     tenant = tenant_schema.current_tenant()
     return f"/hooks/t/{tenant[2:]}/{routine_id}" if tenant else f"/hooks/{routine_id}"
 
