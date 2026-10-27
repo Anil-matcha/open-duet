@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Open Dots",
-    "slug": "open-dots",
+    "name": "Suparagent",
+    "slug": "suparagent",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "suparagent",
@@ -20,7 +20,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Open Dots uses the camera only to scan the pairing QR code shown by your own server.",
+          "cameraPermission": "Suparagent uses the camera only to scan the pairing QR code shown by your own server.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -28,7 +28,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Open Dots reads a photo only when you choose one to attach to a message.",
+          "photosPermission": "Suparagent reads a photo only when you choose one to attach to a message.",
           "cameraPermission": false,
           "microphonePermission": false
         }

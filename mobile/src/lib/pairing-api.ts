@@ -161,7 +161,7 @@ export function describePairingError(error: PairingError): string {
     case 'refused':
       return 'Your server refused the request. Check the address and any proxy in front of it.';
     case 'not_a_server':
-      return 'That address answered, but it does not look like an Open Dots server.';
+      return 'That address answered, but it does not look like a Suparagent server.';
     case 'wrong_scope':
       return 'That code gives full access. The app only accepts a Chat only code. Create a new code with access set to Chat only.';
     case 'server_error':

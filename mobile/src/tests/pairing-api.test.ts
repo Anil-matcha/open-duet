@@ -86,7 +86,7 @@ describe('pairDevice', () => {
     expect(describePairingError(error)).toContain('540 seconds');
   });
 
-  it('says it is not an Open Dots server when the answer has the wrong shape', async () => {
+  it('says it is not a Suparagent server when the answer has the wrong shape', async () => {
     for (const reply of [{ status: 200, body: { hello: 'world' } }, { status: 200, badJson: true }, { status: 200, body: { token: 't', session: { scopes: 'chat' } } }]) {
       const { impl } = fakeFetch(reply);
       expect((await failure(pairDevice({ ...args, fetchImpl: impl }))).code).toBe('not_a_server');

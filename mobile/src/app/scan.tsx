@@ -33,7 +33,7 @@ export default function Scan() {
     if (handled.current) return;
     const link = parsePairingLink(data);
     if (!link) {
-      setMessage('That is not an Open Dots pairing code.');
+      setMessage('That is not a Suparagent pairing code.');
       return;
     }
     handled.current = true;

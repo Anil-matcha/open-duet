@@ -1,6 +1,6 @@
 # Mobile app instructions
 
-This is the native phone app for Open Dots: Expo (managed) and React Native, TypeScript, Expo Router. It pairs with the user's own server and talks to the same `/api/v1` API as the web UI, as a paired `device` with the `chat` scope (see `docs/AUTH.md`). It adds no server of its own.
+This is the native phone app for Suparagent: Expo (managed) and React Native, TypeScript, Expo Router. It pairs with the user's own server and talks to the same `/api/v1` API as the web UI, as a paired `device` with the `chat` scope (see `docs/AUTH.md`). It adds no server of its own.
 
 ## Expo changes every release
 
@@ -41,4 +41,4 @@ All of these work on Windows, macOS and Linux. Building or running the iOS app n
 - Release builds talk to the server over HTTPS only. Plain HTTP works only in development builds (`__DEV__`), and `pairDevice` re-checks this before it sends a code. Any wider exception needs a maintainer decision and platform configuration.
 - Decode API responses tolerantly: ignore unknown fields and show unknown event types as a generic row.
 - No secrets in the repo. Signing keys, store credentials and push credentials are CI secrets only; a contributor must be able to build and run against their own server without any of them.
-- Bundle id `ai.suparagent.app` and URL scheme `suparagent` are fixed. The display name in `app.json` is a placeholder.
+- Bundle id `ai.suparagent.app` and URL scheme `suparagent` are fixed. The display name in `app.json` is Suparagent and can still be changed before a store release.
