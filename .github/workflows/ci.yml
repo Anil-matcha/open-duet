@@ -19,6 +19,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      mobile: ${{ steps.filter.outputs.mobile }}
       desktop: ${{ steps.filter.outputs.desktop }}
       server: ${{ steps.filter.outputs.server }}
       browser: ${{ steps.filter.outputs.browser }}
@@ -33,6 +34,9 @@ jobs:
               - '.github/workflows/ci.yml'
             frontend:
               - 'frontend/**'
+              - '.github/workflows/ci.yml'
+            mobile:
+              - 'mobile/**'
               - '.github/workflows/ci.yml'
             desktop:
               - 'desktop/**'
@@ -261,6 +265,27 @@ jobs:
       - run: npm run check:contrast
       - run: npm run build
 
+  mobile:
+    name: Mobile lint, typecheck, test and bundle
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check:bundle
+
   desktop:
     name: Desktop node tests
     needs: changes
@@ -281,7 +306,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, backend-sqlite, sandbox-linux, backend-postgres, backend-smoke, server-smoke, frontend, desktop, browser]
+    needs: [changes, backend-sqlite, sandbox-linux, backend-postgres, backend-smoke, server-smoke, frontend, mobile, desktop, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Check results
