@@ -124,7 +124,9 @@ cd mobile && npm run lint && npm run typecheck && npm test && npm run check:bund
 ```
 
 `check:bundle` exports the iOS and Android JavaScript bundles without a device or
-Xcode. See `mobile/AGENTS.md` for how the code is laid out.
+Xcode. A standalone Android build (not Expo Go) failed on one Windows machine
+on file name length limits in the native build; enable Windows long paths, build
+from a short folder path, or build on EAS, WSL, Linux or macOS. See `mobile/AGENTS.md` for how the code is laid out.
 
 ## What has been checked
 
@@ -133,6 +135,8 @@ Xcode. See `mobile/AGENTS.md` for how the code is laid out.
 | Pairing, conversations, chat, approvals | Automated: Jest tests, lint, typecheck and a bundle export for both platforms, on Windows. The app's networking code was also run against a local backend (pairing, the live stream, a dropped connection resuming without a gap or repeat, approvals answered, errors explained). |
 | The app on a screen | An Android emulator in Expo Go, against a local backend: manual chat-only pairing, staying paired after a restart, creating and listing conversations, sending a message and getting the answer, reopening history, Settings, sign-out revoking the server session, Allow and Deny on approvals that were created directly in the database, and, with a real Claude turn, a Write tool call that waited for Allow and then created the file, and Stop on a running answer (the app showed "Stopped" and the server recorded it as cancelled). |
 | Markdown, attachments, dark theme, agent picker, rooms | Automated: Jest tests (including a 4.5:1 contrast check of every text and background pair in both looks), lint, typecheck and a bundle export. The app's networking code was run against a local backend: uploading a text file, a PNG, names with accents and quotes, an oversized file and an unsupported type, and reading an image back with the token; listing agents and starting a conversation from one; and, for rooms, the live stream of a room, posting, marking read, a pending request found on the right agent's thread and answered, and a chat-only device being refused when it tries to create a room. No agent was run for any of it. |
+| QR scanning and HTTPS | The Android emulator in Expo Go: scanning the QR code from the web app filled in the server and code and waited for Connect; pairing worked over HTTPS with a valid certificate, and a server with an untrusted certificate was refused. |
+| CI | The `mobile` job (install, lint, typecheck, tests, bundle export) passed on GitHub Actions on Linux. |
 
 Partly checked: the Android keyboard. The first fix moved the message box above
 the keyboard and Send worked, but its bottom edge stayed partly covered; a second
@@ -140,7 +144,6 @@ change for that was made afterwards and has not been tried.
 
 Not checked: any of the Markdown, attachments, dark theme, agent picker and rooms
 screens on a device or emulator (only by tests and against the server, as above);
-photos and files on iOS; a room with agents actually running in it; iOS; a physical phone; scanning the QR code; a custom link opening
-the app; a release build (the HTTPS-only behavior); very long conversations.
-Whether the new `mobile` CI job passes had not been checked when this was
-written.
+photos and files on iOS; a room with agents actually running in it; iOS; a
+physical phone; a custom link opening the app; a release build (the HTTPS-only
+behavior); very long conversations.

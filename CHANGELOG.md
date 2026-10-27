@@ -10,14 +10,16 @@
   asks you to allow or deny tool calls, showing every input of the call. The
   Devices screen now shows a second QR code for the app when a chat-only code is
   created. Release builds connect over HTTPS only; there are no push
-  notifications and no store release. Checked: 97 Jest tests, lint, typecheck,
-  a bundle export for both platforms, the app's networking code against a local
-  backend, and an Android emulator run in Expo Go (pairing, chat, an approval
-  from a real Claude turn, and Stop). The Android keyboard layout is only partly
+  notifications and no store release. Checked: 216 Jest tests, lint, typecheck,
+  a bundle export for both platforms, the `mobile` CI job on GitHub Actions, the
+  app's networking code against a local backend, and an Android emulator run in
+  Expo Go (pairing by code and by QR, HTTPS with a valid certificate and refusal
+  of an untrusted one, chat, an approval from a real Claude turn, and Stop).
+  The newest features (Markdown, attachments, dark theme, agent picker, rooms)
+  were checked by tests and against a local backend, not yet on a screen. The Android keyboard layout is only partly
   fixed: after the first fix the message box's bottom edge was still partly
   covered, and a second change has not been tried. Not run: iOS, a physical
-  phone, QR scanning, a custom link opening the app, a release build, and the
-  new `mobile` CI job at the time of writing. See
+  phone, a custom link opening the app, and a release build. See
   [the phone app guide](docs/MOBILE.md).
 
 - Allow existing Codex agents to use the same per-agent GitHub, Gmail and
