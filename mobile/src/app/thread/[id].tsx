@@ -1,8 +1,9 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useRef } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { Composer } from '@/components/composer';
+import { KeyboardScreen } from '@/components/keyboard-screen';
 import { TranscriptRow, type Row } from '@/components/transcript-row';
 import { useThread } from '@/lib/use-thread';
 
@@ -17,7 +18,7 @@ export default function Thread() {
   const rows: Row[] = transcript.typing ? [...transcript.items, { kind: 'typing', key: 'typing', text: transcript.typing }] : transcript.items;
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+    <KeyboardScreen>
       <Stack.Screen options={{ title: thread?.title || 'Conversation' }} />
       {BANNER[connection] ? <Text style={styles.banner}>{BANNER[connection]}</Text> : null}
       {!loaded ? (
@@ -52,12 +53,11 @@ export default function Thread() {
         </Text>
       ) : null}
       <Composer running={running} onSend={send} onStop={stop} />
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 12 },
   empty: { fontSize: 16, color: '#666' },

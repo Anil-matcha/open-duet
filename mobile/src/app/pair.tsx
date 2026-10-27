@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 
+import { KeyboardScreen } from '@/components/keyboard-screen';
 import { ALLOW_HTTP, useAuth } from '@/lib/auth-context';
 import { describePairingError, PairingError } from '@/lib/pairing-api';
 import { formatPairingCode, normalizePairingCode } from '@/lib/pairing-link';
@@ -46,7 +47,7 @@ export default function Pair() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardScreen>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.body}>
           On your server, open Settings → Devices, set Access to “Chat only”, and create a pairing code. Then scan its app QR code or type the address and code below.
@@ -98,12 +99,11 @@ export default function Pair() {
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Connect</Text>}
         </Pressable>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   container: { padding: 20, gap: 8 },
   body: { fontSize: 15, marginBottom: 8 },
   notice: { fontSize: 15, color: '#b45309', marginBottom: 8 },
