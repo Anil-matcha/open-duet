@@ -206,10 +206,12 @@ export function ChatApp() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.getLocalStatus(), api.getEngines().catch(() => null)])
-      .then(([status, items]) => {
+    // The chat opens on the status alone; the engine list (it checks every CLI, so it can take seconds)
+    // fills in when it arrives and nothing waits for it.
+    api.getEngines().then((items) => { if (!cancelled) setEngines(items); }).catch(() => { if (!cancelled) setEngines(null); });
+    api.getLocalStatus()
+      .then((status) => {
         if (cancelled) return;
-        setEngines(items);
         setGate({ phase: "ready", status });
       })
       .catch((err: unknown) => {
