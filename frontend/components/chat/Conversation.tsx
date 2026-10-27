@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Transcript, TranscriptItem } from "@/lib/transcript";
 import { announcement, groupToolRuns } from "@/lib/transcript-view";
 import { Avatar } from "@/components/ui/Avatar";
+import { Button } from "@/components/ui/Button";
 import {
   ApprovalCard,
   AssistantMessage,
@@ -57,12 +58,15 @@ export function Conversation({
   onUndo,
   threadId = null,
   emptyHint,
+  emptyAction,
   agent = null,
 }: {
   // The conversation the transcript belongs to: attachments are fetched from it.
   threadId?: number | null;
   // What to say when there is nothing yet (depends on whether an engine is ready).
   emptyHint?: string;
+  // Shown under the hint, e.g. a button that opens the engine sign-in.
+  emptyAction?: { label: string; onClick: () => void };
   // Who the conversation is with, for the empty state; null for a plain chat.
   agent?: { id: number; name: string } | null;
   transcript: Transcript;
@@ -111,6 +115,7 @@ export function Conversation({
               <Avatar agentId={agent?.id ?? null} name={agent?.name} size="lg" />
               <p className="text-lg font-semibold">{agent ? `Ask ${agent.name} something` : "Ask your agent something"}</p>
               {emptyHint && <p className="max-w-md text-sm text-muted">{emptyHint}</p>}
+              {emptyAction && <Button variant="primary" onClick={emptyAction.onClick}>{emptyAction.label}</Button>}
               <p className="max-w-md text-xs text-faint">
                 History stays on this computer. Attach images or text files with the paperclip, paste, or drop them on the message box.
               </p>

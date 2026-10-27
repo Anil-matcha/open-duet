@@ -271,7 +271,7 @@ class CodexAdapter:
                 ready=False,
                 version=number,
                 signed_in=signed_in,
-                reason="Codex is not signed in. Use Sign in to Codex in Settings, or run `codex login` in a terminal."
+                reason="Codex is not signed in. Open engine settings to sign in."
                 if signed_in is False
                 else "Could not tell whether Codex is signed in.",
             )

@@ -24,6 +24,8 @@ logger = get_logger(__name__)
 
 PROBE_TIMEOUT_SECONDS = 12.0
 PROBE_CACHE_SECONDS = 15.0
+# A probe older than this is awaited again; younger than this, a stale one is served while a new one runs.
+STALE_PROBE_SECONDS = 600.0
 
 # A model id is an argument value for a CLI or a field in a request, never a
 # flag or shell text: one line, no spaces, not starting with "-".
@@ -194,6 +196,7 @@ class EngineRegistry:
     probe_timeout: float = PROBE_TIMEOUT_SECONDS
     cache_seconds: float = PROBE_CACHE_SECONDS
     _cache: dict = field(default_factory=dict)
+    _refreshing: dict = field(default_factory=dict)
 
     @property
     def adapters(self) -> dict:
@@ -241,12 +244,36 @@ class EngineRegistry:
     async def _probe(self, engine_id: str, adapter, refresh: bool) -> EngineProbe:
         loop = asyncio.get_running_loop()
         cached = self._cache.get(engine_id)
-        if not refresh and cached is not None and loop.time() - cached[0] < self.cache_seconds and cached[2] is adapter:
-            return cached[1]
+        if not refresh and cached is not None and cached[2] is adapter:
+            age = loop.time() - cached[0]
+            if age < self.cache_seconds:
+                return cached[1]
+            if age < STALE_PROBE_SECONDS:
+                # Answer from the last probe now and look again in the background: opening the app must not
+                # wait on every CLI being checked. A sign-in or sign-out calls forget() or refresh=true.
+                self._refresh_in_background(engine_id, adapter)
+                return cached[1]
+        return await self._probe_now(engine_id, adapter)
+
+    async def _probe_now(self, engine_id: str, adapter) -> EngineProbe:
+        loop = asyncio.get_running_loop()
         await self.runtime.prepare_adapter(engine_id, adapter)
         result = await run_probe(adapter, self.probe_timeout)
         self._cache[engine_id] = (loop.time(), result, adapter)
         return result
+
+    def _refresh_in_background(self, engine_id: str, adapter) -> None:
+        task = self._refreshing.get(engine_id)
+        if task is not None and not task.done():
+            return
+
+        async def refresh() -> None:
+            try:
+                await self._probe_now(engine_id, adapter)
+            except Exception:  # noqa: BLE001 - the stale answer stays until the next try
+                pass
+
+        self._refreshing[engine_id] = asyncio.get_running_loop().create_task(refresh())
 
     async def describe(self, *, refresh: bool = False, only: str | None = None) -> list[dict]:
         items = [(k, a) for k, a in self.adapters.items() if only is None or k == only]

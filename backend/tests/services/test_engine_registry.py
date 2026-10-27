@@ -113,6 +113,33 @@ async def test_probes_are_cached_until_refresh():
     assert adapter.calls == 2
 
 
+async def test_an_old_probe_is_served_at_once_and_refreshed_in_the_background():
+    adapter = Minimal()
+    registry = EngineRegistry(Runtime({"minimal": adapter}), cache_seconds=0.0)
+    await registry.describe()
+    assert adapter.calls == 1
+    first = await registry.describe()           # stale: answers from the last probe, looks again behind it
+    assert first[0]["available"] is True
+    await registry._refreshing["minimal"]
+    assert adapter.calls == 2
+    adapter.ready = False
+    await registry.describe()                   # still the old answer for this call...
+    await registry._refreshing["minimal"]
+    assert (await registry.describe())[0]["available"] is False   # ...and the new one right after
+    assert (await registry.describe(refresh=True))[0]["available"] is False
+
+
+async def test_a_probe_past_the_stale_limit_is_awaited(monkeypatch):
+    from app.services import engine_registry as module
+
+    adapter = Minimal()
+    monkeypatch.setattr(module, "STALE_PROBE_SECONDS", 0.0)
+    registry = EngineRegistry(Runtime({"minimal": adapter}), cache_seconds=0.0)
+    await registry.describe()
+    await registry.describe()
+    assert adapter.calls == 2 and "minimal" not in registry._refreshing
+
+
 async def test_live_models_replace_the_static_catalog_and_count_for_validation():
     registry = EngineRegistry(Runtime({"strict": Strict()}))
     registry.check_model("strict", "a")

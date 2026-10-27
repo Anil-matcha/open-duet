@@ -184,9 +184,19 @@ async def test_cancel_during_process_creation_reaps_child(login, monkeypatch):
     "https://claude.ai/oauth/authorize?a=b",
     "https://claude.ai:444/oauth/authorize?a=b\n",
     "https://claude.ai/other?a=b\n",
+    "https://claude.com/a/b/oauth/authorize?a=b\n",
+    "https://claude.com/cai/oauth/authorizeX?a=b\n",
 ])
 def test_untrusted_or_partial_links_are_rejected(url):
     assert claude_login.authorization_url(url) is None
+
+
+@pytest.mark.parametrize("url", [
+    "https://claude.com/cai/oauth/authorize?code=true&state=s\n",
+    "https://claude.com/oauth/authorize?code=true&state=s\n",
+])
+def test_current_and_older_cli_links_are_accepted(url):
+    assert claude_login.authorization_url(url) == url.strip()
 
 
 async def test_unknown_status_does_not_replace_account(login):

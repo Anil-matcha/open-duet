@@ -3,19 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type ClaudeLoginOperation } from "@/lib/api";
 import { EngineSignOut } from "./EngineSignOut";
+import { trustedLink } from "@/lib/claude-login-link";
 
 const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:opacity-50";
-const HOSTS = new Set(["claude.ai", "claude.com", "console.anthropic.com", "platform.claude.com"]);
-
-function trustedLink(value?: string): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && HOSTS.has(url.hostname) && url.pathname === "/oauth/authorize"
-      && !url.username && !url.password && !url.port && !url.hash && !!url.search ? value : null;
-  } catch { return null; }
-}
-
 export function ClaudeEngineSetup({ onChanged, signedIn }: { onChanged: () => void; signedIn: boolean | null }) {
   const [flow, setFlow] = useState<ClaudeLoginOperation | null>(null);
   const [code, setCode] = useState("");

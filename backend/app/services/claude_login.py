@@ -22,6 +22,10 @@ _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _HOSTS = {"claude.ai", "claude.com", "console.anthropic.com", "platform.claude.com"}
 
 
+# Claude Code 2.1 prints https://claude.com/cai/oauth/authorize; older builds print /oauth/authorize.
+_AUTHORIZE_PATH = re.compile(r"(/[a-z]{1,8})?/oauth/authorize")
+
+
 def authorization_url(output: str) -> str | None:
     # Parse completed lines only: a pipe read can split the hostname or query.
     for line in _ANSI.sub("", output).splitlines(keepends=True):
@@ -31,7 +35,7 @@ def authorization_url(output: str) -> str | None:
             try:
                 parsed = urlsplit(candidate)
                 if (parsed.scheme == "https" and parsed.hostname in _HOSTS
-                        and parsed.path == "/oauth/authorize" and parsed.query
+                        and _AUTHORIZE_PATH.fullmatch(parsed.path) and parsed.query
                         and not parsed.username and not parsed.password
                         and parsed.port in {None, 443} and not parsed.fragment):
                     return candidate
