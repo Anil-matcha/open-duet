@@ -24,8 +24,9 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   what would run. Allow or Deny. The first answer wins; a request already answered,
   expired or cancelled is refused with an explanation.
 - **Settings.** The server address, this phone's name and its access (chat only),
-  and **Sign out and forget this server**, which also ends the session on the
-  server.
+  and **Sign out and forget this server**, which also asks the server to end the
+  session. If the phone cannot reach the server at that moment, it only forgets
+  the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
 open), agent, engine, routine, room or settings management, attachments, Markdown
@@ -36,7 +37,8 @@ theme. "Always allow" rules are not offered; use the web app for those.
 
 - **HTTPS.** The phone sends a token with every request, so release builds only
   connect over HTTPS. Use a reverse proxy with a certificate, or Tailscale Serve;
-  see [self-hosting](SELF-HOSTING.md). Development builds also accept plain HTTP.
+  see [self-hosting](SELF-HOSTING.md). Development builds also accept plain HTTP
+  (seen on Android in Expo Go, not tried on iOS).
 - **Agents turned on.** Conversations need `LOCAL_EXECUTION_ENABLED=true` on the
   server. Without it the app says "Your server has agents turned off".
 - **Your address in `TRUSTED_HOSTS`** (see [authentication](AUTH.md)). Otherwise the

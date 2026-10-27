@@ -1,32 +1,9 @@
-import { Link, Stack, useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
+import { Link, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import { ActivityIndicator, Alert, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
+import { PairingLinkHandler } from '@/components/pairing-link-handler';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { parsePairingLink } from '@/lib/pairing-link';
-
-// A pairing link opened from outside (the phone camera, a message) fills in the pairing screen.
-// It never connects by itself: the person still checks the server and taps Connect.
-function PairingLinkHandler() {
-  const { state } = useAuth();
-  const router = useRouter();
-  const url = Linking.useLinkingURL();
-
-  useEffect(() => {
-    if (!url || state.status === 'loading') return;
-    const link = parsePairingLink(url);
-    if (!link) return;
-    if (state.status === 'paired') {
-      Alert.alert('Already paired', 'Sign out in Settings first if you want to pair with a different server.');
-      return;
-    }
-    router.navigate({ pathname: '/pair', params: { server: link.server ?? '', code: link.code } });
-  }, [url, state.status, router]);
-
-  return null;
-}
 
 function SettingsLink() {
   return <Link href="/settings">Settings</Link>;
