@@ -2,11 +2,13 @@ import { useMemo } from 'react';
 import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { parseMarkdown, type Span } from '@/lib/markdown';
+import { useStyles, type Palette } from '@/lib/theme';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const HEADING_SIZE = [0, 22, 20, 18, 17, 16, 16];
 
 function Spans({ spans }: { spans: Span[] }) {
+  const styles = useStyles(createStyles);
   return (
     <>
       {spans.map((span, index) => (
@@ -24,6 +26,7 @@ function Spans({ spans }: { spans: Span[] }) {
 }
 
 export function Markdown({ text }: { text: string }) {
+  const styles = useStyles(createStyles);
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
     <View style={styles.root}>
@@ -76,17 +79,18 @@ export function Markdown({ text }: { text: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { gap: 8 },
-  text: { color: '#111', fontSize: 16 },
-  bold: { fontWeight: '700' },
-  italic: { fontStyle: 'italic' },
-  link: { color: '#0a6c8e', textDecorationLine: 'underline' },
-  inlineCode: { fontFamily: MONO, backgroundColor: '#dfe4e8' },
-  codeBlock: { backgroundColor: '#dfe4e8', borderRadius: 8, padding: 8 },
-  codeText: { fontFamily: MONO, fontSize: 13, color: '#111' },
-  quote: { borderLeftWidth: 3, borderLeftColor: '#9aa5ab', paddingLeft: 8 },
-  list: { gap: 4 },
-  item: { flexDirection: 'row', gap: 6 },
-  itemText: { flex: 1 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    root: { gap: 8 },
+    text: { color: p.text, fontSize: 16 },
+    bold: { fontWeight: '700' },
+    italic: { fontStyle: 'italic' },
+    link: { color: p.accentText, textDecorationLine: 'underline' },
+    inlineCode: { fontFamily: MONO, backgroundColor: p.surfaceStrong },
+    codeBlock: { backgroundColor: p.surfaceStrong, borderRadius: 8, padding: 8 },
+    codeText: { fontFamily: MONO, fontSize: 13, color: p.text },
+    quote: { borderLeftWidth: 3, borderLeftColor: p.quoteBar, paddingLeft: 8 },
+    list: { gap: 4 },
+    item: { flexDirection: 'row', gap: 6 },
+    itemText: { flex: 1 },
+  });

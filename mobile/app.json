@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "suparagent",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "ai.suparagent.app",

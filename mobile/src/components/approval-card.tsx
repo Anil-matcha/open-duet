@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { approvalFields, previewValue } from '@/lib/approval-text';
 import type { TranscriptItem } from '@/lib/transcript';
+import { useStyles, type Palette } from '@/lib/theme';
+
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
 type Approval = Extract<TranscriptItem, { kind: 'approval' }>;
 
@@ -14,6 +17,7 @@ type Props = {
 };
 
 function Field({ name, value }: { name: string; value: string }) {
+  const styles = useStyles(createStyles);
   const [expanded, setExpanded] = useState(false);
   const { text, cut } = previewValue(value);
   return (
@@ -33,6 +37,7 @@ function Field({ name, value }: { name: string; value: string }) {
 
 // The oldest approval waiting for an answer, pinned above the composer so it cannot scroll out of sight.
 export function ApprovalCard({ item, waiting, onAnswer }: Props) {
+  const styles = useStyles(createStyles);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<'allow' | 'deny' | null>(null);
   const fields = approvalFields(item.input);
@@ -72,21 +77,22 @@ export function ApprovalCard({ item, waiting, onAnswer }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: { margin: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#d9a400', backgroundColor: '#fff8e1', maxHeight: 360 },
-  title: { fontSize: 15, fontWeight: '700', color: '#111' },
-  mono: { fontFamily: 'monospace' },
-  note: { fontSize: 13, color: '#6b5200', marginTop: 2 },
-  summary: { fontSize: 15, color: '#111', marginTop: 8 },
-  field: { marginTop: 8 },
-  fieldName: { fontSize: 12, color: '#6b5200' },
-  fieldValue: { fontSize: 14, color: '#111', fontFamily: 'monospace' },
-  link: { fontSize: 13, color: '#0a7ea4', paddingVertical: 4 },
-  buttons: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  button: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  allow: { backgroundColor: '#0a7ea4' },
-  deny: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#b91c1c' },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  denyText: { color: '#b91c1c', fontSize: 16, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    card: { margin: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, maxHeight: 360 },
+    title: { fontSize: 15, fontWeight: '700', color: p.text },
+    mono: { fontFamily: MONO },
+    note: { fontSize: 13, color: p.warnText, marginTop: 2 },
+    summary: { fontSize: 15, color: p.text, marginTop: 8 },
+    field: { marginTop: 8 },
+    fieldName: { fontSize: 12, color: p.warnText },
+    fieldValue: { fontSize: 14, color: p.text, fontFamily: MONO },
+    link: { fontSize: 13, color: p.accentText, paddingVertical: 4 },
+    buttons: { flexDirection: 'row', gap: 10, marginTop: 12 },
+    button: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+    allow: { backgroundColor: p.accent },
+    deny: { backgroundColor: p.background, borderWidth: 1, borderColor: p.danger },
+    buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
+    denyText: { color: p.danger, fontSize: 16, fontWeight: '600' },
+    disabled: { opacity: 0.5 },
+  });

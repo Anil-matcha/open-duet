@@ -1,19 +1,26 @@
-import { Link, Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, Link, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
 
 import { PairingLinkHandler } from '@/components/pairing-link-handler';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme';
 
 function SettingsLink() {
-  return <Link href="/settings">Settings</Link>;
+  const theme = useTheme();
+  return (
+    <Link href="/settings" style={{ color: theme.accentText }}>
+      Settings
+    </Link>
+  );
 }
 
 function RootStack() {
   const { state } = useAuth();
+  const theme = useTheme();
   if (state.status === 'loading') {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
         <ActivityIndicator />
       </View>
     );
@@ -34,12 +41,22 @@ function RootStack() {
   );
 }
 
+// Headers, screen backgrounds and borders come from the same palette as the screens themselves.
+function useNavigationTheme() {
+  const theme = useTheme();
+  const base = useColorScheme() === 'dark' ? DarkTheme : DefaultTheme;
+  return { ...base, colors: { ...base.colors, background: theme.background, card: theme.background, text: theme.text, border: theme.border, primary: theme.accentText } };
+}
+
 export default function RootLayout() {
+  const navigationTheme = useNavigationTheme();
   return (
-    <AuthProvider>
-      <StatusBar style="auto" />
-      <PairingLinkHandler />
-      <RootStack />
-    </AuthProvider>
+    <ThemeProvider value={navigationTheme}>
+      <AuthProvider>
+        <StatusBar style="auto" />
+        <PairingLinkHandler />
+        <RootStack />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

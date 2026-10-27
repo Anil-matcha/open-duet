@@ -3,6 +3,7 @@ import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-n
 import { Markdown } from '@/components/markdown';
 import type { Attachment } from '@/lib/attachments';
 import type { TranscriptItem } from '@/lib/transcript';
+import { useStyles, type Palette } from '@/lib/theme';
 
 export type Row = TranscriptItem | { kind: 'typing'; key: string; text: string };
 
@@ -23,6 +24,7 @@ type Props = {
 };
 
 function Attachments({ files, source }: { files: Attachment[]; source: Props['attachmentSource'] }) {
+  const styles = useStyles(createStyles);
   return (
     <View style={styles.files}>
       {files.map((file) => {
@@ -40,6 +42,7 @@ function Attachments({ files, source }: { files: Attachment[]; source: Props['at
 }
 
 export function TranscriptRow({ row, attachmentSource }: Props) {
+  const styles = useStyles(createStyles);
   switch (row.kind) {
     case 'user':
       return (
@@ -89,17 +92,18 @@ export function TranscriptRow({ row, attachmentSource }: Props) {
   }
 }
 
-const styles = StyleSheet.create({
-  bubble: { maxWidth: '88%', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
-  user: { alignSelf: 'flex-end', backgroundColor: '#0a7ea4' },
-  assistant: { alignSelf: 'flex-start', backgroundColor: '#eceff1' },
-  userText: { color: '#fff', fontSize: 16 },
-  assistantText: { color: '#111', fontSize: 16 },
-  files: { gap: 6, marginBottom: 6 },
-  thumb: { width: 180, height: 180, borderRadius: 10, backgroundColor: '#ffffff33' },
-  fileChip: { color: '#fff', fontSize: 13, backgroundColor: '#ffffff33', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
-  muted: { color: '#666', fontSize: 12, marginTop: 4 },
-  line: { color: '#555', fontSize: 13, marginVertical: 3, paddingHorizontal: 4 },
-  approval: { alignSelf: 'stretch', borderWidth: 1, borderColor: '#d9a400', backgroundColor: '#fff8e1', borderRadius: 10, padding: 10, marginVertical: 6 },
-  approvalTitle: { color: '#8a6d00', fontSize: 13, fontWeight: '700', marginBottom: 2 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    bubble: { maxWidth: '88%', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
+    user: { alignSelf: 'flex-end', backgroundColor: p.accent },
+    assistant: { alignSelf: 'flex-start', backgroundColor: p.surface },
+    userText: { color: p.onAccent, fontSize: 16 },
+    assistantText: { color: p.text, fontSize: 16 },
+    files: { gap: 6, marginBottom: 6 },
+    thumb: { width: 180, height: 180, borderRadius: 10, backgroundColor: '#ffffff33' },
+    fileChip: { color: p.onAccent, fontSize: 13, backgroundColor: '#ffffff33', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
+    muted: { color: p.muted, fontSize: 12, marginTop: 4 },
+    line: { color: p.muted, fontSize: 13, marginVertical: 3, paddingHorizontal: 4 },
+    approval: { alignSelf: 'stretch', borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, borderRadius: 10, padding: 10, marginVertical: 6 },
+    approvalTitle: { color: p.warnText, fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  });

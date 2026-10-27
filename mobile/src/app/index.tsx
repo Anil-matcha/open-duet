@@ -5,8 +5,10 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Tex
 import { describeApiError, type Thread } from '@/lib/api';
 import { relativeTime } from '@/lib/time';
 import { useApi } from '@/lib/use-api';
+import { useStyles, type Palette } from '@/lib/theme';
 
 export default function Conversations() {
+  const styles = useStyles(createStyles);
   const api = useApi();
   const router = useRouter();
   const [threads, setThreads] = useState<Thread[] | null>(null);
@@ -53,7 +55,7 @@ export default function Conversations() {
   return (
     <View style={styles.flex}>
       <Pressable accessibilityRole="button" accessibilityLabel="New conversation" style={[styles.new, creating && styles.disabled]} disabled={creating} onPress={create}>
-        {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.newText}>New conversation</Text>}
+        {creating ? <ActivityIndicator color={styles.newText.color} /> : <Text style={styles.newText}>New conversation</Text>}
       </Pressable>
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
@@ -86,15 +88,16 @@ export default function Conversations() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  new: { margin: 12, backgroundColor: '#0a7ea4', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
-  newText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
-  error: { color: '#b91c1c', paddingHorizontal: 12, paddingBottom: 8, fontSize: 14 },
-  empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: '#666' },
-  row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#bbb' },
-  title: { fontSize: 16, fontWeight: '600' },
-  meta: { fontSize: 13, color: '#666', marginTop: 2 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    flex: { flex: 1 },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    new: { margin: 12, backgroundColor: p.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+    newText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
+    disabled: { opacity: 0.5 },
+    error: { color: p.danger, paddingHorizontal: 12, paddingBottom: 8, fontSize: 14 },
+    empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: p.muted },
+    row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },
+    title: { fontSize: 16, fontWeight: '600', color: p.text },
+    meta: { fontSize: 13, color: p.muted, marginTop: 2 },
+  });

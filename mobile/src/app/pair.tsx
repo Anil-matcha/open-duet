@@ -7,8 +7,11 @@ import { ALLOW_HTTP, useAuth } from '@/lib/auth-context';
 import { describePairingError, PairingError } from '@/lib/pairing-api';
 import { formatPairingCode, normalizePairingCode } from '@/lib/pairing-link';
 import { describeServerUrlProblem, normalizeServerUrl, serverLabel } from '@/lib/server-url';
+import { useStyles, useTheme, type Palette } from '@/lib/theme';
 
 export default function Pair() {
+  const styles = useStyles(createStyles);
+  const theme = useTheme();
   const { pair, notice } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ server?: string; code?: string }>();
@@ -64,6 +67,7 @@ export default function Pair() {
           value={server}
           onChangeText={setServer}
           placeholder="https://dots.example.com"
+          placeholderTextColor={theme.muted}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
@@ -83,6 +87,7 @@ export default function Pair() {
           value={code}
           onChangeText={setCode}
           placeholder="ABCD-EFGH"
+          placeholderTextColor={theme.muted}
           autoCapitalize="characters"
           autoCorrect={false}
           maxLength={12}
@@ -96,26 +101,27 @@ export default function Pair() {
         ) : null}
 
         <Pressable accessibilityRole="button" style={[styles.primary, !canConnect && styles.disabled]} disabled={!canConnect} onPress={connect}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Connect</Text>}
+          {busy ? <ActivityIndicator color={theme.onAccent} /> : <Text style={styles.primaryText}>Connect</Text>}
         </Pressable>
       </ScrollView>
     </KeyboardScreen>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { padding: 20, gap: 8 },
-  body: { fontSize: 15, marginBottom: 8 },
-  notice: { fontSize: 15, color: '#b45309', marginBottom: 8 },
-  label: { fontSize: 14, fontWeight: '600', marginTop: 12 },
-  input: { borderWidth: 1, borderColor: '#999', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
-  code: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 2 },
-  target: { fontSize: 14 },
-  bold: { fontWeight: '700' },
-  problem: { fontSize: 14, color: '#b91c1c' },
-  primary: { marginTop: 16, backgroundColor: '#0a7ea4', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  secondary: { borderWidth: 1, borderColor: '#0a7ea4', borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
-  secondaryText: { color: '#0a7ea4', fontSize: 16, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    container: { padding: 20, gap: 8 },
+    body: { fontSize: 15, marginBottom: 8, color: p.text },
+    notice: { fontSize: 15, color: p.notice, marginBottom: 8 },
+    label: { fontSize: 14, fontWeight: '600', marginTop: 12, color: p.text },
+    input: { borderWidth: 1, borderColor: p.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
+    code: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 2 },
+    target: { fontSize: 14, color: p.text },
+    bold: { fontWeight: '700' },
+    problem: { fontSize: 14, color: p.danger },
+    primary: { marginTop: 16, backgroundColor: p.accent, borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+    primaryText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
+    secondary: { borderWidth: 1, borderColor: p.accentText, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+    secondaryText: { color: p.accentText, fontSize: 16, fontWeight: '600' },
+    disabled: { opacity: 0.5 },
+  });

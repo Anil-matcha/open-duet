@@ -29,6 +29,9 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   picker and files the system file picker; the app asks for no camera or
   microphone permission for this. Sent photos show as thumbnails in the
   conversation.
+- **Dark theme.** The app follows the phone's light or dark setting. There is no
+  switch of its own. Text and background pairs are checked for contrast in both
+  looks. Only checked by tests so far, not by eye on a device (see below).
 - **Approvals.** When an agent asks to run a tool, the oldest waiting request is
   pinned above the message box with every input of the call, so you see exactly
   what would run. Allow or Deny. The first answer wins; a request already answered,
@@ -39,8 +42,7 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), agent, engine, routine, room or settings management, more than one server, or a
-dark theme. "Always allow" rules are not offered; use the web app for those.
+open), agent, engine, routine, room or settings management, or more than one server. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
 

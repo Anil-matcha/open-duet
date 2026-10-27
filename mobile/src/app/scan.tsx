@@ -4,8 +4,10 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { parsePairingLink } from '@/lib/pairing-link';
+import { useStyles, type Palette } from '@/lib/theme';
 
 export default function Scan() {
+  const styles = useStyles(createStyles);
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [message, setMessage] = useState<string | null>(null);
@@ -48,13 +50,15 @@ export default function Scan() {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
-  text: { fontSize: 16, textAlign: 'center' },
-  button: { backgroundColor: '#0a7ea4', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 20 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  link: { color: '#0a7ea4', fontSize: 16 },
-  banner: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, backgroundColor: 'rgba(0,0,0,0.6)' },
-  bannerText: { color: '#fff', fontSize: 15, textAlign: 'center' },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    fill: { flex: 1 },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
+    text: { fontSize: 16, textAlign: 'center', color: p.text },
+    button: { backgroundColor: p.accent, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 20 },
+    buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
+    link: { color: p.accentText, fontSize: 16 },
+    // Over the camera picture, so it does not follow the look.
+    banner: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 20, backgroundColor: 'rgba(0,0,0,0.6)' },
+    bannerText: { color: '#fff', fontSize: 15, textAlign: 'center' },
+  });

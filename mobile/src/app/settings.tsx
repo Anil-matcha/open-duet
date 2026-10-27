@@ -3,8 +3,10 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/lib/auth-context';
 import { serverLabel } from '@/lib/server-url';
+import { useStyles, type Palette } from '@/lib/theme';
 
 export default function Settings() {
+  const styles = useStyles(createStyles);
   const { state, signOut } = useAuth();
   const [busy, setBusy] = useState(false);
   if (state.status !== 'paired') return null;
@@ -38,11 +40,12 @@ export default function Settings() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { padding: 20, gap: 4 },
-  label: { fontSize: 13, fontWeight: '600', marginTop: 12, opacity: 0.7 },
-  value: { fontSize: 16 },
-  danger: { marginTop: 32, borderWidth: 1, borderColor: '#b91c1c', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
-  dangerText: { color: '#b91c1c', fontSize: 16, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    container: { padding: 20, gap: 4 },
+    label: { fontSize: 13, fontWeight: '600', marginTop: 12, color: p.muted },
+    value: { fontSize: 16, color: p.text },
+    danger: { marginTop: 32, borderWidth: 1, borderColor: p.danger, borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+    dangerText: { color: p.danger, fontSize: 16, fontWeight: '600' },
+    disabled: { opacity: 0.5 },
+  });

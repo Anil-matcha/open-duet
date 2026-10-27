@@ -8,10 +8,12 @@ import { KeyboardScreen } from '@/components/keyboard-screen';
 import { TranscriptRow, type Row } from '@/components/transcript-row';
 import { pendingApprovals } from '@/lib/transcript';
 import { useThread } from '@/lib/use-thread';
+import { useStyles, type Palette } from '@/lib/theme';
 
 const BANNER: Record<string, string> = { connecting: 'Connecting…', reconnecting: 'Reconnecting…' };
 
 export default function Thread() {
+  const styles = useStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const { transcript, thread, connection, error, loaded, running, send, attach, attachmentSource, stop, answerApproval } = useThread(Number(id));
   const list = useRef<FlatList<Row>>(null);
@@ -63,10 +65,11 @@ export default function Thread() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 12 },
-  empty: { fontSize: 16, color: '#666' },
-  banner: { textAlign: 'center', paddingVertical: 4, backgroundColor: '#fff3cd', color: '#6b5200', fontSize: 13 },
-  error: { color: '#b91c1c', paddingHorizontal: 12, paddingVertical: 6, fontSize: 14 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    content: { padding: 12 },
+    empty: { fontSize: 16, color: p.muted },
+    banner: { textAlign: 'center', paddingVertical: 4, backgroundColor: p.warnBackground, color: p.warnText, fontSize: 13 },
+    error: { color: p.danger, paddingHorizontal: 12, paddingVertical: 6, fontSize: 14 },
+  });

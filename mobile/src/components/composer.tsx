@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MAX_ATTACHMENTS, type Attachment } from '@/lib/attachments';
+import { useStyles, useTheme, type Palette } from '@/lib/theme';
 
 type Props = {
   running: boolean;
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export function Composer({ running, onSend, onStop, onAttach }: Props) {
+  const styles = useStyles(createStyles);
+  const theme = useTheme();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -75,7 +78,8 @@ export function Composer({ running, onSend, onStop, onAttach }: Props) {
             <Text style={styles.attachText}>+</Text>
           </Pressable>
         ) : null}
-        <TextInput style={styles.input} value={text} onChangeText={setText} placeholder="Message" multiline maxLength={20_000} accessibilityLabel="Message" />
+        <TextInput style={styles.input} value={text} onChangeText={setText} placeholder="Message"
+          placeholderTextColor={theme.muted} multiline maxLength={20_000} accessibilityLabel="Message" />
         {running ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Stop" style={[styles.button, styles.stop]} onPress={() => void onStop()}>
             <Text style={styles.buttonText}>Stop</Text>
@@ -90,18 +94,19 @@ export function Composer({ running, onSend, onStop, onAttach }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#bbb' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingTop: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '60%', backgroundColor: '#eceff1', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
-  chipText: { fontSize: 13, color: '#111', flexShrink: 1 },
-  chipRemove: { fontSize: 13, color: '#555' },
-  bar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 8 },
-  attach: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
-  attachText: { fontSize: 28, color: '#0a7ea4', lineHeight: 30 },
-  input: { flex: 1, maxHeight: 140, borderWidth: 1, borderColor: '#999', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, fontSize: 16 },
-  button: { backgroundColor: '#0a7ea4', borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10 },
-  stop: { backgroundColor: '#b91c1c' },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
-});
+const createStyles = (p: Palette) =>
+  StyleSheet.create({
+    wrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: p.border },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingTop: 8 },
+    chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '60%', backgroundColor: p.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
+    chipText: { fontSize: 13, color: p.text, flexShrink: 1 },
+    chipRemove: { fontSize: 13, color: p.muted },
+    bar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 8 },
+    attach: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
+    attachText: { fontSize: 28, color: p.accentText, lineHeight: 30 },
+    input: { flex: 1, maxHeight: 140, borderWidth: 1, borderColor: p.inputBorder, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, fontSize: 16, color: p.text },
+    button: { backgroundColor: p.accent, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10 },
+    stop: { backgroundColor: p.dangerFill },
+    buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
+    disabled: { opacity: 0.5 },
+  });
