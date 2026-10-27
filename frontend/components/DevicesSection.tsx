@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
+import { appPairLink } from "@/lib/app-link";
 import { auth } from "@/lib/auth";
 import { encodeQr, qrSvgPath } from "@/lib/qr";
 import type { Device, PairingCode } from "@/lib/session";
@@ -15,15 +16,15 @@ function when(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-function QrCode({ text }: { text: string }) {
+function QrCode({ text, label = "Pairing QR code", testId = "pairing-qr" }: { text: string; label?: string; testId?: string }) {
   const qr = useMemo(() => {
     const matrix = encodeQr(text);
     return matrix ? qrSvgPath(matrix) : null;
   }, [text]);
   if (!qr) return null;
   return (
-    <svg role="img" aria-label="Pairing QR code" viewBox={`0 0 ${qr.size} ${qr.size}`} width={192} height={192}
-      shapeRendering="crispEdges" className="rounded bg-white" data-testid="pairing-qr">
+    <svg role="img" aria-label={label} viewBox={`0 0 ${qr.size} ${qr.size}`} width={192} height={192}
+      shapeRendering="crispEdges" className="rounded bg-white" data-testid={testId}>
       <rect width={qr.size} height={qr.size} fill="#fff" />
       <path d={qr.path} fill="#000" />
     </svg>
@@ -38,6 +39,7 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
   }, []);
   const left = Math.max(0, Math.round((new Date(code.expires_at).getTime() - now) / 1000));
   const link = `${window.location.origin}/pair#code=${encodeURIComponent(code.display_code)}`;
+  const appLink = appPairLink(window.location.origin, code.display_code);
   return (
     <div className="space-y-3 rounded-md border border-line p-4" aria-live="polite">
       {left > 0 ? (
@@ -50,6 +52,14 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
               <p className="text-xs text-muted">{code.scope === "admin" ? "Full access" : "Chat only"} · works once · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</p>
             </div>
           </div>
+          {code.scope === "chat" ? (
+            <div className="space-y-2" data-testid="app-pairing">
+              <p className="text-sm">In the phone app, scan this code instead, or open <span className="break-all font-mono text-xs">{appLink}</span></p>
+              <QrCode text={appLink} label="Phone app pairing QR code" testId="app-pairing-qr" />
+            </div>
+          ) : (
+            <p className="text-xs text-muted">The phone app only accepts a Chat only code. Create one to pair the app.</p>
+          )}
         </>
       ) : (
         <p className="text-sm text-muted">That code has expired.</p>
