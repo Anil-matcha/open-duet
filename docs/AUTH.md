@@ -89,11 +89,15 @@ without a preflight. That closes login CSRF.
    **Create pairing code** (or runs the CLI). The server returns an 8-character
    code from a 31-symbol alphabet without look-alikes (about 2^39.6), shown as
    `ABCD-EFGH`, with a QR code of `<web UI>/pair#code=ABCD-EFGH`. The code is
-   carried in the URL fragment, so it never reaches a server log.
+   carried in the URL fragment, so it never reaches a server log. For a
+   chat-only code the screen shows a second QR code and link for the
+   [phone app](MOBILE.md), `suparagent://pair?server=<web UI>#code=ABCD-EFGH`.
 2. On the device, scan the QR or open `/pair` and type the code. A browser
    exchanges it for its own session cookie; any other client
    (`POST /api/v1/auth/pair` without `"cookie": true`) receives a bearer token
-   **once**, to keep in its own secret storage.
+   **once**, to keep in its own secret storage. The phone app takes the token
+   path. It accepts only a chat-only session: for one with `admin` it calls
+   `POST /api/v1/auth/logout` with the new token, which revokes it, and refuses.
 3. The code is single use (consumed atomically: of two simultaneous
    redemptions only one wins), expires after 5 minutes, and is stored only as
    a SHA-256 digest. At most 5 codes are open at a time.

@@ -19,7 +19,10 @@ cd backend && DATABASE_BACKEND=sqlite uv run pytest   # SQLite, temporary file
 cd backend && uv run alembic upgrade head && uv run pytest   # PostgreSQL (docker compose up -d first)
 cd frontend && npm run lint && npm run build
 cd desktop && npm test
+cd mobile && npm run lint && npm run typecheck && npm test && npm run check:bundle
 ```
+
+`mobile/` is the phone app ([MOBILE.md](MOBILE.md)); its CI job runs only when `mobile/` or the workflow changes, and `mobile/AGENTS.md` holds its rules (Expo versions change often, so read it before editing).
 
 Changing the server, the Docker files or [SELF-HOSTING.md](SELF-HOSTING.md): `scripts/smoke-server.py`, `scripts/smoke-server-chat.py`, `scripts/smoke-docker.py` and `scripts/smoke-proxy.py` run the real thing (the last two need Docker), and `python scripts/verify-guide.py` runs every marked command in the guide in a clean container. Keep the guide's "What has been checked" table true.
 

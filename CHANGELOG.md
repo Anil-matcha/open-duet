@@ -4,6 +4,20 @@
 
 ### Added
 
+- Add a phone app (`mobile/`, Expo and React Native) that pairs with your own
+  server by QR code or code as a chat-only device. It lists and starts
+  conversations, shows answers as they are written, stops a running answer, and
+  asks you to allow or deny tool calls, showing every input of the call. The
+  Devices screen now shows a second QR code for the app when a chat-only code is
+  created. Release builds connect over HTTPS only; there are no push
+  notifications and no store release. Checked: 97 Jest tests, lint, typecheck,
+  a bundle export for both platforms, the app's networking code against a local
+  backend, and an Android emulator run in Expo Go (pairing, chat, approvals).
+  Not run: iOS, a physical phone, QR scanning, a custom link opening the app, a
+  release build, Stop on a real running answer, an approval from a real Claude
+  turn, and the new `mobile` CI job at the time of writing. See
+  [the phone app guide](docs/MOBILE.md).
+
 - Allow existing Codex agents to use the same per-agent GitHub, Gmail and
   Google Calendar Composio grants as Claude agents. Codex mounts a scoped MCP
   server per turn and routes tool requests through the existing one-use approval

@@ -67,6 +67,10 @@ platform and release qualification limits.
   backups and updates. This is a single-owner product; multi-user organization
   hosting is not implemented. See [authentication](AUTH.md) and
   [self-hosting](SELF-HOSTING.md).
+- **Phone app.** An early, source-only app pairs with your server as a chat-only
+  device to list and start conversations, follow answers live, stop one, and
+  allow or deny tool calls. No push notifications, no store release, and not yet
+  tried on iOS or a physical phone. See [the phone app guide](MOBILE.md).
 - **Desktop app.** The app has first-run setup, engine settings, a doctor
   command, SQLite storage and unsigned Windows/macOS installers. The `v0.3.0`
   prerelease has a Windows x64 installer; the newest macOS arm64 DMG is
