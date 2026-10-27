@@ -21,6 +21,14 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   reconnects and carries on from the last event it saw. Answers are shown as
   Markdown (headings, lists, bold, italic, code, quotes, links). There is no HTML,
   and only `http` and `https` links can be tapped; they open in your browser.
+- **Attachments.** The **+** button next to the message box attaches photos
+  (PNG, JPEG, GIF, WebP up to 10 MB) and text files (up to 1 MB, the types in
+  [everyday features](EVERYDAY.md)), up to 8 per message. Files upload as you pick
+  them, you can remove one before sending, and a file the server refuses is named
+  with the reason while the others still attach. Photos use the system photo
+  picker and files the system file picker; the app asks for no camera or
+  microphone permission for this. Sent photos show as thumbnails in the
+  conversation.
 - **Approvals.** When an agent asks to run a tool, the oldest waiting request is
   pinned above the message box with every input of the call, so you see exactly
   what would run. Allow or Deny. The first answer wins; a request already answered,
@@ -31,8 +39,8 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), agent, engine, routine, room or settings management, attachments, more than one
-server, or a dark theme. "Always allow" rules are not offered; use the web app for those.
+open), agent, engine, routine, room or settings management, more than one server, or a
+dark theme. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
 

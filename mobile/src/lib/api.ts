@@ -1,6 +1,8 @@
 // The authenticated calls the chat screens make, as a paired chat-scope device (docs/AUTH.md).
 // Responses are decoded tolerantly: only the fields the app uses are named, unknown ones are ignored.
 
+import { buildMultipart, type Attachment } from './attachments';
+
 export type Session = { server: string; token: string };
 
 export type Thread = {
@@ -42,6 +44,10 @@ export class ApiError extends Error {
 type FetchLike = typeof fetch;
 
 const REQUEST_TIMEOUT_MS = 30_000;
+// A photo over a mobile connection can take a while.
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+type Raw = { body: Uint8Array; contentType: string };
 
 /** `{"detail": "text"}` or `{"detail": {"error_code": "...", "message": "..."}}`; anything else is generic. */
 async function errorFrom(response: Response): Promise<ApiError> {
@@ -65,9 +71,9 @@ async function errorFrom(response: Response): Promise<ApiError> {
 export function createApi(session: Session, options: { onRevoked?: () => void; fetchImpl?: FetchLike } = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(method: string, path: string, body?: unknown, raw?: Raw): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), raw ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetchImpl(`${session.server}/api/v1${path}`, {
@@ -75,9 +81,10 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
         headers: {
           Authorization: `Bearer ${session.token}`,
           Accept: 'application/json',
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(raw ? { 'Content-Type': raw.contentType } : body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        // The runtime accepts bytes; React Native's declared body types do not list them.
+        body: raw ? (raw.body as unknown as BodyInit) : body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
     } catch {
@@ -101,7 +108,16 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
     getThread: (id: number) => request<ThreadDetail>('GET', `/threads/${id}`),
     listEvents: (id: number, after: number, limit = 500) =>
       request<EventsPage>('GET', `/threads/${id}/events?after=${after}&limit=${limit}`),
-    sendTurn: (id: number, text: string) => request<{ id: number }>('POST', `/threads/${id}/turns`, { prompt_text: text }),
+    sendTurn: (id: number, text: string, attachmentIds: string[] = []) =>
+      request<{ id: number }>('POST', `/threads/${id}/turns`, attachmentIds.length ? { prompt_text: text, attachment_ids: attachmentIds } : { prompt_text: text }),
+    // Stored for this conversation's next message; send the returned id with the turn.
+    uploadAttachment: (id: number, file: { name: string; mime: string; bytes: Uint8Array }) =>
+      request<Attachment>('POST', `/threads/${id}/attachments`, undefined, buildMultipart('file', file.name, file.mime, file.bytes)),
+    /** Where an attached image can be fetched from; the request needs the same bearer token. */
+    attachmentSource: (id: number, attachmentId: string) => ({
+      uri: `${session.server}/api/v1/threads/${id}/attachments/${attachmentId}`,
+      headers: { Authorization: `Bearer ${session.token}` },
+    }),
     stopTurn: (id: number) => request<{ turn_id: number }>('POST', `/threads/${id}/stop`, {}),
     // First answer wins; one already answered, expired or cancelled is a 409 `approval_not_waiting`.
     answerApproval: (threadId: number, approvalId: string, decision: 'allow' | 'deny') =>
@@ -123,6 +139,10 @@ export function describeApiError(error: unknown): string {
       return /local execution is disabled/i.test(message)
         ? 'Your server has agents turned off. Set LOCAL_EXECUTION_ENABLED=true on the server.'
         : message || 'Your server refused this request.';
+    case 413:
+      return message || 'That file is too large.';
+    case 422:
+      return message || 'That file cannot be attached.';
     case 404:
       return /approval/i.test(message) ? 'That request no longer exists.' : 'That conversation no longer exists.';
     case 409:

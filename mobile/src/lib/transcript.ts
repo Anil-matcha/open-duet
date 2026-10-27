@@ -9,12 +9,13 @@
 // newer server.
 
 import type { ThreadEvent } from './api';
+import { readAttachments, type Attachment } from './attachments';
 
 export type TurnEndStatus = 'completed' | 'failed' | 'cancelled' | 'interrupted';
 export type ApprovalStatus = 'pending' | 'allowed' | 'denied' | 'expired' | 'cancelled';
 
 export type TranscriptItem =
-  | { kind: 'user'; key: string; turnId: number | null; text: string }
+  | { kind: 'user'; key: string; turnId: number | null; text: string; attachments: Attachment[] }
   | { kind: 'assistant'; key: string; turnId: number | null; text: string; incomplete: boolean }
   | { kind: 'tool'; key: string; turnId: number | null; callId: string; name: string; summary: string; state: 'running' | 'done' | 'error' | 'stopped' }
   | { kind: 'approval'; key: string; turnId: number | null; approvalId: string; tool: string; approvalKind: string; summary: string; input: Record<string, unknown>; status: ApprovalStatus }
@@ -100,7 +101,7 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
 
   switch (event.type) {
     case 'turn.started':
-      return { ...base, runningTurnId: turnId, typing: null, items: [...state.items, { kind: 'user', key, turnId, text: text(data.prompt_text) }] };
+      return { ...base, runningTurnId: turnId, typing: null, items: [...state.items, { kind: 'user', key, turnId, text: text(data.prompt_text), attachments: readAttachments(data.attachments) }] };
 
     case 'assistant.message':
       return {

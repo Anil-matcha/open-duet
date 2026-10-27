@@ -6,7 +6,7 @@
 
 - Add a phone app (`mobile/`, Expo and React Native) that pairs with your own
   server by QR code or code as a chat-only device. It lists and starts
-  conversations, shows answers as they are written (as Markdown), stops a running answer, and
+  conversations, shows answers as they are written (as Markdown), attaches photos and text files, stops a running answer, and
   asks you to allow or deny tool calls, showing every input of the call. The
   Devices screen now shows a second QR code for the app when a chat-only code is
   created. Release builds connect over HTTPS only; there are no push

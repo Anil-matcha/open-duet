@@ -2,7 +2,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { describeApiError, type Thread, type ThreadEvent } from './api';
+import { attachmentProblem, MAX_ATTACHMENTS, type Attachment } from './attachments';
 import { useAuth } from './auth-context';
+import { pickFiles, pickPhotos } from './pick-attachments';
 import { followThread, type Connection } from './sse';
 import { applyEvents, emptyTranscript } from './transcript';
 import { useApi } from './use-api';
@@ -82,10 +84,10 @@ export function useThread(threadId: number) {
   }, []);
 
   const send = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, attachmentIds: string[] = []): Promise<boolean> => {
       if (!api) return false;
       try {
-        await api.sendTurn(threadId, text);
+        await api.sendTurn(threadId, text, attachmentIds);
         setError(null);
         return true;
       } catch (err) {
@@ -95,6 +97,37 @@ export function useThread(threadId: number) {
     },
     [api, threadId],
   );
+
+  // Opens a picker and uploads what was chosen. Files that are refused are named; the rest still attach.
+  const attach = useCallback(
+    async (kind: 'photo' | 'file', room: number): Promise<Attachment[]> => {
+      if (!api || room <= 0) return [];
+      const added: Attachment[] = [];
+      const problems: string[] = [];
+      try {
+        const picked = await (kind === 'photo' ? pickPhotos(Math.min(room, MAX_ATTACHMENTS)) : pickFiles(Math.min(room, MAX_ATTACHMENTS)));
+        for (const file of picked) {
+          const problem = attachmentProblem(file.name, file.mime, file.size);
+          if (problem) {
+            problems.push(problem);
+            continue;
+          }
+          try {
+            added.push(await api.uploadAttachment(threadId, { name: file.name, mime: file.mime, bytes: await file.read() }));
+          } catch (err) {
+            problems.push(`${file.name}: ${describeApiError(err)}`);
+          }
+        }
+      } catch {
+        problems.push('Could not open your files.');
+      }
+      setError(problems.length ? problems.join(' ') : null);
+      return added;
+    },
+    [api, threadId],
+  );
+
+  const attachmentSource = useCallback((attachmentId: string) => (api ? api.attachmentSource(threadId, attachmentId) : undefined), [api, threadId]);
 
   const stop = useCallback(async () => {
     if (!api) return;
@@ -123,5 +156,5 @@ export function useThread(threadId: number) {
 
   const loaded = thread !== null && transcript.lastSeq >= thread.last_seq;
 
-  return { transcript, thread, connection, error, loaded, running: transcript.runningTurnId !== null, send, stop, answerApproval };
+  return { transcript, thread, connection, error, loaded, running: transcript.runningTurnId !== null, send, attach, attachmentSource, stop, answerApproval };
 }

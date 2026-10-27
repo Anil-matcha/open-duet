@@ -89,7 +89,7 @@ describe('Thread', () => {
       transcript: {
         ...emptyTranscript(),
         items: [
-          { kind: 'user', key: 'e1', turnId: 1, text: 'hello there' },
+          { kind: 'user', key: 'e1', turnId: 1, text: 'hello there', attachments: [] },
           { kind: 'assistant', key: 'e2', turnId: 1, text: 'hi, how can I help?', incomplete: false },
           { kind: 'tool', key: 'e3', turnId: 1, callId: 'c', name: 'Bash', summary: 'ls -la', state: 'running' },
           { kind: 'approval', key: 'e4', turnId: 1, approvalId: 'a', tool: 'Bash', approvalKind: 'command', summary: 'rm -rf build', input: { command: 'rm -rf build' }, status: 'pending' },
@@ -145,7 +145,7 @@ describe('Composer', () => {
     await render(<Composer running={false} onSend={onSend} onStop={jest.fn()} />);
     await fireEvent.changeText(screen.getByLabelText('Message'), '  hello  ');
     await fireEvent.press(screen.getByRole('button', { name: 'Send' }));
-    expect(onSend).toHaveBeenCalledWith('hello');
+    expect(onSend).toHaveBeenCalledWith('hello', []);
     await waitFor(() => expect(screen.getByLabelText('Message').props.value).toBe(''));
   });
 

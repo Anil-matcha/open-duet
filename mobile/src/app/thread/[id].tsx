@@ -13,7 +13,7 @@ const BANNER: Record<string, string> = { connecting: 'Connecting…', reconnecti
 
 export default function Thread() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { transcript, thread, connection, error, loaded, running, send, stop, answerApproval } = useThread(Number(id));
+  const { transcript, thread, connection, error, loaded, running, send, attach, attachmentSource, stop, answerApproval } = useThread(Number(id));
   const list = useRef<FlatList<Row>>(null);
   const stuckToEnd = useRef(true);
 
@@ -37,7 +37,7 @@ export default function Thread() {
           ref={list}
           data={rows}
           keyExtractor={(row) => row.key}
-          renderItem={({ item }) => <TranscriptRow row={item} />}
+          renderItem={({ item }) => <TranscriptRow row={item} attachmentSource={attachmentSource} />}
           contentContainerStyle={styles.content}
           // Follow new text unless the person scrolled up to read.
           onScroll={({ nativeEvent }) => {
@@ -58,7 +58,7 @@ export default function Thread() {
       {waiting.length > 0 ? (
         <ApprovalCard key={waiting[0].approvalId} item={waiting[0]} waiting={waiting.length} onAnswer={(decision) => answerApproval(waiting[0].approvalId, decision)} />
       ) : null}
-      <Composer running={running} onSend={send} onStop={stop} />
+      <Composer running={running} onSend={send} onStop={stop} onAttach={attach} />
     </KeyboardScreen>
   );
 }
