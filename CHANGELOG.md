@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-28
+
 ### Added
 
 - Desktop: "Reset this profile" (also offered when a different account is
