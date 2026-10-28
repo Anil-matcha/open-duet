@@ -14,8 +14,26 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-SOCKET = "/tmp/od-browser.sock"
+# The container defaults below are unchanged. A local (no Docker) launcher sets these variables
+# to give each agent its own socket, port and profile and to pick the browser binary and flags.
+SOCKET = os.environ.get("OD_BROWSER_SOCKET", "/tmp/od-browser.sock")
+LOCK = os.environ.get("OD_BROWSER_LOCK", "/tmp/od-browser-start.lock")
+PROFILE = os.environ.get("OD_BROWSER_PROFILE", "/home/agent/browser-profile")
+PORT = os.environ.get("OD_BROWSER_PORT", "9222")
+CHROME = os.environ.get("OD_BROWSER_CHROME", "chromium")
+IDLE_SECONDS = int(os.environ.get("OD_BROWSER_IDLE_SECONDS", "1800"))
 LIMIT = 64000
+
+
+def extra_flags():
+    flags = []
+    if os.environ.get("OD_BROWSER_HEADLESS") == "1":
+        flags.append("--headless=new")
+    if os.environ.get("OD_BROWSER_NO_SANDBOX", "1") == "1":
+        flags.append("--no-sandbox")
+    if os.environ.get("OD_BROWSER_PROXY"):
+        flags.append("--proxy-server=" + os.environ["OD_BROWSER_PROXY"])
+    return flags
 
 
 def text(value, error=False):
@@ -75,13 +93,13 @@ class Browser:
         if self.browser and self.browser.is_connected():
             return
         self.close()
-        profile = Path("/home/agent/browser-profile")
+        profile = Path(PROFILE)
         profile.mkdir(mode=0o700, exist_ok=True)
         profile.chmod(0o700)
         self.process = subprocess.Popen([
-            "chromium", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
+            CHROME, *extra_flags(), "--disable-dev-shm-usage", "--no-first-run",
             "--no-default-browser-check", "--password-store=basic", "--remote-debugging-address=127.0.0.1",
-            "--remote-debugging-port=9222", f"--user-data-dir={profile}", "--window-size=1280,800", "about:blank",
+            f"--remote-debugging-port={PORT}", f"--user-data-dir={profile}", "--window-size=1280,800", "about:blank",
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         from urllib.request import urlopen
         deadline = time.monotonic()+15
@@ -89,7 +107,7 @@ class Browser:
             if self.process.poll() is not None:
                 raise RuntimeError("Chromium exited. Recreate the desktop with the current image.")
             try:
-                with urlopen("http://127.0.0.1:9222/json/version", timeout=1) as response:
+                with urlopen(f"http://127.0.0.1:{PORT}/json/version", timeout=1) as response:
                     endpoint = json.load(response)["webSocketDebuggerUrl"]
                 self.browser = self.pw.chromium.connect_over_cdp(endpoint, timeout=5000)
                 break
@@ -274,7 +292,7 @@ def serve():
         try:
             while True:
                 server.handle_request()
-                if server.browser.browser and time.monotonic()-server.browser.last_used > 1800:
+                if server.browser.browser and time.monotonic()-server.browser.last_used > IDLE_SECONDS:
                     server.browser.close()
         finally:
             server.browser.close()
@@ -285,7 +303,7 @@ def client():
     request = sys.stdin.buffer.read(65537)
     if len(request) > 65536:
         raise ValueError("Request too large.")
-    with open("/tmp/od-browser-start.lock", "a") as lock:
+    with open(LOCK, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         connection = socket.socket(socket.AF_UNIX)
         connection.settimeout(35)
