@@ -5,7 +5,7 @@ function trustedPickerRequest(event, window, origin, kind) {
   if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return false;
   const url = event.senderFrame?.url;
   if (!sameOrigin(url, origin)) return false;
-  return ["/settings", "/settings/"].includes(new URL(url).pathname);
+  return ["/settings/engines", "/settings/engines/"].includes(new URL(url).pathname);
 }
 
 function registerPathPicker({ ipcMain, dialog, getWindow, getOrigin }) {

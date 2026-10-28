@@ -29,7 +29,7 @@ export function rowAction(row: NeedsYouRow): { label: string; href: string | nul
   if (row.routine_id) return { label, href: `/chat?view=routines&routine=${row.routine_id}` };
   if (row.work_item_id) return { label, href: `/chat?view=planner&task=${row.work_item_id}` };
   if (row.kind === "usage_limit") return { label, href: "/chat?panel=usage" };
-  if (row.kind === "signed_out" || row.kind === "out_of_credit") return { label, href: "/settings/" };
+  if (row.kind === "signed_out" || row.kind === "out_of_credit") return { label, href: "/settings/engines/" };
   return { label, href: null };
 }
 

@@ -561,7 +561,7 @@ export function AgentsPanel({
                     <span>{level === "off" ? "Off" : level === "read" ? <>Read only. {app.read}</> : <>Read and change. {app.write}</>}</span>
                   </label>)}
                 </div>)}
-                <p>Connect apps first under Settings → Connected apps. Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
+                <p>Connect apps first on the Apps page (sidebar → Apps). Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
               </fieldset>}
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                 <input
@@ -703,7 +703,7 @@ export function AgentsPanel({
                         {agent.instructions && (
                           <p className="mt-1 line-clamp-2 text-xs text-muted">{agent.instructions}</p>
                         )}
-                        {engines.find((engine) => engine.id === agent.provider)?.available === false && <p className="mt-1 text-xs text-warning">Connect an AI: {engines.find((engine) => engine.id === agent.provider)?.reason} <Link href="/settings/" className="underline">Open engine settings</Link></p>}
+                        {engines.find((engine) => engine.id === agent.provider)?.available === false && <p className="mt-1 text-xs text-warning">Connect an AI: {engines.find((engine) => engine.id === agent.provider)?.reason} <Link href="/settings/engines/" className="underline">Open engine settings</Link></p>}
                         <div className="mt-2 flex flex-wrap gap-1">
                           <button onClick={() => { setDraft(toDraft(agent)); setRoleChoice(null); setMemberChoices({}); }} disabled={busy} className={SMALL}>
                             Edit

@@ -2,14 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { trustedPickerRequest, registerPathPicker } = require("../src/path-picker");
 
-function fixture(url = "http://127.0.0.1:1234/settings/") {
+function fixture(url = "http://127.0.0.1:1234/settings/engines/") {
   const mainFrame = { url };
   const window = { webContents: { mainFrame } };
   const event = { sender: window.webContents, senderFrame: mainFrame };
   return { window, event };
 }
 
-test("only the Settings main frame at this launch's origin may choose a file or folder", () => {
+test("only the Engines settings main frame at this launch's origin may choose a file or folder", () => {
   const { window, event } = fixture();
   const origin = "http://127.0.0.1:1234";
   assert.ok(trustedPickerRequest(event, window, origin, "file"));
@@ -20,6 +20,10 @@ test("only the Settings main frame at this launch's origin may choose a file or 
   assert.equal(trustedPickerRequest({ ...event, sender: {} }, window, origin, "file"), false);
   const chat = fixture("http://127.0.0.1:1234/chat/");
   assert.equal(trustedPickerRequest(chat.event, chat.window, origin, "file"), false);
+  for (const other of ["settings", "settings/account", "apps"]) {
+    const page = fixture(`http://127.0.0.1:1234/${other}/`);
+    assert.equal(trustedPickerRequest(page.event, page.window, origin, "file"), false, other);
+  }
 });
 
 test("the dialog exposes only a selected path, cancellation returns null", async () => {

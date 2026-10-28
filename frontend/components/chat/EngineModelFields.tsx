@@ -29,7 +29,7 @@ export function EngineModelFields({ engines, provider, model, onChange, disabled
       </select>
     </label>
     {engine?.limit && <p role="status" className="text-xs text-warning"><span className="mr-1 rounded-full border border-warning/60 px-2 py-0.5 font-medium">{engineLimitText(engine.limit)}</span>{engine.limit.message}</p>}
-    {engine && !engine.available && <p className="text-xs text-warning">{engine.reason} <Link href="/settings/" className="underline">Open engine settings</Link></p>}
+    {engine && !engine.available && <p className="text-xs text-warning">{engine.reason} <Link href="/settings/engines/" className="underline">Open engine settings</Link></p>}
     <label className="block text-xs text-muted">Model
       {engine && !engine.custom_models ? <select className={FIELD} aria-label="Model" value={model ?? ""} disabled={disabled} onChange={(event) => onChange(provider, event.target.value || null)}>
         <option value="">{defaultLabel ?? `Engine default${engine.default_model ? ` (${engine.default_model})` : ""}`}</option>

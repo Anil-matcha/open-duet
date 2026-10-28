@@ -45,7 +45,7 @@ export function PairScreen() {
     <div className="flex min-h-dvh items-center justify-center bg-inset px-4">
       <main className="w-full max-w-sm space-y-5 rounded-lg border border-line bg-raised p-6">
         <h1 className="text-lg font-semibold">Pair this browser</h1>
-        <p className="text-sm text-muted">Enter the code shown in Settings → Devices on a signed-in browser. Codes work once and expire after five minutes.</p>
+        <p className="text-sm text-muted">Enter the code shown in Settings → Account & privacy → Devices on a signed-in browser. Codes work once and expire after five minutes.</p>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1">
             <label htmlFor="code" className="block text-sm font-medium">Pairing code</label>

@@ -20,7 +20,13 @@ test("setup main frame can open sign-in; subframes and other pages cannot", asyn
   await assert.rejects(handler({ ...event, senderFrame: { url: mainFrame.url } }, "https://auth.openai.com/codex/device"));
   mainFrame.url = "http://127.0.0.1:1234/chat/";
   await assert.rejects(handler(event, "https://auth.openai.com/codex/device"));
-  mainFrame.url = "https://evil.test/settings/";
+  for (const page of ["/settings/", "/settings/account/", "/apps/"]) {
+    mainFrame.url = `http://127.0.0.1:1234${page}`;
+    await assert.rejects(handler(event, "https://auth.openai.com/codex/device"), undefined, page);
+  }
+  mainFrame.url = "http://127.0.0.1:1234/settings/engines/";
+  await handler(event, "https://auth.openai.com/codex/device");
+  mainFrame.url = "https://evil.test/settings/engines/";
   await assert.rejects(handler(event, "https://auth.openai.com/codex/device"));
-  assert.equal(opened.length, 1);
+  assert.equal(opened.length, 2);
 });

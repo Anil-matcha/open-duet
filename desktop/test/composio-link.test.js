@@ -5,7 +5,7 @@ const { validateComposioLinkUrl, registerComposioLink } = require("../src/compos
 const origin = "http://127.0.0.1:51234";
 const valid = "https://connect.composio.dev/link/lk_abc123";
 
-test("opens only https links on composio.dev, from the Settings window", async () => {
+test("opens only https links on composio.dev, from the app window", async () => {
   assert.equal(validateComposioLinkUrl(valid), valid);
   assert.equal(validateComposioLinkUrl("https://composio.dev/x"), "https://composio.dev/x");
   const opened = [];

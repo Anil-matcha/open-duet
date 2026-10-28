@@ -1,16 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type ApplicationSetting, type DesktopSettings } from "@/lib/api";
-import { ApprovalsTabs } from "@/components/approvals/ApprovalsPanel";
 import { EngineSettings } from "@/components/EngineSettings";
-import { DesktopPermissions } from "./DesktopPermissions";
-import { DesktopAccountSection } from "@/components/DesktopAccountSection";
-import { HistoryExport } from "@/components/HistoryExport";
-import { DevicesSection } from "@/components/DevicesSection";
-import { AppUpdates } from "@/components/AppUpdates";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 declare global {
   interface Window {
@@ -40,7 +32,7 @@ const buttonClass = "cursor-pointer rounded-md border border-line px-3 py-2 text
 const display = (value: unknown) => value === null || value === undefined ? "Unavailable" : value === "" ? "Automatic / app default" : typeof value === "string" ? value : JSON.stringify(value);
 const applies = (row: ApplicationSetting) => row.key === "LOCAL_WORKSPACE_ROOT" ? "New conversations" : row.key === "LOCAL_APPROVAL_TIMEOUT_SECONDS" ? "New approvals" : row.applies === "next_run" ? "Next turn" : row.applies === "restart" ? "After restart" : "Immediately";
 
-export function SettingsApp() {
+export function EnginesSettings() {
   const [data, setData] = useState<DesktopSettings | null>(null);
   const [drafts, setDrafts] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
@@ -101,24 +93,12 @@ export function SettingsApp() {
     finally { setChecking(false); }
   };
 
-  return <div className="min-h-dvh">
-    <header className="flex h-12 items-center gap-4 border-b border-line px-4"><Link href="/chat/" className="text-sm text-muted hover:underline">← Chat</Link><h1 className="text-sm font-semibold">Settings</h1></header>
-    <main className="mx-auto max-w-2xl space-y-6 px-5 py-8">
-      <div><h2 className="text-xl font-semibold">Settings</h2><p className="mt-2 text-sm text-muted">Configure engines and approvals. Desktop preferences can be saved below when using the app.</p></div>
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-raised p-5">
-        <div><h3 className="font-semibold">Appearance</h3><p className="mt-1 text-xs text-muted">Follows your system by default. Saved in this browser only.</p></div>
-        <ThemeToggle />
-      </section>
-      <AppUpdates />
+  return <div className="space-y-6">
       {error && <p role="alert" className="rounded-md border border-danger/50 p-3 text-sm text-danger">{error}</p>}
       {notice && <p role="status" className="rounded-md border border-line p-3 text-sm">{notice}</p>}
       {headless && <p className="text-sm text-muted">Workspace, executable and timeout preferences use the backend environment configuration in this installation.</p>}
       {!data && !error && !headless && <p role="status">Loading settings…</p>}
       {!headless && <button className={buttonClass} disabled={busy !== null} onClick={() => setLoadTick((n) => n + 1)}>{data ? "Reload saved settings" : "Try again"}</button>}
-      <DesktopAccountSection />
-      <HistoryExport />
-      <DesktopPermissions />
-      <section className="space-y-2 rounded-lg border border-line p-5"><h3 className="font-semibold">Getting started</h3><p className="text-sm text-muted">Revisit engine choice, your first agent and the first-request guide.</p><Link className="text-sm underline" href="/onboarding/">Open setup guide</Link></section>
       {data && !settingUp && <>
         <section className="space-y-5 rounded-lg border border-line p-5">
           <h3 className="font-semibold">Claude Code</h3>
@@ -147,12 +127,6 @@ export function SettingsApp() {
         </section>
         <section className="space-y-4 rounded-lg border border-line p-5"><h3 className="font-semibold">Storage</h3><p className="text-xs text-muted">Managed by the desktop app. These locations cannot be changed here.</p><dl className="space-y-3 text-sm">{Object.entries(data.storage).map(([name, value]) => <div key={name}><dt className="font-medium capitalize">{name.replaceAll("_", " ")}</dt><dd className="mt-1 break-all text-xs text-muted">{value}</dd></div>)}</dl></section>
       </>}
-      {!settingUp && <>
-        <DevicesSection />
-        <EngineSettings />
-        <section className="space-y-2 rounded-lg border border-line p-5"><h3 className="font-semibold">Connected apps</h3><p className="text-sm text-muted">Connect GitHub, Gmail, Google Calendar and your Composio key on the Apps page.</p><Link className="text-sm underline" href="/apps/">Open Apps</Link></section>
-        <section className="rounded-lg border border-line p-5"><h3 className="mb-1 font-semibold">Approvals</h3><p className="mb-4 text-xs text-muted">Commands you always allow, every decision about a tool call, and a read-only health scan of recent conversations.</p><ApprovalsTabs /></section>
-      </>}
-    </main>
-  </div>;
+      {!settingUp && <EngineSettings />}
+    </div>;
 }
