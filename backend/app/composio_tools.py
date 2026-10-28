@@ -390,6 +390,12 @@ def clean_arguments(tool: Tool, arguments: object) -> tuple[dict, str | None]:
     account = arguments.get("account")
     if account is not None and not (isinstance(account, str) and _ALIAS.match(account)):
         raise BadArguments("account is not a valid account name.")
+    if tool.name == "github_dispatch_workflow" and "inputs" in sent:
+        # Composio's action takes the workflow inputs as one JSON text, not an object.
+        if sent["inputs"]:
+            sent["inputs"] = json.dumps(sent["inputs"], ensure_ascii=False, separators=(",", ":"))
+        else:
+            del sent["inputs"]
     if tool.name == "github_create_branch":
         sent["ref"] = "refs/heads/" + sent.pop("branch")
         sent["sha"] = sent.pop("from_sha")
