@@ -5,28 +5,41 @@ it. Apps are reached through [Composio](https://composio.dev) with **your own
 Composio project key**; there is no shared key and nothing is sent to a
 service run by this project.
 
-GitHub, Gmail and Google Calendar are available to existing Claude and Codex
-agents. The app mounts a turn-scoped, permission-filtered MCP server and sends
-Codex MCP approval requests through the same approval gate used for Claude.
-Gmail tools are bounded reads, and Gmail can also save a draft reply after you
-approve it. Calendar tools read and search events, and can add an event to your
-own calendar after you approve it. Other engines cannot use connected apps yet.
+Any app Composio lists can be connected, and then allowed for Claude and Codex
+agents. Two kinds of app exist:
+
+- **GitHub, Gmail and Google Calendar have their own tools.** Each tool is
+  written and checked here: its arguments are fixed, its answer is cut to a few
+  fields, and Gmail only ever saves drafts. For these apps, those tools are all an
+  agent gets.
+- **Every other app is used through two general tools**: one finds the app's
+  actions, the other runs one. No action of these apps is treated as a read, so
+  **you approve every call** (see "Other apps" below).
+
+The app mounts a turn-scoped, permission-filtered MCP server and sends Codex MCP
+approval requests through the same approval gate used for Claude. Other engines
+cannot use connected apps yet.
 
 ## Set it up
 
 1. **Get a key.** Create a Composio account and a project, then copy the
    project key (it starts with `ak_`).
-2. **Save it.** Apps → paste the key → Save. The key is
+2. **Save it.** Apps → paste the key → Save. Without a key the Apps page shows
+   only a short starter list of common apps; with one it lists everything Composio
+   offers, with search, categories and "Show more apps". The key is
    checked with Composio first, stored encrypted on this computer, and never
    shown again. To change it, use Replace key.
-3. **Connect the app.** Choose Connect next to GitHub, Gmail or Google
-   Calendar. Your browser opens a Composio page; sign in to that app and
+3. **Connect the app.** Choose Connect next to any app. Some apps have no sign-in
+   Composio supplies (they need an auth config of your own in Composio, which this
+   app does not set up); their card says so and has no Connect button. Your browser opens a Composio page; sign in to that app and
    approve. This page notices when you are done. You may give the account a
    name; with more than one account for an app (up to five) the agent must say
    which one to use.
 4. **Allow an agent.** Open an existing Claude or Codex agent, find Connected
-   apps, choose **Off** or **Read only** for each app; GitHub, Gmail and
-   Google Calendar also have **Read and change**. Save, start a new conversation with that agent,
+   apps, choose **Off** or **Read only** for each app; every app also has
+   **Read and change**. Any app you connected appears there. For apps without
+   their own tools, "Look up only" lets the agent see what actions exist and
+   "Look up and run" lets it ask to run them. Save, start a new conversation with that agent,
    and ask naturally, for example, “Find the latest unread message from Alex
    and summarize it,” “What is on my calendar tomorrow?” or “Draft a reply to
    that email.” New agents and copies start with all apps Off. If the agent was
@@ -57,10 +70,37 @@ changing or deleting an existing event; merging, deleting or pushing code; editi
 creating a pull request; or changing repository settings, collaborators or
 secrets.
 
+## Other apps
+
+For an app that has no tools of its own, an agent gets two tools. **Search** lists
+a page of the app's actions with their parameters and a `revision`; it changes
+nothing. **Run** runs one named action.
+
+- **No action is treated as a read.** Composio publishes nothing that proves an
+  action only reads, so a name or a tag is not trusted. Running needs the Read and
+  change level, and you approve **every call** on a card showing the app, the
+  account, the action and the exact arguments (nothing is added to them). Plan mode
+  and the Read level never run one.
+- The backend fetches the action's description from Composio itself, checks that
+  it belongs to that app, and checks the arguments against it. An action whose
+  description uses anything the checker does not understand is not run. Arguments
+  must be small enough to show in full, and credentials are refused.
+- If Composio changes the action while a card waits, if you disconnect the
+  account, lower the agent's access or remove the key, the call is cancelled, not
+  run.
+- Nothing that runs code, a shell or a raw request to an app is available, and
+  GitHub, Gmail and Calendar stay limited to their own tools (so Gmail still
+  cannot send, and GitHub still cannot delete or merge).
+- An answer is cut by size, depth and count, anything that looks like a secret is
+  replaced, and it is marked as other people's text. There is no per-field
+  summary as for the apps with their own tools, so this is looser than those.
+- A reviewed read could one day run after its first approved use; none has been
+  reviewed, so every call asks.
+
 ## How changes are approved
 
 Every change shows an approval card with its exact arguments. This includes
-creating a Gmail draft: the draft is not saved until you press Allow. There is
+every action of an app without its own tools, and creating a Gmail draft: the draft is not saved until you press Allow. There is
 no "always allow" for these. Deny, Read only, or Plan mode means it does not
 run. An approval covers exactly what the card showed, once.
 
@@ -120,7 +160,16 @@ at Composio, so disconnect them first if you want them gone.
 
 ## What has been checked
 
-Existing automated checks use a fake Composio and a real runtime, approval
+The generic path and the app catalog were checked against a fake Composio that
+follows Composio's published API description (OpenAPI v3.1, read on 2026-10-28):
+Claude and Codex turns through the real approval gate, the checks above, and the
+catalog's cache and key isolation. **Not checked against the real Composio**: the
+size and paging of the real catalog, a real action description for any
+non-curated app, running an action of such an app, and what Composio answers
+when an app has no sign-in it supplies. Nothing in the real catalog has been
+reviewed as a read.
+
+Earlier automated checks use a fake Composio and a real runtime, approval
 gate and Claude adapter. The Codex adapter now mounts the same scoped tools
 and routes Codex's MCP request through that approval gate; live Codex use has
 not yet been checked. By hand, on Windows with the desktop app and the web

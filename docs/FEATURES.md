@@ -51,9 +51,11 @@ platform and release qualification limits.
   features remain experimental; remote SSH computers and enforceable egress
   allowlists are not implemented. See [computers](COMPUTERS.md),
   [browser tools](BROWSER.md) and [native desktop](NATIVE-DESKTOP.md).
-- **Connected apps.** Connect GitHub, Gmail and Google Calendar through your
-  own Composio key and allow them per Claude or Codex agent. Read tools are
-  bounded; changes ask on a card and are never retried. See
+- **Connected apps.** Browse Composio's apps on the Apps page and connect them
+  through your own Composio key, then allow them per Claude or Codex agent.
+  GitHub, Gmail and Google Calendar have their own bounded tools; any other app
+  is used through a general search-and-run pair where you approve every call.
+  Changes ask on a card and are never retried. See
   [connected apps](CONNECTED_APPS.md).
 
 ## Routines, access and distribution

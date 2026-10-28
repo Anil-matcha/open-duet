@@ -4,11 +4,19 @@
 
 ### Added
 
-- Add an Apps page (sidebar → Apps) that lists the apps agents can use through
-  Composio, with search, category and Connected filters, what each app lets an
-  agent do (read or change), connecting and disconnecting, and the Composio key.
-  It lists apps without a saved key. Connecting an app does not give any agent
+- Add an Apps page (sidebar → Apps) that lists Composio's own catalog of apps,
+  with search, categories, a Connected section, what agents can do with each app,
+  connecting and disconnecting, and the Composio key. Without a key it shows a
+  short starter list and says so. Connecting an app does not give any agent
   access; that is still chosen per agent. Connected apps moved out of Settings.
+- Let Claude and Codex agents use any connected app, not only GitHub, Gmail and
+  Google Calendar, through two tools: one finds an app's actions and one runs
+  one. No action of these apps is treated as a read, so you approve every call on
+  a card showing the app, account, action and exact arguments. Nothing that runs
+  code, a shell or a raw request is reachable, the three apps with their own tools
+  stay limited to them, and a changed action, a disconnected account or lowered
+  agent access cancels a waiting call. Checked with a fake Composio that follows
+  Composio's published API description; not yet run against the real Composio.
 - Add two Google Calendar tools: find events by words (read) and create one
   timed event (change, approved each time). A created event has no guests and no
   video meeting, so it emails nobody. Checked with unit tests against

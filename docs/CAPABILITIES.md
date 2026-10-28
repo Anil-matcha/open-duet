@@ -25,11 +25,13 @@ by engines advertising image support. Cross-chat history search is available
 through the memory bridge on Claude, Codex and ACP, subject to agent settings;
 it does not itself persist notes. See [memory](MEMORY.md).
 
-Connected apps (GitHub, Gmail and Google Calendar through your own Composio
-key) can be allowed per agent on Claude and Codex, as Read only or Read and
-change where available; every change asks on a card. Codex source support is
-implemented, but its live Composio flow has not yet been qualified. See
-[connected apps](CONNECTED_APPS.md).
+Connected apps (any app Composio lists, through your own Composio key) can be
+allowed per agent on Claude and Codex, as Read only or Read and change. GitHub,
+Gmail and Google Calendar have their own tools; every other app uses a general
+search-and-run pair in which no action is trusted as a read and every call asks on
+a card. Codex source support is implemented, but its live Composio flow has not
+yet been qualified, and nothing was run against the real Composio catalog or an
+action of a non-curated app. See [connected apps](CONNECTED_APPS.md).
 
 ## Evidence levels
 
@@ -47,7 +49,7 @@ implemented, but its live Composio flow has not yet been qualified. See
 | Webhook deduplication | Durable delivery receipts, concurrent SQLite admission, restart and authorization tests; PostgreSQL schema/migration checks | Live PostgreSQL concurrency remains open | Open |
 | Linux turn sandbox preview | Opt-in filesystem/PID box plus separately enabled private network namespace/public HTTP(S) gate; policy and transport tests, real namespace checks skip on macOS | Real Linux enforcement and engine lifecycle remain open | Open |
 | Routine change receipts and Undo | Dedicated source result card; revision/run/scope-bound Undo, paused restoration and concurrent SQLite checks | Real providers and PostgreSQL multi-backend Undo remain open | Open |
-| Connected apps (GitHub, Gmail and Calendar through Composio) | Client, routes, approval policy and bridge; Claude adapter coverage with a fake Composio; Codex per-turn MCP mounting and approval routing | Windows, desktop and web, real Claude CLI, own Composio project and a private repository, 2026-10-26, by hand (see [connected apps](CONNECTED_APPS.md#what-has-been-checked)); Codex/Gmail live calls not checked | Open; packaged shim, Linux sandbox and live Codex flow not run |
+| Connected apps (any Composio app; GitHub, Gmail and Calendar with their own tools) | Client, catalog, routes, approval policy and bridge; generic search/run with schema checks, first-use records and re-checks after approval; Claude and Codex turns with a fake Composio following the published OpenAPI | Windows, desktop and web, real Claude CLI, own Composio project and a private repository, 2026-10-26, by hand (see [connected apps](CONNECTED_APPS.md#what-has-been-checked)); Codex/Gmail live calls not checked | Open; packaged shim, Linux sandbox and live Codex flow not run |
 | Local Today brief | Durable approvals/questions, routine outcomes, engine failures and due tasks; source links, timezone and deduplication checks | Live-source and packaged UI qualification remain open; Calendar/Gmail unavailable | Open |
 
 Historical evidence belongs to the source and environment recorded in its
