@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { approvalFields, previewValue } from '@/lib/approval-text';
 import type { TranscriptItem } from '@/lib/transcript';
@@ -54,15 +54,17 @@ export function ApprovalCard({ item, waiting, agentName, onAnswer }: Props) {
 
   return (
     <View style={styles.card} accessibilityLabel="Approval needed">
-      <Text style={styles.title}>
-        {agentName ?? 'Your agent'} wants to use <Text style={styles.mono}>{item.tool}</Text>
-        {waiting > 1 ? `  (1 of ${waiting} waiting)` : ''}
-      </Text>
-      <Text style={styles.note}>It will not run until you allow it.</Text>
-      {item.summary ? <Text style={styles.summary}>{item.summary}</Text> : null}
-      {fields.map((field) => (
-        <Field key={field.name} name={field.name} value={field.value} />
-      ))}
+      <ScrollView style={styles.details} keyboardShouldPersistTaps="handled" nestedScrollEnabled accessibilityLabel="Approval details">
+        <Text style={styles.title}>
+          {agentName ?? 'Your agent'} wants to use <Text style={styles.mono}>{item.tool}</Text>
+          {waiting > 1 ? `  (1 of ${waiting} waiting)` : ''}
+        </Text>
+        <Text style={styles.note}>It will not run until you allow it.</Text>
+        {item.summary ? <Text style={styles.summary}>{item.summary}</Text> : null}
+        {fields.map((field) => (
+          <Field key={field.name} name={field.name} value={field.value} />
+        ))}
+      </ScrollView>
       {sent ? (
         <Text style={styles.note}>{sent === 'allow' ? 'Allowed.' : 'Denied.'} Waiting for your server…</Text>
       ) : (
@@ -81,7 +83,8 @@ export function ApprovalCard({ item, waiting, agentName, onAnswer }: Props) {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
-    card: { margin: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, maxHeight: 360 },
+    card: { margin: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, maxHeight: '45%', flexShrink: 1, minHeight: 0 },
+    details: { flexShrink: 1, minHeight: 0 },
     title: { fontSize: 15, fontWeight: '700', color: p.text },
     mono: { fontFamily: MONO },
     note: { fontSize: 13, color: p.warnText, marginTop: 2 },

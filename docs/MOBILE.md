@@ -138,9 +138,16 @@ from a short folder path, or build on EAS, WSL, Linux or macOS. See `mobile/AGEN
 | QR scanning and HTTPS | The Android emulator in Expo Go: scanning the QR code from the web app filled in the server and code and waited for Connect; pairing worked over HTTPS with a valid certificate, and a server with an untrusted certificate was refused. |
 | CI | The `mobile` job (install, lint, typecheck, tests, bundle export) passed on GitHub Actions on Linux. |
 
-Partly checked: the Android keyboard. The first fix moved the message box above
-the keyboard and Send worked, but its bottom edge stayed partly covered; a second
-change for that was made afterwards and has not been tried.
+Partly checked: the Android keyboard. A Galaxy S23 Ultra report showed the
+composer hidden and long messages cut off with the keyboard open. The keyboard
+wrapper now measures its position below the navigation header, and conversation
+and room lists explicitly shrink and follow the latest message on viewport
+resize when the reader was already at the bottom. Approval details scroll in a
+card capped at 45% of the available height, with Allow and Deny outside the
+scrolling body. These changes still need verification in a rebuilt release APK
+on the phone: open the Samsung keyboard, scroll a long response to its end,
+type and send a multiline message, expand a long approval input and scroll it,
+then repeat in a room and with the keyboard closed.
 
 Not checked: any of the Markdown, attachments, dark theme, agent picker and rooms
 screens on a device or emulator (only by tests and against the server, as above);

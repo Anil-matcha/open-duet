@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 
 import { ApprovalCard } from '@/components/approval-card';
 import { approvalFields, PREVIEW_CHARS, previewValue } from '@/lib/approval-text';
@@ -35,6 +35,20 @@ describe('approvalFields', () => {
 });
 
 describe('ApprovalCard', () => {
+  it('scrolls expanded input separately from the approval buttons', async () => {
+    const long = 'command output\n'.repeat(100) + 'LAST LINE';
+    const onAnswer = jest.fn().mockResolvedValue(true);
+    await render(<ApprovalCard item={approval({ content: long })} waiting={1} onAnswer={onAnswer} />);
+    const details = within(screen.getByLabelText('Approval details'));
+    await fireEvent.press(details.getByRole('button', { name: 'Show all' }));
+    expect(details.getByText(/LAST LINE/)).toBeTruthy();
+    // The controls stay outside the scrolling body even when the input is expanded.
+    expect(details.queryByRole('button', { name: 'Allow' })).toBeNull();
+    expect(details.queryByRole('button', { name: 'Deny' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Deny' }));
+    expect(onAnswer).toHaveBeenCalledWith('deny');
+  });
+
   it('shows the tool, the summary and the exact input', async () => {
     await render(<ApprovalCard item={approval()} waiting={1} onAnswer={jest.fn()} />);
     expect(screen.getByText('Bash')).toBeTruthy();

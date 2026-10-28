@@ -37,6 +37,11 @@ export default function Thread() {
       ) : (
         <FlatList
           ref={list}
+          style={styles.list}
+          keyboardShouldPersistTaps="handled"
+          onLayout={() => {
+            if (stuckToEnd.current) list.current?.scrollToEnd({ animated: false });
+          }}
           data={rows}
           keyExtractor={(row) => row.key}
           renderItem={({ item }) => <TranscriptRow row={item} attachmentSource={attachmentSource} />}
@@ -67,6 +72,7 @@ export default function Thread() {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
+    list: { flex: 1, minHeight: 0 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     content: { padding: 12 },
     empty: { fontSize: 16, color: p.muted },

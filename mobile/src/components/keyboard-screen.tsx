@@ -9,6 +9,8 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 // KeyboardAvoidingView is given does not match that layout: on a Galaxy S23 Ultra the message box stayed
 // behind the keyboard. react-native-keyboard-controller (the version Expo bundles) reads the keyboard
 // from the window insets instead, so it follows what is really on screen. Not yet seen on a phone.
+// automaticOffset measures the view in window coordinates, including the stack header; parent-relative
+// layout coordinates otherwise underestimate the overlap and leave the composer behind the keyboard.
 //
 // With the keyboard closed the screen leaves room for the bottom system bar (navigation buttons or the
 // gesture line), which the app also draws behind. With it open, the keyboard covers that bar.
@@ -17,7 +19,7 @@ export function KeyboardScreen({ children }: { children: ReactNode }) {
   const keyboardOpen = useKeyboardState((state) => state.isVisible);
   return (
     <View style={[styles.flex, { paddingBottom: keyboardOpen ? 0 : (insets?.bottom ?? 0) }]} testID="keyboard-screen">
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         {children}
       </KeyboardAvoidingView>
     </View>

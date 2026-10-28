@@ -37,6 +37,11 @@ export default function RoomScreen() {
       ) : (
         <FlatList
           ref={list}
+          style={styles.list}
+          keyboardShouldPersistTaps="handled"
+          onLayout={() => {
+            if (stuckToEnd.current) list.current?.scrollToEnd({ animated: false });
+          }}
           data={items}
           keyExtractor={(item) => item.key}
           renderItem={({ item }) => <RoomMessage item={item} />}
@@ -82,6 +87,7 @@ export default function RoomScreen() {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
+    list: { flex: 1, minHeight: 0 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
     content: { padding: 12 },
     empty: { fontSize: 16, color: p.muted, textAlign: 'center' },
