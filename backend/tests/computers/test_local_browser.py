@@ -292,3 +292,25 @@ def test_sandbox_is_unusable_when_the_namespace_call_is_refused(monkeypatch):
     assert lb.sandbox_usable() is False
     monkeypatch.setattr(lb, "_can_make_user_namespace", lambda: True)
     assert lb.sandbox_usable() is True
+
+
+def _load_broker():
+    import importlib.machinery
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[3] / "desktop-image" / "od-browser"
+    spec = importlib.util.spec_from_loader("od_browser", importlib.machinery.SourceFileLoader("od_browser", str(path)))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_broker_sends_loopback_and_metadata_through_the_proxy(monkeypatch):
+    """Chrome skips a proxy for localhost, loopback and link-local unless told not to; the gate must see them."""
+    broker = _load_broker()
+    monkeypatch.setenv("OD_BROWSER_PROXY", "http://127.0.0.1:9")
+    flags = broker.extra_flags()
+    assert "--proxy-server=http://127.0.0.1:9" in flags
+    assert "--proxy-bypass-list=<-loopback>" in flags
+    monkeypatch.delenv("OD_BROWSER_PROXY")
+    assert not any(f.startswith("--proxy") for f in broker.extra_flags())

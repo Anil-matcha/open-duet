@@ -33,6 +33,9 @@ def extra_flags():
         flags.append("--no-sandbox")
     if os.environ.get("OD_BROWSER_PROXY"):
         flags.append("--proxy-server=" + os.environ["OD_BROWSER_PROXY"])
+        # Chrome sends localhost, loopback and link-local addresses (the app, cloud metadata) around a proxy by
+        # default; this removes that rule so every address goes through the egress gate.
+        flags.append("--proxy-bypass-list=<-loopback>")
     return flags
 
 
