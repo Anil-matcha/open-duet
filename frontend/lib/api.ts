@@ -1140,6 +1140,7 @@ export const api = {
   releaseComputerControl: (id: number, leaseId: string) => request<ControlSnapshot>(`/computers/${id}/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
   computerControlHeartbeat: (id: number, leaseId: string) => request<void>(`/computers/${id}/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
   computerViewerTicket: (id: number, leaseId: string) => request<{ ticket: string }>(`/computers/${id}/viewer-ticket`, { method: "POST", body: JSON.stringify({ mode: "control", lease_id: leaseId }) }),
+  browserViewTicket: (agentId: number) => request<{ ticket: string; view_only: boolean }>(`/agents/${agentId}/browser/view`, { method: "POST" }),
   takeBrowserControl: (agentId: number, leaseId?: string) => request<TakeControl>(`/agents/${agentId}/browser/control`, { method: "POST", body: JSON.stringify({ action: "take", ...(leaseId ? { lease_id: leaseId } : {}) }) }),
   releaseBrowserControl: (agentId: number, leaseId: string) => request<ControlSnapshot>(`/agents/${agentId}/browser/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
   browserControlHeartbeat: (agentId: number, leaseId: string) => request<void>(`/agents/${agentId}/browser/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),

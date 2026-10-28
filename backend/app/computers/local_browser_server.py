@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         state = Path(options.state)
         local = LocalBrowser(
             Path(options.profiles), options.agent, proxy_server=proxy_server, idle_seconds=caps.idle_seconds or options.idle_seconds,
-            registry=Path(options.profiles) / ".running", state_dir=state, max_browsers=caps.browsers, held=screen.held,
+            registry=Path(options.profiles) / ".running", state_dir=state, max_browsers=caps.browsers, held=lambda folder: screen.held(folder) or screen.watched(folder),
         )
     except (LocalBrowserError, ImportError, AttributeError) as exc:
         if gate:

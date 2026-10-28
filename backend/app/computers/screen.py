@@ -81,6 +81,23 @@ def held(state_dir: Path) -> bool:
     return isinstance(until, (float, int)) and until > time.time()
 
 
+WATCHING_FILE = "watching.json"
+WATCHING_SECONDS = 10
+
+
+def watched(state_dir: Path) -> bool:
+    """Someone is viewing this browser without holding it (the live view refreshes the marker while open)."""
+    until = read_state(state_dir / WATCHING_FILE).get("until", 0)
+    return isinstance(until, (float, int)) and until > time.time()
+
+
+def mark_watching(state_dir: Path, on: bool = True) -> None:
+    if on:
+        write_state(state_dir / WATCHING_FILE, {"until": time.time() + WATCHING_SECONDS})
+    else:
+        (state_dir / WATCHING_FILE).unlink(missing_ok=True)
+
+
 @contextmanager
 def driver_lock(state_dir: Path):
     """Cross-process lock around owner checks and desktop actions."""

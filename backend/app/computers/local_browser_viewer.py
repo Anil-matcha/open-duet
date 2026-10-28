@@ -11,6 +11,9 @@ not faster than MAX_FPS), frames over MAX_FRAME_BYTES are dropped, client messag
 The only way to navigate from the viewer is a `nav` message, which runs the same URL check as the agent's
 browser_open; links the person clicks go through the browser's egress gate like any other traffic.
 
+A view-only session (a viewer that holds no control) streams frames and acknowledges them, and nothing else:
+pointer, key, text and navigation messages are dropped, and a navigation attempt is answered with a plain refusal.
+
 Wire format, client to server (JSON text): ack, mouse, wheel, key, text, nav. Server to client: a JSON text
 `{"t": "size", "w", "h"}` whenever the frame size changes, then each frame as one binary JPEG message.
 """
@@ -35,6 +38,7 @@ MAX_TEXT = 2000
 MAX_INPUT_PER_SECOND = 80
 QUALITY = 55
 FIRST_FRAME_SECONDS = 10
+VIEW_ONLY_REFUSAL = "This view is watch-only. Take control to use the browser."
 WIDTH, HEIGHT = 1280, 800
 
 BUTTONS = {"left": "left", "middle": "middle", "right": "right"}
@@ -152,8 +156,10 @@ class Session:
     """One viewer's relay. `cdp` has `send(str)` and `recv() -> str`; `client` has `send_text`, `send_bytes`."""
 
     def __init__(self, cdp, client, check_url: Callable[[str], str | None] = local_browser_egress.check_url,
-                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], Awaitable] = asyncio.sleep) -> None:
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], Awaitable] = asyncio.sleep,
+                 view_only: bool = False) -> None:
         self.cdp, self.client, self.check_url, self.clock, self.sleep = cdp, client, check_url, clock, sleep
+        self.view_only = view_only
         self.size = (WIDTH, HEIGHT)
         self.next_id = 0
         self.waiting: int | None = None  # the screencast session id Chrome is waiting to have acknowledged
@@ -221,6 +227,10 @@ class Session:
                 self.last_sent = self.clock()
                 await self.command("Page.screencastFrameAck", {"sessionId": session})
             return None
+        if self.view_only:
+            if isinstance(message, dict) and message.get("t") == "nav":
+                return VIEW_ONLY_REFUSAL
+            return None
         if not self.bucket.take():
             return None
         outcome = translate(message, self.size, self.check_url)
@@ -231,7 +241,7 @@ class Session:
         return None
 
 
-async def serve(websocket, port: int, valid: Callable[[], Awaitable[bool]], check_url=local_browser_egress.check_url) -> None:
+async def serve(websocket, port: int, valid: Callable[[], Awaitable[bool]], check_url=local_browser_egress.check_url, view_only: bool = False) -> None:
     """Relay until either side ends, the hold is lost (`valid` False) or no frame arrives at first."""
     import websockets
 
@@ -245,7 +255,7 @@ async def serve(websocket, port: int, valid: Callable[[], Awaitable[bool]], chec
         send_bytes = staticmethod(websocket.send_bytes)
 
     async with websockets.connect(url, max_size=8 * 1024 * 1024, open_timeout=5, origin=None, proxy=None) as cdp:
-        session = Session(cdp, Client, check_url)
+        session = Session(cdp, Client, check_url, view_only=view_only)
         await session.start()
 
         async def from_chrome():

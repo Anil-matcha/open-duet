@@ -62,3 +62,41 @@ export function parseServerText(raw: string): { kind: "size"; size: FrameSize } 
   }
   return null;
 }
+
+// The view has two modes. Watching streams the page and relays nothing, so the agent keeps working; driving holds
+// control (the agent's browser calls are refused) and relays pointer, keys, text and addresses.
+export type ViewState = "starting" | "waiting" | "watching" | "taking" | "driving" | "lost";
+export type ViewEvent = "frame" | "notrunning" | "drop" | "take" | "failed" | "release";
+
+export function viewState(state: ViewState, event: ViewEvent): ViewState {
+  if (event === "release") return "starting"; // handing control back goes straight back to watching
+  if (event === "frame") return state === "starting" || state === "waiting" ? "watching" : state === "taking" ? "driving" : state;
+  if (event === "notrunning") return state === "driving" || state === "taking" || state === "lost" ? state : "waiting";
+  if (event === "drop") return state === "driving" || state === "lost" ? "lost" : "starting";
+  if (event === "take") return state === "watching" ? "taking" : state === "lost" ? "taking" : state;
+  if (event === "failed") return state === "taking" ? "watching" : state;
+  return state;
+}
+
+// Watching reconnects by itself: quickly at first, then slower, never louder. A browser that is not running is
+// checked every few seconds without any message beyond the plain "not running" line.
+export function retryDelayMs(attempt: number, notRunning = false): number {
+  if (notRunning) return 5000;
+  return Math.min(15000, 1000 * 2 ** Math.max(0, Math.min(attempt, 4)));
+}
+
+export function viewNote(state: ViewState): string {
+  switch (state) {
+    case "waiting": return "The agent's browser is not running right now. It opens when the agent next uses it.";
+    case "starting": return "Connecting to the agent's browser…";
+    case "watching": return "Watching the agent's browser. The agent keeps working.";
+    case "taking": return "Taking control…";
+    case "driving": return "You are in control of the browser. The agent's browser calls wait until you hand control back.";
+    case "lost": return "Connection lost. Reconnect within 20 seconds to keep control.";
+  }
+}
+
+// What the person may do in each state: only a held session relays input.
+export function canDrive(state: ViewState): boolean {
+  return state === "driving";
+}

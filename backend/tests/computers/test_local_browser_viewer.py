@@ -247,6 +247,105 @@ async def test_serve_relays_and_closes_when_the_hold_is_lost(monkeypatch):
     assert socket.closed == 4409 and page.sent[-1]["method"] == "Page.stopScreencast"
 
 
+async def test_a_view_only_session_streams_and_acknowledges_but_relays_nothing():
+    s, cdp, client, _ = session(view_only=True)
+    await s.on_chrome(frame(1))
+    assert client.binaries and s.waiting == 1
+    for message in ('{"t":"mouse","a":"down","x":10,"y":10}', '{"t":"key","a":"down","key":"x"}', '{"t":"text","text":"hi"}',
+                    '{"t":"wheel","x":1,"y":1,"dx":0,"dy":5}'):
+        assert await s.on_client(message) is None
+    assert await s.on_client('{"t":"nav","url":"https://example.com/"}') == live.VIEW_ONLY_REFUSAL
+    assert not any(m.startswith("Input.") or m == "Page.navigate" for m in cdp.methods())
+    assert await s.on_client('{"t":"ack"}') is None
+    assert cdp.methods()[-1] == "Page.screencastFrameAck"  # frames keep flowing
+
+
+async def test_serve_in_view_only_mode_drops_input_but_still_stops_when_the_view_ends(monkeypatch):
+    class Socket:
+        def __init__(self):
+            self.inbox, self.closed, self.binaries = asyncio.Queue(), None, []
+
+        async def receive_text(self):
+            return await self.inbox.get()
+
+        async def send_text(self, text):
+            pass
+
+        async def send_bytes(self, data):
+            self.binaries.append(data)
+
+        async def close(self, code=1000):
+            self.closed = code
+
+    class Page:
+        def __init__(self):
+            self.sent, self.queue = [], asyncio.Queue()
+            self.queue.put_nowait(frame(1))
+
+        async def send(self, raw):
+            self.sent.append(json.loads(raw))
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return await self.queue.get()
+
+    page = Page()
+
+    class Connect:
+        async def __aenter__(self):
+            return page
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def url(port):
+        return f"ws://127.0.0.1:{port}/devtools/page/abc"
+
+    import websockets
+    monkeypatch.setattr(websockets, "connect", lambda u, **kw: Connect())
+    monkeypatch.setattr(live, "page_socket_url", url)
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(live.asyncio, "sleep", lambda s: real_sleep(0))
+    socket, valid = Socket(), [True]
+
+    async def check():
+        return valid[0]
+
+    task = asyncio.create_task(live.serve(socket, 9222, check, allow_all, view_only=True))
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if socket.binaries:
+            break
+    socket.inbox.put_nowait('{"t":"key","a":"down","key":"x"}')
+    socket.inbox.put_nowait('{"t":"mouse","a":"down","x":5,"y":5}')
+    for _ in range(50):
+        await asyncio.sleep(0)
+    assert socket.binaries and not any(c["method"].startswith("Input.") for c in page.sent)
+    valid[0] = False
+    await asyncio.wait_for(task, 5)
+    assert socket.closed == 4409 and page.sent[-1]["method"] == "Page.stopScreencast"
+
+
+def test_a_watched_browser_is_marked_so_the_guard_keeps_it_without_any_hold(tmp_path, monkeypatch):
+    folder = tmp_path / "browser-3"
+    assert not screen.watched(folder)
+    screen.mark_watching(folder)
+    assert screen.watched(folder) and not screen.held(folder)  # watching is not holding: the agent is not refused
+    registry = tmp_path / "running"
+    guard.register(registry, "agent-3", os.getpid(), folder)
+    watched_or_held = lambda f: screen.held(f) or screen.watched(f)  # noqa: E731  (what the tools server passes)
+    refusal = guard.make_room(registry, "other", 1, held=watched_or_held, kill=lambda pid: pytest.fail("ended a watched browser"))
+    assert refusal and "being watched" in refusal
+    screen.mark_watching(folder, False)
+    assert not screen.watched(folder)
+    ended = []
+    assert guard.make_room(registry, "other", 1, held=watched_or_held, kill=ended.append) is None and ended
+    screen.write_state(folder / screen.WATCHING_FILE, {"until": 1.0})  # a marker nobody refreshed has lapsed
+    assert not screen.watched(folder)
+
+
 # -- finding the page --------------------------------------------------------------------
 
 def test_the_debug_port_is_only_known_for_a_live_browser(tmp_path):
@@ -392,3 +491,66 @@ async def test_the_ticket_is_bound_to_the_browser_and_single_use(api, monkeypatc
     assert manager.consume(taken["ticket"], -agent - 1, who) is None  # another agent's browser
     # (the failed consume spent it: a ticket never works twice)
     assert manager.consume(taken["ticket"], -agent, who) is None
+
+
+async def test_a_view_ticket_watches_without_holding_and_is_single_use(api, monkeypatch, tmp_path):
+    service = api.service
+    agent = await new_agent(api)
+    url = f"/api/v1/agents/{agent}/browser/view"
+    off = await api.post(url)
+    assert off.status_code == 409 and off.json()["detail"]["error_code"] == "browser_off"
+    monkeypatch.setattr(settings, "LOCAL_BROWSER_ENABLED", True)
+    idle = await api.post(url)
+    assert idle.status_code == 409 and idle.json()["detail"]["error_code"] == "browser_not_running"
+    assert (await api.post("/api/v1/agents/99999999/browser/view")).status_code == 404
+    folder = run_browser(service, agent)
+    got = (await api.post(url)).json()
+    assert got["view_only"] is True and got["ticket"] and "lease_id" not in got
+    assert not screen.held(folder) and not (folder / "control.json").exists()  # no hold: the agent keeps working
+    class Broker:  # stands in for the running browser: the agent's call goes through while only watched
+        def request(self, payload):
+            return {"content": [{"type": "text", "text": "page text"}]}
+
+    server = LocalServer(tmp_path / "grants", folder, local=Broker())
+    assert server.run("browser_snapshot", {})["content"][0]["text"] == "page text"
+    manager, who = service.viewers, ("loopback", None)
+    assert manager.consume(got["ticket"], -agent - 1, who) is None  # bound to this browser, and that spent it
+    again = (await api.post(url)).json()
+    ticket = manager.consume(again["ticket"], -agent, who)
+    assert ticket and ticket.mode == "view" and ticket.lease == ""
+    assert manager.consume(again["ticket"], -agent, who) is None  # never twice
+    control = (await api.post(f"/api/v1/agents/{agent}/browser/control", json={"action": "take"})).json()
+    assert manager.consume(control["ticket"], -agent, who).mode == "control"  # taking control is a separate, explicit step
+    assert screen.held(folder)
+
+
+async def test_handing_control_back_ends_the_driving_stream_but_not_a_watching_one(api, monkeypatch):
+    monkeypatch.setattr(settings, "LOCAL_BROWSER_ENABLED", True)
+    service = api.service
+    agent = await new_agent(api)
+    folder = run_browser(service, agent)
+    taken = (await api.post(f"/api/v1/agents/{agent}/browser/control", json={"action": "take"})).json()
+
+    class Socket:
+        closed = None
+
+        async def close(self, code=1000):
+            self.closed = code
+
+    driving, watching = Socket(), Socket()
+    manager = service.viewers
+    manager.active.update({"d": (-agent, driving), "w": (-agent, watching)})
+    manager.view_only.add("w")
+    released = (await api.post(f"/api/v1/agents/{agent}/browser/control", json={"action": "release", "lease_id": taken["lease_id"]})).json()
+    assert released["released"] and not screen.held(folder)
+    assert driving.closed == 4410 and watching.closed is None  # the view keeps streaming; the page then asks for a new view ticket
+
+
+def test_viewers_cap_and_tickets_expire(monkeypatch):
+    from app.computers.viewer import Viewers
+    manager, who = Viewers(), ("loopback", None)
+    token = manager.issue(-1, "", who, mode="view")
+    ticket = manager.tickets[token]
+    ticket.until = 0  # lapsed before use
+    assert manager.consume(token, -1, who) is None
+    assert all(manager.reserve(-1, object()) for _ in range(3)) and manager.reserve(-1, object()) is None

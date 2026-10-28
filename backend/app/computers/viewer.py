@@ -16,21 +16,23 @@ class Ticket:
     lease: str
     identity: tuple
     until: float
+    mode: str = "control"  # "view" streams only: it takes no lease and relays no input
 
 
 @dataclass
 class Viewers:
     tickets: dict[str, Ticket] = field(default_factory=dict, repr=False)
     active: dict[str, tuple[int, object]] = field(default_factory=dict, repr=False)
+    view_only: set[str] = field(default_factory=set, repr=False)  # idents in `active` that hold no control
 
-    def issue(self, computer_id, lease, identity):
+    def issue(self, computer_id, lease, identity, mode="control"):
         now = time.monotonic()
         self.tickets = {k: v for k, v in self.tickets.items() if v.until > now}
         # A signed-in client cannot fill unbounded memory by minting tickets.
         if len(self.tickets) >= 256:
             raise ValueError("Too many pending viewers. Wait 30 seconds.")
         token = secrets.token_hex(32)
-        self.tickets[token] = Ticket(computer_id, lease, identity, now+30)
+        self.tickets[token] = Ticket(computer_id, lease, identity, now+30, mode)
         return token
 
     def consume(self, token, computer_id, identity):
