@@ -572,6 +572,7 @@ export type EngineConfigInput = {
 };
 
 export type ComposioStatus = { configured: boolean; apps: ComposioApp[] };
+export type { CatalogApp as ComposioCatalogApp, CatalogTool as ComposioCatalogTool } from "./apps-catalog";
 
 export type CodexLoginOperation = {
   id: string;
@@ -906,6 +907,7 @@ export const api = {
   saveEngineConfig: (engineId: string, config: EngineConfigInput) =>
     request<Engine>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "PUT", body: JSON.stringify(config) }),
   deleteEngineConfig: (engineId: string) => request<void>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "DELETE" }),
+  getComposioCatalog: () => request<import("./apps-catalog").CatalogApp[]>("/integrations/composio/catalog"),
   getComposioStatus: () => request<ComposioStatus>("/integrations/composio"),
   saveComposioKey: (apiKey: string) => request<ComposioStatus>("/integrations/composio/key", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
   deleteComposioKey: () => request<void>("/integrations/composio/key", { method: "DELETE" }),

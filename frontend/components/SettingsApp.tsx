@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type ApplicationSetting, type DesktopSettings } from "@/lib/api";
 import { ApprovalsTabs } from "@/components/approvals/ApprovalsPanel";
 import { EngineSettings } from "@/components/EngineSettings";
-import { ConnectedAppsSection } from "@/components/ConnectedAppsSection";
 import { DesktopPermissions } from "./DesktopPermissions";
 import { DesktopAccountSection } from "@/components/DesktopAccountSection";
 import { HistoryExport } from "@/components/HistoryExport";
@@ -151,7 +150,7 @@ export function SettingsApp() {
       {!settingUp && <>
         <DevicesSection />
         <EngineSettings />
-        <ConnectedAppsSection />
+        <section className="space-y-2 rounded-lg border border-line p-5"><h3 className="font-semibold">Connected apps</h3><p className="text-sm text-muted">Connect GitHub, Gmail, Google Calendar and your Composio key on the Apps page.</p><Link className="text-sm underline" href="/apps/">Open Apps</Link></section>
         <section className="rounded-lg border border-line p-5"><h3 className="mb-1 font-semibold">Approvals</h3><p className="mb-4 text-xs text-muted">Commands you always allow, every decision about a tool call, and a read-only health scan of recent conversations.</p><ApprovalsTabs /></section>
       </>}
     </main>
