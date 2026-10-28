@@ -160,12 +160,21 @@ The local proxy contacts the account service over HTTPS, keeps its device token
 encrypted using the profile key, and returns account status without the token.
 A profile is bound to its first verified account after explicit confirmation;
 a different account cannot open that profile's agents and conversations.
-Returning to the same account preserves those local files. Sign-out clears the
+Returning to the same account preserves those local files. "Reset this profile" and "Delete my account" (typed confirmation, refused while a task runs) are the only paths that erase them: local data first, then the account binding; deletion first deletes the cloud account via `DELETE /accounts/desktop/account` and fails closed. Engine CLI credentials outside the profile are not touched. Sign-out clears the
 local session and attempts remote revocation; existing agents and engine
 credentials are retained. Active turns must be stopped before sign-out. Scheduled
 local work and memory upkeep are paused while signed out or unable to validate
 the account. Session validation is cached for at most 60 seconds and never beyond
 expiry; after that, an unavailable account service fails closed.
+
+**Exporting history.** Settings has "Export my history", which downloads a ZIP
+from `GET /api/v1/history/export` (agents, conversations as per-thread event
+files, attachment names and hashes, and a manifest with a format version). It
+is owner scoped, needs a signed-in account like every other `/api/v1/` route,
+is limited to 256 MB of JSON and 120 seconds, and runs one at a time. It leaves
+out engine credentials, the desktop device token, provider session state,
+approval records and attachment file contents. Tool output inside conversations
+is included as stored, so treat the file as private. There is no import yet.
 
 This requires the matching account-service endpoints to be deployed. The account
 service is separate from the standalone self-hosted passphrase flow, which

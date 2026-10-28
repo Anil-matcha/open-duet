@@ -10,6 +10,7 @@ from app.auth.routes import require_admin
 from app.services.local_access_policy import require_local_access
 from app.db.session import get_db
 from app.db.models import Turn
+from app.desktop.local_data import wipe_local_data
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,11 @@ class EmailVerify(BaseModel):
     adopt_local_data: bool
 
 
+class Confirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: str = Field(max_length=32)
+
+
 def _manager() -> account.AccountManager:
     if not profile.active():
         raise HTTPException(status_code=404, detail={"error_code": "desktop_only"})
@@ -52,6 +58,8 @@ def _error(err: account.DesktopAccountError) -> HTTPException:
         "profile_already_bound": "This desktop profile is already linked to an account.",
         "invalid_request": "Check the sign-in details and try again.",
         "account_request_rejected": "The sign-in request was rejected. Check the code and try again.",
+        "local_reset_failed": "Local data could not be erased. Nothing was unlinked; try again.",
+        "account_deleted_local_cleanup_failed": "Your account was deleted, but local data could not be fully erased. Choose Reset this profile to finish.",
         "rate_limited": "Too many attempts. Wait a little and try again.",
     }
     return HTTPException(status_code=err.status, detail={"error_code": err.code,
@@ -90,5 +98,40 @@ async def logout(db: AsyncSession = Depends(get_db)):
         raise HTTPException(409, detail={"error_code": "turn_running", "message": "Stop active agent tasks before signing out."})
     try:
         return await _manager().logout()
+    except account.DesktopAccountError as err:
+        raise _error(err)
+
+
+async def _refuse_while_running(db: AsyncSession, action: str) -> None:
+    active = await db.scalar(select(Turn.id).where(Turn.status == "running").limit(1))
+    if active is not None:
+        raise HTTPException(409, detail={"error_code": "turn_running", "message": f"Stop active agent tasks before {action}."})
+
+
+def _require_confirm(data: Confirm, word: str) -> None:
+    if data.confirm != word:
+        raise HTTPException(400, detail={"error_code": "confirmation_required", "message": f"Type {word} to confirm."})
+
+
+@router.post("/reset-profile")
+async def reset_profile(data: Confirm, db: AsyncSession = Depends(get_db)):
+    """Erase local agents, conversations and settings and unlink the profile. Never implicit."""
+    manager = _manager()
+    _require_confirm(data, "RESET")
+    await _refuse_while_running(db, "resetting this profile")
+    try:
+        return await manager.reset_profile(lambda: wipe_local_data(db))
+    except account.DesktopAccountError as err:
+        raise _error(err)
+
+
+@router.post("/delete-account")
+async def delete_account(data: Confirm, db: AsyncSession = Depends(get_db)):
+    """Delete the cloud account, then erase local data and unlink the profile."""
+    manager = _manager()
+    _require_confirm(data, "DELETE")
+    await _refuse_while_running(db, "deleting your account")
+    try:
+        return await manager.delete_account(lambda: wipe_local_data(db))
     except account.DesktopAccountError as err:
         raise _error(err)

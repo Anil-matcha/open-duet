@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { request } from "@/lib/api";
 import { ThemeToggle } from "./ui/ThemeToggle";
+import { DesktopAccountDanger } from "./DesktopAccountDanger";
 
 export type DesktopAccountStatus = { signed_in: boolean; email: string | null; account_required: boolean; profile_bound: boolean };
 
@@ -53,5 +54,6 @@ export function DesktopAccountLogin({ status, onSignedIn }: { status: DesktopAcc
       <button className={button} type="submit" disabled={busy || (sent && !status.profile_bound && !adopt)}>{busy ? "Please wait…" : sent ? "Verify and continue" : "Email me a code"}</button>
       {sent && <div className="flex flex-wrap gap-4 text-sm"><button type="button" className="underline" disabled={busy} onClick={() => void sendCode()}>Resend code</button><button type="button" className="underline" disabled={busy} onClick={() => { setSent(false); setCode(""); setError(null); setNotice(null); }}>Use another email</button></div>}
     </form>
+    {status.profile_bound && <DesktopAccountDanger kind="reset" onDone={onSignedIn} />}
   </main>;
 }

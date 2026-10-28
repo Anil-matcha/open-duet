@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, request } from "@/lib/api";
 import type { DesktopAccountStatus } from "./DesktopAccountLogin";
+import { DesktopAccountDanger } from "./DesktopAccountDanger";
 
 export function DesktopAccountSection() {
   const [account, setAccount] = useState<DesktopAccountStatus | null>(null);
@@ -24,5 +25,6 @@ export function DesktopAccountSection() {
       setBusy(true); setError(null);
       void request<{ revoked: boolean }>("/desktop-account/logout", { method: "POST" }).then(() => window.location.reload()).catch(err => { setError(err instanceof Error ? err.message : "Could not sign out."); setBusy(false); });
     }}>{busy ? "Signing out…" : "Sign out of app account"}</button>}
+    {account?.signed_in && <div className="space-y-2"><DesktopAccountDanger kind="reset" onDone={() => window.location.reload()} /><DesktopAccountDanger kind="delete" onDone={() => window.location.reload()} /></div>}
   </section>;
 }

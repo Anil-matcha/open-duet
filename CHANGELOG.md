@@ -4,6 +4,14 @@
 
 ### Added
 
+- Desktop: "Reset this profile" (also offered when a different account is
+  linked) and "Delete my account". Both need a typed confirmation, refuse while
+  an agent task runs, and erase local agents, conversations, settings and
+  workspace files before unlinking; account deletion first deletes the cloud
+  account and changes nothing locally if that fails. Sign-out never erases data.
+- Export your agents, conversations and attachment names as a ZIP from Settings
+  ("Export my history"). Credentials, the account sign-in and attached files
+  are not included; import is not available yet.
 - Guide desktop and browser users through engine choice, a purposeful first
   agent and an editable first-request draft, with saved progress, retry-safe
   completion and optional Mac permission checks. Desktop also gains email-code

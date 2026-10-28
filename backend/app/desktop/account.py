@@ -248,6 +248,65 @@ class AccountManager:
             return {"signed_in": False, "remote_signed_out": remote_signed_out,
                     "profile_bound": self.profile_bound()}
 
+    def _clear_binding(self) -> None:
+        try:
+            self._binding_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    async def reset_profile(self, wipe) -> dict[str, Any]:
+        """Erase this profile's local data, then unbind it from its account.
+
+        Data goes first: a crash in between leaves an empty profile still bound to the
+        old account, never old data open to a new account. Sign-out never calls this.
+        """
+        async with self._account_lock:
+            token = self._token()
+            try:
+                await wipe()
+            except Exception:
+                raise DesktopAccountError(500, "local_reset_failed") from None
+            self._clear_binding()
+            if token:
+                try:
+                    await self._request("POST", "/logout", token=token)
+                except httpx.HTTPError:
+                    pass
+            self._clear_session()
+            return {"signed_in": False, "email": None, "tenantId": None,
+                    "account_required": True, "profile_bound": False}
+
+    async def delete_account(self, wipe) -> dict[str, Any]:
+        """Delete the cloud account, then reset the profile. Fails closed: if the
+        cloud call does not succeed, nothing local is changed or reported as deleted."""
+        async with self._account_lock:
+            token = self._token()
+            if not token:
+                raise DesktopAccountError(401, "account_sign_in_required")
+            try:
+                binding = self._read_secret(self._binding_path)
+                email = binding.get("email") if binding else None
+                if not isinstance(email, str) or not email:
+                    raise DesktopAccountError(401, "account_sign_in_required")
+                response = await self._request("DELETE", "/account", token=token, json_body={"confirm_email": email})
+            except httpx.HTTPError:
+                raise DesktopAccountError(503, "account_service_unavailable") from None
+            if response.status_code == 401:
+                self._clear_session()
+                raise DesktopAccountError(401, "account_sign_in_required")
+            if response.status_code not in (200, 204):
+                raise self._remote_error(response)
+            self._clear_session()  # the cloud revoked the token with the account
+            try:
+                await wipe()
+            except Exception:
+                # The account is gone; the binding stays so local data is not opened by
+                # another account. Resetting the profile finishes the cleanup.
+                raise DesktopAccountError(500, "account_deleted_local_cleanup_failed") from None
+            self._clear_binding()
+            return {"signed_in": False, "email": None, "tenantId": None,
+                    "account_required": True, "profile_bound": False}
+
     async def require_account(self) -> dict[str, str]:
         state = await self.status()
         if not state["signed_in"]:

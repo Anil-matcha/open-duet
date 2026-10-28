@@ -8,6 +8,7 @@ import { EngineSettings } from "@/components/EngineSettings";
 import { ConnectedAppsSection } from "@/components/ConnectedAppsSection";
 import { DesktopPermissions } from "./DesktopPermissions";
 import { DesktopAccountSection } from "@/components/DesktopAccountSection";
+import { HistoryExport } from "@/components/HistoryExport";
 import { DevicesSection } from "@/components/DevicesSection";
 import { AppUpdates } from "@/components/AppUpdates";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -116,6 +117,7 @@ export function SettingsApp() {
       {!data && !error && !headless && <p role="status">Loading settings…</p>}
       {!headless && <button className={buttonClass} disabled={busy !== null} onClick={() => setLoadTick((n) => n + 1)}>{data ? "Reload saved settings" : "Try again"}</button>}
       <DesktopAccountSection />
+      <HistoryExport />
       <DesktopPermissions />
       <section className="space-y-2 rounded-lg border border-line p-5"><h3 className="font-semibold">Getting started</h3><p className="text-sm text-muted">Revisit engine choice, your first agent and the first-request guide.</p><Link className="text-sm underline" href="/onboarding/">Open setup guide</Link></section>
       {data && !settingUp && <>

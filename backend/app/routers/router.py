@@ -21,6 +21,7 @@ from app.routers.search import router as search_router
 from app.routers.attachments import router as attachments_router
 from app.routers.workspace_files import router as workspace_files_router
 from app.routers.usage import router as usage_router
+from app.routers.history_export import router as history_export_router
 from app.auth.routes import router as auth_router
 from fastapi import APIRouter
 
@@ -57,6 +58,7 @@ router.include_router(search_router)
 router.include_router(attachments_router)
 router.include_router(workspace_files_router)
 router.include_router(usage_router)
+router.include_router(history_export_router)
 from app.routers.templates import router as templates_router
 router.include_router(templates_router)
 
