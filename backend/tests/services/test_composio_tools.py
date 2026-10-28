@@ -386,3 +386,13 @@ def test_dispatch_workflow_checks_inputs_and_reports_done():
         with pytest.raises(tools.BadArguments):
             tools.clean_arguments(t, bad)
     assert tools.project(t, None)["result"] == "done"
+
+
+def test_list_workflow_runs_is_a_bounded_read():
+    t = tool("github_list_workflow_runs")
+    assert t.kind == "read"
+    assert tools.clean_arguments(t, {"owner": O, "repo": R, "status": "completed"})[0]["per_page"] == 10
+    with pytest.raises(tools.BadArguments):
+        tools.clean_arguments(t, {"owner": O, "repo": R, "status": "weird"})
+    shown = tools.project(t, {"total_count": 1, "workflow_runs": [{"id": 9, "status": "completed", "conclusion": "success", "head_commit": {"message": "x"}}]})
+    assert shown["count"] == 1 and shown["result"][0]["conclusion"] == "success" and "head_commit" not in shown["result"][0]
