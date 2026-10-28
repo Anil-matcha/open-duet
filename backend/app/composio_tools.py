@@ -185,8 +185,8 @@ TOOLS: tuple[Tool, ...] = (
            {"owner": OWNER, "repo": REPO,
             "workflow_id": _text(200, "The workflow file name, for example \"campaign.yml\", or its numeric ID.", "name"),
             "ref": _text(200, "The branch or tag to run on, for example \"main\".", "ref"),
-            "inputs": {"type": "object", "maxProperties": 10,
-                       "description": "The workflow's input names and text values, if it takes any."}},
+            "inputs": {"type": "object", "maxProperties": 10, "additionalProperties": {"type": "string"},
+                       "description": "The workflow's input names and text values, if it takes any. Leave out inputs you do not need."}},
            ("owner", "repo", "workflow_id", "ref"), special="dispatched"),
     _app_read("gmail_fetch_emails", "gmail", "GMAIL_FETCH_EMAILS",
               "Search Gmail messages. By default this searches the inbox and returns a bounded list of message summaries and previews; use the thread tool for more context.",
@@ -321,8 +321,16 @@ def _check(name: str, spec: dict, value: object):
     if kind == "object":
         if not isinstance(value, dict) or len(value) > spec["maxProperties"]:
             raise BadArguments(f"{name} must be an object of at most {spec['maxProperties']} text values.")
-        return {_check(name, {"type": "string", "minLength": 1, "maxLength": 100, "format": "name"}, key):
-                _check(name, {"type": "string", "minLength": 0, "maxLength": 500, "format": "line"}, item) for key, item in value.items()}
+        cleaned = {}
+        for key, item in value.items():
+            if item is None:  # an input left unset is the same as leaving it out
+                continue
+            if isinstance(item, (bool, int)):  # workflow inputs are text; send them as GitHub expects
+                item = str(item).lower() if isinstance(item, bool) else str(item)
+            label = f"{name}.{key}"[:120]
+            cleaned[_check(f"{name} name", {"type": "string", "minLength": 1, "maxLength": 100, "format": "name"}, key)] = \
+                _check(label, {"type": "string", "minLength": 0, "maxLength": 500, "format": "line"}, item)
+        return cleaned
     if kind == "array":
         if not isinstance(value, list) or len(value) > spec["maxItems"]:
             raise BadArguments(f"{name} must be a list of at most {spec['maxItems']} texts.")
