@@ -102,8 +102,8 @@ export const AGENT_APPS: { slug: string; label: string; read: string; write: str
   },
   {
     slug: "googlecalendar", label: "Google Calendar",
-    read: "List calendars and search event summaries in a date window of up to 31 days.",
-    write: null,
+    read: "List calendars, search events by words, and read event summaries in a date window.",
+    write: "Also add an event to a calendar. No guests are invited and nothing is emailed. You approve each event first.",
   },
 ];
 const APPS_ENGINES = new Set(["claude", "codex"]);

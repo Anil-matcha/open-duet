@@ -31,7 +31,7 @@ async def test_a_new_agent_has_no_apps_and_they_can_be_allowed_and_removed(api):
 
 @pytest.mark.parametrize("scopes", [
     {"github": "admin"}, {"github": True}, {"github": ""}, {"slack": "read"},
-    {"github": "read", "slack": "read"}, {"": "read"}, {"googlecalendar": "write"},
+    {"github": "read", "slack": "read"}, {"": "read"}, {"googlecalendar": "admin"},
 ])
 async def test_only_known_apps_and_known_levels_are_accepted(api, scopes):  # noqa: F811
     agent = await new_agent(api)
@@ -41,7 +41,7 @@ async def test_only_known_apps_and_known_levels_are_accepted(api, scopes):  # no
 
 
 @pytest.mark.parametrize("scopes", [
-    {"gmail": "read"}, {"gmail": "write"}, {"googlecalendar": "read"},
+    {"gmail": "read"}, {"gmail": "write"}, {"googlecalendar": "read"}, {"googlecalendar": "write"},
     {"github": "read", "gmail": "read", "googlecalendar": "read"},
 ])
 async def test_supported_apps_can_be_allowed(api, scopes):  # noqa: F811

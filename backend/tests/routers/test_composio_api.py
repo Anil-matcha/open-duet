@@ -325,7 +325,7 @@ async def test_the_catalog_needs_no_key_and_never_calls_composio(admin, composio
     apps = {entry["app"]: entry for entry in response.json()}
     assert {"github", "gmail", "googlecalendar"} <= set(apps)
     assert any(tool["kind"] == "write" for tool in apps["github"]["tools"])
-    assert all(tool["kind"] == "read" for tool in apps["googlecalendar"]["tools"])
+    assert [tool["name"] for tool in apps["googlecalendar"]["tools"] if tool["kind"] == "write"] == ["googlecalendar_create_event"]
     assert composio.calls == []
 
 

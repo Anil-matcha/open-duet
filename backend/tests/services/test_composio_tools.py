@@ -56,7 +56,7 @@ def test_every_tool_is_one_fixed_tool_and_writes_are_a_short_list():
     assert all(t.slug.startswith(prefixes[t.app]) and t.slug.isupper() for t in tools.TOOLS)
     assert len({t.name for t in tools.TOOLS}) == len(tools.TOOLS) == len({t.slug for t in tools.TOOLS})
     writes = {t.name for t in tools.TOOLS if t.kind == "write"}
-    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply"}
+    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply", "googlecalendar_create_event"}
     for word in ("delete", "merge", "push", "force", "settings", "collaborator", "secret", "token"):
         assert not any(word in t.name or word in t.slug.lower() for t in tools.TOOLS), word
 
@@ -433,3 +433,80 @@ def test_dispatch_inputs_ignore_unset_values_and_name_the_bad_one():
     assert json.loads(sent["inputs"]) == {"mode": "submit", "dry": "false", "n": "3"}
     with pytest.raises(tools.BadArguments, match="inputs.mode"):
         tools.clean_arguments(t, {**base, "inputs": {"mode": ["x"]}})
+
+
+# -- Google Calendar: find and create --------------------------------------------
+
+START = "2026-11-02T09:00:00+01:00"
+END = "2026-11-02T09:30:00+01:00"
+
+
+def test_find_events_defaults_and_requires_words():
+    sent, account = tools.clean_arguments(tool("googlecalendar_find_events"), {"query": "dentist"})
+    assert account is None
+    assert sent == {"calendar_id": "primary", "max_results": 10, "single_events": True, "order_by": "startTime",
+                    "show_deleted": False, "query": "dentist"}
+    with pytest.raises(tools.BadArguments):
+        tools.clean_arguments(tool("googlecalendar_find_events"), {})
+
+
+@pytest.mark.parametrize("args", [
+    {"query": "a", "time_min": "2026-11-02T09:00:00"},                                   # no timezone
+    {"query": "a", "time_min": END, "time_max": START},                                  # backwards
+    {"query": "a", "time_min": "2026-01-01T00:00:00Z", "time_max": "2027-06-01T00:00:00Z"},  # over a year
+    {"query": "one" + chr(10) + "two"},
+    {"query": "a", "max_results": 31},
+    {"query": "a", "show_deleted": True},                                                # not an argument
+])
+def test_find_events_refuses_what_does_not_fit(args):
+    with pytest.raises(tools.BadArguments):
+        tools.clean_arguments(tool("googlecalendar_find_events"), args)
+
+
+def test_create_event_is_rebuilt_with_no_guests_and_no_meeting():
+    given = {"summary": "Dentist", "start_datetime": START, "end_datetime": END, "description": "Bring forms", "location": "Main St 1"}
+    sent, _ = tools.clean_arguments(tool("googlecalendar_create_event"), given)
+    assert sent == {**given, "calendar_id": "primary", "create_meeting_room": False}
+    assert "attendees" not in sent
+
+
+@pytest.mark.parametrize("args", [
+    {"summary": "x", "start_datetime": START},                                           # no end
+    {"summary": "x", "start_datetime": START, "end_datetime": START},                    # zero length
+    {"summary": "x", "start_datetime": END, "end_datetime": START},                      # backwards
+    {"summary": "x", "start_datetime": "2026-11-02T09:00:00", "end_datetime": END},      # no timezone
+    {"summary": "x", "start_datetime": "2026-11-02T09:00:00Z", "end_datetime": "2026-11-10T09:00:00Z"},  # over 7 days
+    {"summary": "one" + chr(10) + "two", "start_datetime": START, "end_datetime": END},
+    {"summary": "x", "start_datetime": START, "end_datetime": END, "attendees": ["a@example.com"]},
+    {"summary": "x", "start_datetime": START, "end_datetime": END, "create_meeting_room": True},
+    {"summary": "x", "start_datetime": START, "end_datetime": END, "send_updates": "all"},
+])
+def test_create_event_refuses_what_does_not_fit(args):
+    with pytest.raises(tools.BadArguments):
+        tools.clean_arguments(tool("googlecalendar_create_event"), args)
+
+
+def test_created_and_found_events_are_cut_to_their_fields():
+    made = tools.project(tool("googlecalendar_create_event"), {"response_data": {
+        "id": "e1", "summary": "Dentist", "status": "confirmed", "htmlLink": "https://calendar.google.com/e1",
+        "start": {"dateTime": START, "timeZone": "Europe/Berlin"}, "end": {"dateTime": END},
+        "attendees": [{"email": "secret@example.com"}], "creator": {"email": "me@example.com"}}})
+    assert made["result"]["id"] == "e1" and made["result"]["start_dateTime"] == START
+    assert "secret@example.com" not in json.dumps(made) and "me@example.com" not in json.dumps(made)
+    found = tools.project(tool("googlecalendar_find_events"), {"event_data": {"events": [
+        {"id": "e1", "summary": "Dentist", "start": {"dateTime": START}, "attendees": [{"email": "x@example.com"}]}]}})
+    assert found["count"] == 1 and found["result"][0]["summary"] == "Dentist" and "x@example.com" not in json.dumps(found)
+
+
+@pytest.mark.parametrize("name,levels,expected", [
+    ("googlecalendar_find_events", {"googlecalendar": "read"}, ("allowed", "composio_read")),
+    ("googlecalendar_create_event", {"googlecalendar": "read"}, ("denied", "write_not_allowed")),
+    ("googlecalendar_create_event", {"googlecalendar": "write"}, None),
+    ("googlecalendar_create_event", {"github": "write"}, ("denied", "app_not_allowed")),
+])
+def test_calendar_policy(name, levels, expected):
+    assert composio_policy.automatic(composio_policy.PREFIX + name, "ask", levels) == expected
+
+
+def test_a_calendar_change_is_never_allowed_in_plan_mode():
+    assert composio_policy.automatic(composio_policy.PREFIX + "googlecalendar_create_event", "plan", {"googlecalendar": "write"}) == ("denied", "plan_mode")

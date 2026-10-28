@@ -14,7 +14,7 @@ APP_INFO: dict[str, dict[str, str]] = {
     "gmail": {"name": "Gmail", "category": "Communication",
               "description": "Search and read mail, and draft replies in your threads."},
     "googlecalendar": {"name": "Google Calendar", "category": "Productivity",
-                       "description": "See your calendars and upcoming events."},
+                       "description": "See and search your events, and add events to your own calendar."},
 }
 
 
