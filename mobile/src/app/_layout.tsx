@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, Link, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { PairingLinkHandler } from '@/components/pairing-link-handler';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
@@ -63,12 +64,14 @@ function useNavigationTheme() {
 export default function RootLayout() {
   const navigationTheme = useNavigationTheme();
   return (
-    <ThemeProvider value={navigationTheme}>
-      <AuthProvider>
-        <StatusBar style="auto" />
-        <PairingLinkHandler />
-        <RootStack />
-      </AuthProvider>
-    </ThemeProvider>
+    <KeyboardProvider>
+      <ThemeProvider value={navigationTheme}>
+        <AuthProvider>
+          <StatusBar style="auto" />
+          <PairingLinkHandler />
+          <RootStack />
+        </AuthProvider>
+      </ThemeProvider>
+    </KeyboardProvider>
   );
 }
