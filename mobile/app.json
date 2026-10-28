@@ -29,7 +29,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Suparagent reads a photo only when you choose one to attach to a message.",
-          "cameraPermission": false,
+          "cameraPermission": "Suparagent uses the camera only to scan the pairing QR code shown by your own server.",
           "microphonePermission": false
         }
       ]
