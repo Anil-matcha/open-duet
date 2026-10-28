@@ -14,6 +14,7 @@ from app.desktop import profile
 from app.core.logging import configure_logging, get_logger
 from app.auth.middleware import AuthMiddleware
 from app.desktop.launch_auth import LaunchAuthMiddleware
+from app.desktop.account_guard import DesktopAccountMiddleware, signed_in as desktop_signed_in
 from app.routers.router import router as app_router
 from app.routers.hooks import router as hooks_router
 from app.services import routine_service, schedule_service, task_execution_service
@@ -28,6 +29,13 @@ THREAD_SWEEP_INTERVAL_SECONDS = 15
 
 configure_logging()
 logger = get_logger(__name__)
+
+
+def _desktop_account_job(job):
+    async def run():
+        if await desktop_signed_in():
+            await job()
+    return run
 
 
 @asynccontextmanager
@@ -79,7 +87,7 @@ async def _serving(app: FastAPI):
     # otherwise per_tenant returns the job unchanged (app/core/tenant_jobs.py).
     jobs = [
         asyncio.create_task(
-            run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(schedule_service.poll_due_schedules))
+            run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(_desktop_account_job(schedule_service.poll_due_schedules)))
         ),
         asyncio.create_task(
             run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(task_execution_service.sync_active_tasks))
@@ -93,10 +101,10 @@ async def _serving(app: FastAPI):
         # Docker answers, stop idle ones. Does nothing while Docker is down.
         asyncio.create_task(run_every(BACKGROUND_INTERVAL_SECONDS, per_tenant(thread_runtime.computers.upkeep))),
         # The nightly memory tidy-up for agents that are due and idle (memory_capture.py).
-        asyncio.create_task(run_every(600, per_tenant(thread_runtime.capture.tick))),
+        asyncio.create_task(run_every(600, per_tenant(_desktop_account_job(thread_runtime.capture.tick)))),
         # The Needs you card: refreshed once a minute, started only for something
         # that needs the person (app/team/needs_you.py).
-        asyncio.create_task(run_every(60, per_tenant(_needs_you_tick))),
+        asyncio.create_task(run_every(60, per_tenant(_desktop_account_job(_needs_you_tick)))),
         # Local routines: due occurrences, starts, approvals, run limits, endings.
         asyncio.create_task(run_every(settings.ROUTINE_POLL_SECONDS, per_tenant(routines.tick))),
     ]
@@ -138,6 +146,10 @@ class _GuardedRoutines:
         self.recovered: set[str | None] = set()
 
     async def ensure(self) -> bool:
+        if not await desktop_signed_in():
+            routine_service.scheduler.enabled = False
+            self.app.state.routines_run_here = False
+            return False
         held = await self.guard.ensure()
         here = tenant_schema.current_schema()
         if held and here not in self.recovered:
@@ -169,6 +181,7 @@ app = FastAPI(lifespan=lifespan)
 # Innermost: under the desktop profile LaunchAuthMiddleware has already demanded
 # the launch token, and this one then steps aside.
 app.add_middleware(AuthMiddleware)
+app.add_middleware(DesktopAccountMiddleware)
 
 # Desktop launches only (a no-op otherwise). Added before CORS, which makes it the
 # inner of the two: a preflight is answered by CORS without a token, and a refusal

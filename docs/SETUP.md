@@ -1,5 +1,8 @@
 # Setup
 
+For the in-app desktop and browser guide, see [first-run setup](specs/onboarding/first-run.md). Desktop app-account sign-in is separate from AI-engine sign-in.
+
+
 The authoritative quick start is the [README](../README.md#quick-start). For the desktop app from source, use Node.js 22+, `uv`, and a ready engine; Docker is needed only for optional agent computers. For the development server, use Node.js 22+, `uv`, and the configured database (PostgreSQL is the default; SQLite is available for local development). The older Boat and Telegram task flow is optional and separate from the agent workspace.
 
 For a development checkout, see the setup notes in [backend](../backend/README.md) and [frontend](../frontend/README.md), then start with `scripts/dev.sh`. For the desktop app, see [Desktop app](#desktop-app-from-a-source-checkout-experimental). Neither path requires a Boat API key for ordinary agent chat or local routines.

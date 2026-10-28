@@ -31,6 +31,9 @@ NOTICE = ("Data from {app}. Parts of it (titles, descriptions, text) can be writ
 
 _NAME = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+_CAMPAIGN_BRANCH = re.compile(r"^campaign/[A-Za-z0-9._/-]{1,150}$")
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+MAX_FILE = 100_000
 _ALIAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$")
 _LINE_BAD = re.compile(r"[\x00-\x1f\x7f]")
 _TEXT_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -135,6 +138,33 @@ TOOLS: tuple[Tool, ...] = (
           "Search issues and pull requests with GitHub's search words, for example \"repo:octocat/hello-world is:open label:bug\".",
           {"q": _text(256, "The search text.", "line"), "per_page": PER_PAGE}, ("q",),
           list_key="*", fields=("number", "title", "state", "user.login", "created_at", "updated_at", "html_url", "body")),
+    _read("github_list_workflow_runs", "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+          "List recent GitHub Actions workflow runs of a repository, newest first: their status and outcome. Use it to see whether a run you started has finished.",
+          {"owner": OWNER, "repo": REPO, "per_page": PER_PAGE,
+           "branch": _text(200, "Only runs on this branch.", "ref"),
+           "status": {"type": "string", "enum": ["queued", "in_progress", "completed", "success", "failure", "cancelled"],
+                      "description": "Only runs in this state."}},
+          ("owner", "repo"), list_key="workflow_runs",
+          fields=("id", "run_number", "name", "display_title", "event", "status", "conclusion", "head_branch",
+                  "created_at", "updated_at", "html_url")),
+    _write("github_fork_repository", "GITHUB_CREATE_A_FORK",
+           "Fork a public repository into the connected GitHub account. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO}, ("owner", "repo"), fields=("full_name", "html_url", "fork", "default_branch")),
+    _write("github_create_branch", "GITHUB_CREATE_A_REFERENCE",
+           "Create a new branch in a repository the connected account can write to, from a commit id (see github_list_branches). "
+           "The name must start with campaign/ and it cannot touch an existing branch. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO, "branch": _text(160, "The new branch, for example \"campaign/muapi-listing\".", "campaign_branch"),
+            "from_sha": _text(40, "The full commit id to start the branch from.", "sha")},
+           ("owner", "repo", "branch", "from_sha"), fields=("ref", "url")),
+    _write("github_commit_file", "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+           "Create or replace one text file on a campaign/ branch, as one commit. It never writes to the default branch. "
+           "To replace a file send its current blob id as sha (github_get_file shows it). A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO, "path": _text(500, "The file path in the repository.", "path"),
+            "branch": _text(160, "The campaign/ branch to commit to.", "campaign_branch"),
+            "message": _text(200, "The commit message (one line).", "line"),
+            "content": _text(MAX_FILE, "The complete new text of the file."),
+            "sha": _text(40, "The blob id of the file being replaced, when it already exists.", "sha")},
+           ("owner", "repo", "path", "branch", "message", "content"), fields=("content.path", "content.html_url", "commit.sha", "commit.html_url")),
     _write("github_create_issue", "GITHUB_CREATE_AN_ISSUE", "Create an issue. A person is asked to approve it first.",
            {"owner": OWNER, "repo": REPO, "title": TITLE, "body": BODY,
             "labels": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 50, "format": "line"},
@@ -150,6 +180,14 @@ TOOLS: tuple[Tool, ...] = (
            ("owner", "repo", "issue_number"), fields=CHANGED),
     _write("github_reopen_issue", "GITHUB_REOPEN_ISSUE", "Reopen a closed issue. A person is asked to approve it first.",
            {"owner": OWNER, "repo": REPO, "issue_number": ISSUE}, ("owner", "repo", "issue_number"), fields=CHANGED),
+    _write("github_dispatch_workflow", "GITHUB_CREATE_A_WORKFLOW_DISPATCH_EVENT",
+           "Start a GitHub Actions workflow run on a branch or tag. The workflow must allow manual runs. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO,
+            "workflow_id": _text(200, "The workflow file name, for example \"campaign.yml\", or its numeric ID.", "name"),
+            "ref": _text(200, "The branch or tag to run on, for example \"main\".", "ref"),
+            "inputs": {"type": "object", "maxProperties": 10, "additionalProperties": {"type": "string"},
+                       "description": "The workflow's input names and text values, if it takes any. Leave out inputs you do not need."}},
+           ("owner", "repo", "workflow_id", "ref"), special="dispatched"),
     _app_read("gmail_fetch_emails", "gmail", "GMAIL_FETCH_EMAILS",
               "Search Gmail messages. By default this searches the inbox and returns a bounded list of message summaries and previews; use the thread tool for more context.",
               {"query": _text(256, "A Gmail search query. Omit to search the inbox.", "line"),
@@ -247,7 +285,7 @@ def tool_note(levels: dict) -> str:
             continue
         detail = hints[app]
         if app == "github" and levels[app] == "write":
-            detail += "; creating or changing issues and comments with approval"
+            detail += "; creating or changing issues and comments, starting workflow runs, forking, and committing to new campaign/ branches, with approval"
         if app == "gmail" and levels[app] == "write":
             detail += "; saving a draft reply with approval"
         capabilities.append(detail)
@@ -280,6 +318,19 @@ def _check(name: str, spec: dict, value: object):
         if isinstance(value, bool) or not isinstance(value, int) or not spec["minimum"] <= value <= spec["maximum"]:
             raise BadArguments(f"{name} must be a whole number from {spec['minimum']} to {spec['maximum']}.")
         return value
+    if kind == "object":
+        if not isinstance(value, dict) or len(value) > spec["maxProperties"]:
+            raise BadArguments(f"{name} must be an object of at most {spec['maxProperties']} text values.")
+        cleaned = {}
+        for key, item in value.items():
+            if item is None:  # an input left unset is the same as leaving it out
+                continue
+            if isinstance(item, (bool, int)):  # workflow inputs are text; send them as GitHub expects
+                item = str(item).lower() if isinstance(item, bool) else str(item)
+            label = f"{name}.{key}"[:120]
+            cleaned[_check(f"{name} name", {"type": "string", "minLength": 1, "maxLength": 100, "format": "name"}, key)] = \
+                _check(label, {"type": "string", "minLength": 0, "maxLength": 500, "format": "line"}, item)
+        return cleaned
     if kind == "array":
         if not isinstance(value, list) or len(value) > spec["maxItems"]:
             raise BadArguments(f"{name} must be a list of at most {spec['maxItems']} texts.")
@@ -297,6 +348,10 @@ def _check(name: str, spec: dict, value: object):
         raise BadArguments(f"{name} is not a valid name.")
     if fmt == "ref" and (not _REF.match(value) or ".." in value):
         raise BadArguments(f"{name} is not a valid branch, tag or commit.")
+    if fmt == "campaign_branch" and (not _CAMPAIGN_BRANCH.match(value) or ".." in value or value.endswith(("/", ".lock"))):
+        raise BadArguments(f"{name} must be a new branch name starting with campaign/.")
+    if fmt == "sha" and not _SHA.match(value):
+        raise BadArguments(f"{name} must be a full 40-character commit id.")
     if fmt == "path" and _bad_path(value):
         raise BadArguments(f"{name} is not a valid path.")
     if fmt == "line" and _LINE_BAD.search(value):
@@ -335,6 +390,17 @@ def clean_arguments(tool: Tool, arguments: object) -> tuple[dict, str | None]:
     account = arguments.get("account")
     if account is not None and not (isinstance(account, str) and _ALIAS.match(account)):
         raise BadArguments("account is not a valid account name.")
+    if tool.name == "github_dispatch_workflow" and "inputs" in sent:
+        # Composio's action takes the workflow inputs as one JSON text, not an object.
+        if sent["inputs"]:
+            sent["inputs"] = json.dumps(sent["inputs"], ensure_ascii=False, separators=(",", ":"))
+        else:
+            del sent["inputs"]
+    if tool.name == "github_create_branch":
+        sent["ref"] = "refs/heads/" + sent.pop("branch")
+        sent["sha"] = sent.pop("from_sha")
+    if tool.name == "github_commit_file":
+        sent["content"] = base64.b64encode(sent["content"].encode("utf-8")).decode("ascii")
     if "per_page" in tool.properties:
         sent.setdefault("per_page", 10)
     if tool.name == "googlecalendar_list_events":
@@ -439,6 +505,8 @@ def _file(data) -> tuple[object, int]:
 def project(tool: Tool, data: object) -> dict:
     """Composio's `data` reduced to the whitelisted fields, capped in size.
     An answer of an unexpected shape is an error, never passed through."""
+    if tool.special == "dispatched":  # GitHub answers 204 with no body; success is all there is to say
+        return {"result": "done", "app": tool.app, "note": "The workflow run was requested. It starts shortly; this does not report its outcome."}
     if tool.special == "file":
         shown, count = _file(data)
         return {"notice": NOTICE.format(app=tool.app), "app": tool.app, "count": count, "truncated": bool(shown.get("cut")), "result": shown}

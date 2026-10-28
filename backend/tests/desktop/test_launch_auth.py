@@ -107,7 +107,13 @@ def test_a_path_that_does_not_exist_is_refused_the_same_way(desktop, client, pat
 
 
 @pytest.mark.parametrize("method, path", [("GET", "/api/v1/providers"), ("GET", "/api/v1/threads"), ("POST", "/api/v1/threads/1/stop")])
-def test_with_the_token_the_request_reaches_the_application(desktop, client, method, path):
+def test_with_the_token_the_request_reaches_the_application(desktop, client, method, path, monkeypatch):
+    # This test isolates launch authorization with a separately verified account.
+    from app.desktop import account
+    class VerifiedAccount:
+        async def require_account(self):
+            return {"email": "fixture@acme.dev", "tenantId": "fixture"}
+    monkeypatch.setattr(account, "get_manager", lambda: VerifiedAccount())
     response = client.request(method, path, headers=HEADERS)
     assert response.status_code != 401
     if path == "/api/v1/providers":

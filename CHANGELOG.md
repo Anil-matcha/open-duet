@@ -16,11 +16,40 @@
   Expo Go (pairing by code and by QR, HTTPS with a valid certificate and refusal
   of an untrusted one, chat, an approval from a real Claude turn, and Stop).
   The newest features (Markdown, attachments, dark theme, agent picker, rooms)
-  were checked by tests and against a local backend, not yet on a screen. The Android keyboard layout is only partly
-  fixed: after the first fix the message box's bottom edge was still partly
-  covered, and a second change has not been tried. Not run: iOS, a physical
-  phone, a custom link opening the app, and a release build. See
+  were checked by tests and against a local backend. A release APK was then
+  installed on a Galaxy S23 Ultra: pairing over HTTPS and chat worked, and after
+  fixes for the system bar and the keyboard the message box and approval
+  buttons stay on screen. Scanning the QR code with that phone did not work yet;
+  typing the server and code does. Not run: iOS, a custom link opening the app,
+  and the newest features beyond chat on a screen. See
   [the phone app guide](docs/MOBILE.md).
+
+## 0.5.1 - 2026-10-28
+
+### Changed
+
+- Desktop sign-in no longer asks for an invitation code; anyone can create an account with an email code.
+
+## 0.5.0 - 2026-10-28
+
+### Added
+
+- Desktop: "Reset this profile" (also offered when a different account is
+  linked) and "Delete my account". Both need a typed confirmation, refuse while
+  an agent task runs, and erase local agents, conversations, settings and
+  workspace files before unlinking; account deletion first deletes the cloud
+  account and changes nothing locally if that fails. Sign-out never erases data.
+- Export your agents, conversations and attachment names as a ZIP from Settings
+  ("Export my history"). Credentials, the account sign-in and attached files
+  are not included; import is not available yet.
+- Guide desktop and browser users through engine choice, a purposeful first
+  agent and an editable first-request draft, with saved progress, retry-safe
+  completion and optional Mac permission checks. Desktop also gains email-code
+  app-account sign-in with encrypted sessions and account-bound local profiles.
+  Supported desktop engines can be installed into staged app-managed releases.
+  Real email delivery, provider calls, actual runtime downloads, native permission
+  dialogs, Windows installation, packaged releases and production account-service
+  deployment were not run. See [first-run setup](docs/specs/onboarding/first-run.md).
 
 - Allow existing Codex agents to use the same per-agent GitHub, Gmail and
   Google Calendar Composio grants as Claude agents. Codex mounts a scoped MCP
