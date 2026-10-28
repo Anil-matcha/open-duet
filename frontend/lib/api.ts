@@ -572,7 +572,7 @@ export type EngineConfigInput = {
 };
 
 export type ComposioStatus = { configured: boolean; apps: ComposioApp[] };
-export type { CatalogApp as ComposioCatalogApp, CatalogTool as ComposioCatalogTool } from "./apps-catalog";
+export type { CatalogApp as ComposioCatalogApp, CatalogPage as ComposioCatalogPage, CatalogTool as ComposioCatalogTool } from "./apps-catalog";
 
 export type CodexLoginOperation = {
   id: string;
@@ -907,7 +907,15 @@ export const api = {
   saveEngineConfig: (engineId: string, config: EngineConfigInput) =>
     request<Engine>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "PUT", body: JSON.stringify(config) }),
   deleteEngineConfig: (engineId: string) => request<void>(`/engines/${encodeURIComponent(engineId)}/config`, { method: "DELETE" }),
-  getComposioCatalog: () => request<import("./apps-catalog").CatalogApp[]>("/integrations/composio/catalog"),
+  getComposioCatalog: (query: { search?: string; category?: string | null; cursor?: string | null; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (query.search) params.set("search", query.search);
+    if (query.category) params.set("category", query.category);
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.limit) params.set("limit", String(query.limit));
+    const text = params.toString();
+    return request<import("./apps-catalog").CatalogPage>(`/integrations/composio/catalog${text ? `?${text}` : ""}`);
+  },
   getComposioStatus: () => request<ComposioStatus>("/integrations/composio"),
   saveComposioKey: (apiKey: string) => request<ComposioStatus>("/integrations/composio/key", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
   deleteComposioKey: () => request<void>("/integrations/composio/key", { method: "DELETE" }),

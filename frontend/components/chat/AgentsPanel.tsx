@@ -15,7 +15,7 @@ import {
   redactionNotice,
 } from "@/lib/agents";
 import { computerStateLabel } from "@/lib/computers";
-import { AGENT_APPS, levelOf, scopesToSend, supportsConnectedApps, withApp, type Level, type Scopes } from "@/lib/connected-apps";
+import { agentAppOptions, levelOf, scopesToSend, supportsConnectedApps, withApp, type ComposioAccount, type Level, type Scopes } from "@/lib/connected-apps";
 import { ComputerView } from "./ComputerPanel";
 import { EngineModelFields } from "./EngineModelFields";
 import { MemoryPanel } from "./MemoryPanel";
@@ -173,6 +173,9 @@ export function AgentsPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [engines, setEngines] = useState<Engine[]>([]);
+  // The accounts connected on the Apps page: every app with one can be allowed for an agent. Empty when none, or when this
+  // device may not see them (only the owner can).
+  const [appAccounts, setAppAccounts] = useState<ComposioAccount[] | null>(null);
   const { session } = useSession();
   const admin = session?.scopes.includes("admin") === true;
   const [team, setTeam] = useState<TeamState | null>(null);
@@ -180,6 +183,11 @@ export function AgentsPanel({
   const [memberChoices, setMemberChoices] = useState<Record<number, boolean>>({});
   const isLead = draft !== null && (roleChoice?.id === draft.id ? roleChoice.value : draft.id !== null && team?.team?.lead_agent_id === draft.id);
   const roleSupported = engines.some(engine => engine.id === draft?.provider && engine.capabilities.mcp);
+  useEffect(() => {
+    let live = true;
+    api.getComposioStatus().then((value) => value.configured ? api.listComposioAccounts() : []).then((value) => { if (live) setAppAccounts(value); }).catch(() => { if (live) setAppAccounts([]); });
+    return () => { live = false; };
+  }, []);
   useEffect(() => { let live = true; collaboration.team().then(value => { if (live) setTeam(value); }).catch(() => {}); return () => { live = false; }; }, []);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -553,15 +561,15 @@ export function AgentsPanel({
               </fieldset>
               {draft.id !== null && supportsConnectedApps(draft.provider) && <fieldset className="space-y-3 text-xs text-muted">
                 <legend>Connected apps</legend>
-                {AGENT_APPS.map((app) => <div key={app.slug} className="space-y-1">
-                  <p className="text-sm text-ink">{app.label}</p>
+                {agentAppOptions(appAccounts, draft.connector_scopes).map((app) => <div key={app.slug} className="space-y-1">
+                  <p className="text-sm text-ink">{app.label}{app.generic && <span className="ml-2 text-xs text-muted">no tools of its own: every action asks you</span>}</p>
                   {((app.write ? ["off", "read", "write"] : ["off", "read"]) as Level[]).map((level) => <label key={level} className="flex cursor-pointer items-start gap-2">
                     <input type="radio" name={`app-${app.slug}`} className="mt-0.5" disabled={busy} checked={levelOf(draft.connector_scopes, app.slug) === level}
                       onChange={() => setDraft({ ...draft, connector_scopes: withApp(draft.connector_scopes, app.slug, level) })} />
-                    <span>{level === "off" ? "Off" : level === "read" ? <>Read only. {app.read}</> : <>Read and change. {app.write}</>}</span>
+                    <span>{level === "off" ? "Off" : level === "read" ? <>{app.generic ? "Look up only." : "Read only."} {app.read}</> : <>{app.generic ? "Look up and run." : "Read and change."} {app.write}</>}</span>
                   </label>)}
                 </div>)}
-                <p>Connect apps first on the Apps page (sidebar → Apps). Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
+                <p>Connect apps first on the Apps page (sidebar → Apps); any app you connect there appears here. Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
               </fieldset>}
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                 <input
