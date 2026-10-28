@@ -4,6 +4,15 @@
 
 ### Added
 
+- Add an Apps page (sidebar → Apps) that lists the apps agents can use through
+  Composio, with search, category and Connected filters, what each app lets an
+  agent do (read or change), connecting and disconnecting, and the Composio key.
+  It lists apps without a saved key. Connecting an app does not give any agent
+  access; that is still chosen per agent. Connected apps moved out of Settings.
+- Add two Google Calendar tools: find events by words (read) and create one
+  timed event (change, approved each time). A created event has no guests and no
+  video meeting, so it emails nobody. Checked with unit tests against
+  Composio's published parameters; not run against a live calendar yet.
 - Add a phone app (`mobile/`, Expo and React Native) that pairs with your own
   server by QR code or code as a chat-only device. It lists and starts
   conversations, shows answers as they are written (as Markdown), attaches photos and text files, follows the phone's dark or light setting, starts a conversation from one of your agents, reads and posts to your rooms (tagging agents, stopping them and answering their approvals), stops a running answer, and
@@ -23,6 +32,13 @@
   typing the server and code does. Not run: iOS, a custom link opening the app,
   and the newest features beyond chat on a screen. See
   [the phone app guide](docs/MOBILE.md).
+
+### Changed
+
+- Settings is now four pages with a list beside them: General, Engines,
+  Approvals, and Account & privacy. Links that asked you to sign in to an engine
+  now open Engines, and the desktop app accepts engine sign-in, the path
+  picker and permission actions only from the page that hosts them.
 
 ## 0.5.1 - 2026-10-28
 

@@ -1,6 +1,6 @@
 # Connected apps
 
-Connect an app in Settings, then choose which Claude or Codex agents may use
+Connect an app on the Apps page (sidebar → Apps), then choose which Claude or Codex agents may use
 it. Apps are reached through [Composio](https://composio.dev) with **your own
 Composio project key**; there is no shared key and nothing is sent to a
 service run by this project.
@@ -8,14 +8,15 @@ service run by this project.
 GitHub, Gmail and Google Calendar are available to existing Claude and Codex
 agents. The app mounts a turn-scoped, permission-filtered MCP server and sends
 Codex MCP approval requests through the same approval gate used for Claude.
-Gmail and Calendar tools are bounded read tools; Gmail can also save a draft
-reply after you approve it. Other engines cannot use connected apps yet.
+Gmail tools are bounded reads, and Gmail can also save a draft reply after you
+approve it. Calendar tools read and search events, and can add an event to your
+own calendar after you approve it. Other engines cannot use connected apps yet.
 
 ## Set it up
 
 1. **Get a key.** Create a Composio account and a project, then copy the
    project key (it starts with `ak_`).
-2. **Save it.** Settings → Connected apps → paste the key → Save. The key is
+2. **Save it.** Apps → paste the key → Save. The key is
    checked with Composio first, stored encrypted on this computer, and never
    shown again. To change it, use Replace key.
 3. **Connect the app.** Choose Connect next to GitHub, Gmail or Google
@@ -24,8 +25,8 @@ reply after you approve it. Other engines cannot use connected apps yet.
    name; with more than one account for an app (up to five) the agent must say
    which one to use.
 4. **Allow an agent.** Open an existing Claude or Codex agent, find Connected
-   apps, choose **Off** or **Read only** for each app; GitHub and Gmail also
-   have **Read and change**. Save, start a new conversation with that agent,
+   apps, choose **Off** or **Read only** for each app; GitHub, Gmail and
+   Google Calendar also have **Read and change**. Save, start a new conversation with that agent,
    and ask naturally, for example, “Find the latest unread message from Alex
    and summarize it,” “What is on my calendar tomorrow?” or “Draft a reply to
    that email.” New agents and copies start with all apps Off. If the agent was
@@ -41,17 +42,18 @@ or the connections.
 |---|---|
 | Read only · GitHub | Read your profile, repositories, issues and pull requests, issue comments, pull request files, commits, branches and file contents (or list a folder), and search issues and pull requests. |
 | Read only · Gmail | Search up to 30 messages per page, read one message or thread, and see the connected account profile. Message bodies and previews are cut to a small field allowlist. |
-| Read only · Google Calendar | List calendars and event summaries in a timezone-qualified date window of up to 31 days. No calendar write tools are available. |
+| Read only · Google Calendar | List calendars, search events by words (a window of up to a year), and read event summaries in a timezone-qualified date window of up to 31 days. |
 | Read and change · GitHub | Everything above, and create an issue, comment on an issue or pull request, and close or reopen an issue. |
 | Read and change · Gmail | Read access plus creating a plain-text draft reply in an existing thread to one recipient. This only saves a draft; it does not send, forward, archive or delete email. |
+| Read and change · Google Calendar | Read access plus creating one timed event (at most 7 days long) on a calendar. It has no guests and no video meeting, so nothing is emailed. |
 
 For an interactive Gmail draft, the recipient and subject are supplied by the
 agent and shown in the approval card. The current chat tool does not verify
 that recipient against the thread's sender; check it before approving.
 
 Not available at any level: sending or forwarding email; adding Gmail cc/bcc or
-extra recipients; archive, label or delete actions; calendar event changes;
-merging, deleting or pushing code; editing an existing issue or comment;
+extra recipients; archive, label or delete actions; inviting guests to an event or
+changing or deleting an existing event; merging, deleting or pushing code; editing an existing issue or comment;
 creating a pull request; or changing repository settings, collaborators or
 secrets.
 
@@ -89,7 +91,7 @@ to an agent that has its own computer.
 
 ## Disconnecting and removing the key
 
-Disconnect in Settings removes the account from Composio. To also remove the
+Disconnect on the Apps page removes the account from Composio. To also remove the
 app's grant at GitHub, use GitHub → Settings → Applications; that step was not
 checked. Remove key deletes the key from this app only: connected accounts stay
 at Composio, so disconnect them first if you want them gone.
