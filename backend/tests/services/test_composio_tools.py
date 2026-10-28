@@ -382,7 +382,8 @@ def test_a_shim_started_with_no_apps_offers_only_the_listing(tmp_path):
 def test_dispatch_workflow_checks_inputs_and_reports_done():
     t = tool("github_dispatch_workflow")
     good = {"owner": O, "repo": R, "workflow_id": "campaign.yml", "ref": "main", "inputs": {"mode": "sweep"}}
-    assert tools.clean_arguments(t, good)[0] == good
+    assert tools.clean_arguments(t, good)[0] == {**good, "inputs": '{"mode":"sweep"}'}
+    assert "inputs" not in tools.clean_arguments(t, {**good, "inputs": {}})[0]
     for bad in ({**good, "ref": "a..b"}, {**good, "inputs": {"mode": ["x"]}}, {**good, "inputs": {"a b": "x"}},
                 {**good, "inputs": {f"k{i}": "x" for i in range(11)}}, {**good, "inputs": "sweep"}, {**good, "workflow_id": "../x"}):
         with pytest.raises(tools.BadArguments):
@@ -429,6 +430,6 @@ def test_dispatch_inputs_ignore_unset_values_and_name_the_bad_one():
     t = tool("github_dispatch_workflow")
     base = {"owner": O, "repo": R, "workflow_id": "w.yml", "ref": "main"}
     sent, _ = tools.clean_arguments(t, {**base, "inputs": {"mode": "submit", "date": None, "dry": False, "n": 3}})
-    assert sent["inputs"] == {"mode": "submit", "dry": "false", "n": "3"}
+    assert json.loads(sent["inputs"]) == {"mode": "submit", "dry": "false", "n": "3"}
     with pytest.raises(tools.BadArguments, match="inputs.mode"):
         tools.clean_arguments(t, {**base, "inputs": {"mode": ["x"]}})
