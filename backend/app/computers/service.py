@@ -54,6 +54,20 @@ HOSTED_REASON = "This hosted server does not make a computer inside itself, and 
 HOSTED_BROWSER_REASON = "This hosted server does not make a computer inside itself. Agents here can read and edit files, run commands in the server, and browse with a browser inside it."
 
 
+def hold_dir(key: int) -> str:
+    """The state folder a control hold writes to: a computer's id, or `browser-<agent id>` for the browser on this
+    machine, which holds under the agent's negative id (as its turn binding does)."""
+    return f"browser-{-key}" if key < 0 else str(key)
+
+
+def hold_key(folder: str) -> int | None:
+    if folder.isdigit():
+        return int(folder)
+    if folder.startswith("browser-") and folder[8:].isdigit():
+        return -int(folder[8:])
+    return None
+
+
 def local_browser_enabled() -> bool:
     """Whether agents without a computer get the browser on this machine. A hosted control plane never runs one."""
     return bool(settings.LOCAL_BROWSER_ENABLED) and not settings.HOST_EXECUTION_DISABLED
@@ -156,7 +170,8 @@ class ComputerService:
         expired = self.control.expire()
         # Snapshot/owns may already have expired a registry entry.
         for path in self.state_dir().glob("*/control.json"):
-            if path.parent.name.isdigit() and not self.control.snapshot(int(path.parent.name))["held"]:
+            key = hold_key(path.parent.name)
+            if key is not None and not self.control.snapshot(key)["held"]:
                 path.unlink(missing_ok=True)
         return expired
 
@@ -168,16 +183,17 @@ class ComputerService:
         self.expire_control()
         released = self.control.release(computer_id, lease)
         if released:
-            (self.state_dir() / str(computer_id) / "control.json").unlink(missing_ok=True)
+            (self.state_dir() / hold_dir(computer_id) / "control.json").unlink(missing_ok=True)
         return released
 
     def write_control(self, computer_id: int):
         # Same cross-process lock as screen input: a completed take response
         # guarantees all earlier input has finished before the person drives.
-        with screen.driver_lock(self.state_dir() / str(computer_id)):
-            screen.write_state(self.state_dir() / str(computer_id) / "control.json", {"until": time.time()+35})
-            screen.write_state(self.state_dir() / str(computer_id) / "browser-epoch.json", {"at": time.time_ns()})
-            screen.write_state(self.state_dir() / str(computer_id) / "screen-epoch.json", {"at": time.time_ns()})
+        folder = self.state_dir() / hold_dir(computer_id)
+        with screen.driver_lock(folder):
+            screen.write_state(folder / "control.json", {"until": time.time()+35})
+            screen.write_state(folder / "browser-epoch.json", {"at": time.time_ns()})
+            screen.write_state(folder / "screen-epoch.json", {"at": time.time_ns()})
 
     async def screenshot(self, computer: Computer) -> bytes:
         if computer.kind != "desktop":

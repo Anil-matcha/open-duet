@@ -271,3 +271,24 @@ def test_find_chrome_skips_a_match_that_does_not_run(monkeypatch, tmp_path):
     monkeypatch.setattr(lb, "CHROME_NAMES", ("bad", "good"))
     monkeypatch.setenv("PATH", str(tmp_path))
     assert lb.find_chrome() == str(good)
+
+
+def test_the_debug_port_is_published_for_the_live_view_and_removed_on_release(local, tmp_path):
+    state = tmp_path / "state"
+    b = local(state_dir=state)
+    b.start()
+    record = json.loads((state / local_browser.CDP_FILE).read_text())
+    assert record == {"port": b.port, "pid": b.process.pid} and oct((state / local_browser.CDP_FILE).stat().st_mode & 0o777) == "0o600"
+    b.release()
+    assert not (state / local_browser.CDP_FILE).exists()
+
+
+def test_sandbox_is_unusable_when_the_namespace_call_is_refused(monkeypatch):
+    from app.computers import local_browser as lb
+
+    monkeypatch.setattr(lb.sys, "platform", "linux")
+    monkeypatch.setattr(lb.os, "geteuid", lambda: 1000, raising=False)
+    monkeypatch.setattr(lb, "_can_make_user_namespace", lambda: False)
+    assert lb.sandbox_usable() is False
+    monkeypatch.setattr(lb, "_can_make_user_namespace", lambda: True)
+    assert lb.sandbox_usable() is True

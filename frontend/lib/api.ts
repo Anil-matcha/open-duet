@@ -382,6 +382,13 @@ export type ComputerNetwork = "none" | "default";
 
 export type ControlSnapshot = { held: boolean; since: number | null; viewers: number };
 export type TakeControl = ControlSnapshot & { owned: boolean; lease_id?: string; ticket?: string };
+export function browserViewerUrl(agentId: number, ticket: string, pageUrl: string): string {
+  const url = new URL(`${API_BASE}/agents/${agentId}/browser/viewer`, pageUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("ticket", ticket);
+  return url.toString();
+}
+
 export function desktopViewerUrl(id: number, ticket: string, pageUrl: string): string {
   const url = new URL(`${API_BASE}/computers/${id}/viewer`, pageUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -1133,6 +1140,9 @@ export const api = {
   releaseComputerControl: (id: number, leaseId: string) => request<ControlSnapshot>(`/computers/${id}/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
   computerControlHeartbeat: (id: number, leaseId: string) => request<void>(`/computers/${id}/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
   computerViewerTicket: (id: number, leaseId: string) => request<{ ticket: string }>(`/computers/${id}/viewer-ticket`, { method: "POST", body: JSON.stringify({ mode: "control", lease_id: leaseId }) }),
+  takeBrowserControl: (agentId: number, leaseId?: string) => request<TakeControl>(`/agents/${agentId}/browser/control`, { method: "POST", body: JSON.stringify({ action: "take", ...(leaseId ? { lease_id: leaseId } : {}) }) }),
+  releaseBrowserControl: (agentId: number, leaseId: string) => request<ControlSnapshot>(`/agents/${agentId}/browser/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
+  browserControlHeartbeat: (agentId: number, leaseId: string) => request<void>(`/agents/${agentId}/browser/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
   computerScreenshot: (id: number) => requestBlobUrl(`/computers/${id}/screenshot`),
   createAgentComputer: (agentId: number, settings: ComputerSettings & { kind?: ComputerKind; start?: boolean } = {}) =>
     request<Computer>(`/agents/${agentId}/computer`, { method: "POST", body: JSON.stringify(settings) }),

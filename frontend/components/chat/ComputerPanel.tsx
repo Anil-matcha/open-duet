@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { api, ApiError, type Agent, type Computer, type ComputerHealth, type ComputerNetwork, type ComputerKind } from "@/lib/api";
+import { LiveBrowser } from "./LiveBrowser";
 import { LiveDesktop } from "./LiveDesktop";
 import { DesktopPicture } from "./DesktopPicture";
 import { NativeComputer } from "./NativeComputer";
@@ -146,6 +147,7 @@ function DockerComputerView({
         <div className="space-y-2 text-sm text-muted">
           <p>{docker.error}</p>
           <p data-testid="hosted-browser-state">{hostedBrowserLine(docker)}</p>
+          {docker.browser_local && <LiveBrowser agentId={agent.id} />}
         </div>
       );
     }

@@ -30,6 +30,7 @@ from app.core import engine_processes, host_exec
 
 BROKER_ENV = "OPEN_DOTS_BROWSER_BROKER"
 CHROME_ENV = "OPEN_DOTS_BROWSER_CHROME"
+CDP_FILE = "cdp.json"  # in the state dir: where the app finds this browser's debug port for the live view
 CHROME_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
 START_SECONDS = 20
 REQUEST_SECONDS = 45
@@ -88,7 +89,16 @@ def sandbox_usable() -> bool:
                 return False
         except OSError:
             pass
-    return True
+    return _can_make_user_namespace()
+
+
+def _can_make_user_namespace() -> bool:
+    """The sysctls can say yes while a container profile still refuses the call, so try it in a throwaway child."""
+    probe = "import ctypes,sys; sys.exit(0 if ctypes.CDLL(None, use_errno=True).unshare(0x10000000) == 0 else 1)"
+    try:
+        return subprocess.run([sys.executable, "-c", probe], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return True  # cannot tell: let Chromium try its sandbox rather than disabling it
 
 
 def free_port() -> int:
@@ -184,10 +194,25 @@ class LocalBrowser:
                 self.release()
                 raise LocalBrowserError("The browser broker exited at start.")
             if self.socket_path.exists():
+                self._publish_port()
                 return
             time.sleep(.05)
         self.release()
         raise LocalBrowserError("The browser broker did not start.")
+
+    def _publish_port(self) -> None:
+        """Tell the app which loopback port Chromium listens on, so the person can watch and take over.
+        The file lives in the private state folder and goes away with the browser."""
+        if not self.state_dir or not self.process:
+            return
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = self.state_dir / f".{CDP_FILE}.{os.getpid()}"
+            tmp.write_text(json.dumps({"port": self.port, "pid": self.process.pid}))
+            tmp.chmod(0o600)
+            os.replace(tmp, self.state_dir / CDP_FILE)
+        except OSError:
+            pass
 
     def request(self, payload: dict) -> dict:
         """Send one broker request (name, args, owner, epoch) and return its MCP-shaped result."""
@@ -237,6 +262,8 @@ class LocalBrowser:
             _bookkeeping(engine_processes.forget, pid)
             if self.registry:
                 guard.unregister(self.registry, self.profile.name)
+            if self.state_dir:
+                (self.state_dir / CDP_FILE).unlink(missing_ok=True)
         runtime, self.runtime = self.runtime, None
         if runtime is not None:
             shutil.rmtree(runtime, ignore_errors=True)

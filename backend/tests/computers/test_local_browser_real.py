@@ -95,3 +95,81 @@ def test_the_egress_check_blocks_loopback_and_metadata_urls(page):
     assert local_browser_egress.check_url("http://169.254.169.254/latest/meta-data/")
     assert local_browser_egress.check_url("file:///etc/passwd")
     assert local_browser_egress.check_url("https://example.com/") is None
+
+
+VIEW_HTML = """<!doctype html><title>View fixture</title>
+<button id="count" style="position:absolute;left:100px;top:100px;width:200px;height:100px" onclick="this.textContent='Count '+(++window.n)">Count 0</button>
+<script>window.n=0</script>"""
+
+
+async def test_real_live_view_streams_frames_and_relays_a_click(tmp_path, monkeypatch, page):
+    """The screencast and the input relay against a real Chrome: a JPEG frame arrives, a relayed click reaches the
+    page, and a navigation to a loopback address through the viewer is refused."""
+    import asyncio
+    import json
+
+    import websockets
+
+    from app.computers import local_browser_viewer as live
+
+    (tmp_path / "www").mkdir(exist_ok=True)
+    (tmp_path / "www" / "view.html").write_text(VIEW_HTML)
+    monkeypatch.setattr(host_exec, "disabled", lambda: False)
+    monkeypatch.setattr(engine_processes, "records_dir", lambda: tmp_path / "records")
+    state = tmp_path / "state"
+    b = LocalBrowser(tmp_path / "profiles", "real-viewer", chrome=CHROME, idle_seconds=120, state_dir=state)
+    try:
+        result, _ = await asyncio.to_thread(call, b, "browser_open", {"url": page + "view.html"})
+        assert not result.get("isError")
+        port = live.debug_port(state)
+        assert port == b.port
+        url = await live.page_socket_url(port)
+        assert url
+
+        class Client:
+            def __init__(self):
+                self.texts, self.binaries = [], []
+
+            async def send_text(self, text):
+                self.texts.append(json.loads(text))
+
+            async def send_bytes(self, data):
+                self.binaries.append(data)
+
+        client = Client()
+        async with websockets.connect(url, max_size=8 * 1024 * 1024, proxy=None) as cdp:
+            session = live.Session(cdp, client)
+            await session.start()
+
+            async def until(condition, seconds=15):
+                deadline = time.monotonic() + seconds
+                while time.monotonic() < deadline and not condition():
+                    try:
+                        await session.on_chrome(await asyncio.wait_for(cdp.recv(), 1))
+                    except asyncio.TimeoutError:
+                        pass
+                assert condition()
+
+            await until(lambda: client.binaries)
+            assert client.binaries[0][:2] == b"\xff\xd8" and client.texts[0]["t"] == "size"
+            await session.on_client('{"t":"ack"}')  # releases Chrome to send the next frame
+            for action in ("down", "up"):
+                assert await session.on_client(json.dumps({"t": "mouse", "a": action, "x": 200, "y": 150, "b": "left"})) is None
+            for _ in range(40):
+                _, read = await asyncio.to_thread(call, b, "browser_read")
+                if "Count 1" in read:
+                    break
+                await asyncio.sleep(.25)
+            assert "Count 1" in read
+            refusal = await session.on_client(json.dumps({"t": "nav", "url": page}))
+            assert refusal and "view.html" not in refusal
+            await session.stop()
+        pgid = b.process.pid
+        b.release()
+        assert not (state / local_browser.CDP_FILE).exists()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not group_gone(pgid):
+            await asyncio.sleep(.1)
+        assert group_gone(pgid)
+    finally:
+        b.release()
