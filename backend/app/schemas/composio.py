@@ -46,5 +46,24 @@ class ComposioCatalogApp(BaseModel):
     app: str
     name: str
     description: str
-    category: str
-    tools: list[ComposioCatalogTool]
+    categories: list[str]
+    icon: str | None
+    connection: str      # managed | no_auth | custom_auth | unknown
+    agent_actions: str   # curated | generic | unavailable
+    curated_tools: list[ComposioCatalogTool]
+
+
+class ComposioCatalogCategory(BaseModel):
+    name: str
+    count: int
+
+
+class ComposioCatalogPage(BaseModel):
+    source: str          # composio | starter
+    complete: bool
+    stale: bool
+    error: str | None
+    total: int
+    next_cursor: str | None
+    categories: list[ComposioCatalogCategory]
+    apps: list[ComposioCatalogApp]

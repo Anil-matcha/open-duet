@@ -23,9 +23,9 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from app import composio_tools
+from app import composio_generic, composio_tools
 from app.core.logging import get_logger
-from app.services import composio_service
+from app.services import composio_actions, composio_service
 from app.services.composio_client import ComposioClient
 
 logger = get_logger(__name__)
@@ -36,11 +36,14 @@ MAX_REQUEST_BYTES = 16_000
 
 
 def apps_for(scopes: object) -> dict:
-    """What a stored `connector_scopes` value lets an agent do: {app: "read" | "write"},
-    for the apps that have tools. Anything else in it is ignored."""
+    """What a stored `connector_scopes` value lets an agent do: {app: "read" | "write"}, for the
+    apps with curated tools and any other app name (which the generic tools reach only while it is
+    still connected and not blocked; composio_actions checks that on every call). Anything else is ignored."""
     if not isinstance(scopes, dict):
         return {}
-    return {app: level for app, level in scopes.items() if level in composio_tools.LEVELS and app in composio_tools.apps()}
+    return {app: level for app, level in scopes.items()
+            if level in composio_tools.LEVELS and isinstance(app, str) and composio_generic.valid_app(app)
+            and (app in composio_tools.apps() or not composio_generic.blocked_app(app))}
 
 
 def make_client(key: str) -> ComposioClient:
@@ -122,6 +125,28 @@ class ComposioBridge:
         return {app: ("write" if level == "write" and self.apps.get(app) == "write" else "read")
                 for app, level in current.items() if app in self.apps}
 
+    async def execute_generic(self, name: str, args: dict, allowed: dict) -> dict:
+        """`app_search_actions` and `app_run_action` (composio_generic.py), after the approval above. What the agent may do is
+        read again here: an app taken away, or a level lowered, while the card waited stops the call."""
+        rt = self.runtime
+        try:
+            if name == composio_generic.SEARCH:
+                app, query, cursor = composio_generic.parse_search(args)
+                if app not in allowed:
+                    return {"error": "This agent is not allowed to use that app.", "code": "not_allowed"}
+                async with rt.session() as db:
+                    return await composio_actions.search(db, rt.owner_id, self.client_factory, app=app, query=query, cursor=cursor)
+            request = composio_generic.parse_run(args)
+        except composio_generic.GenericError as exc:
+            return {"error": str(exc), "code": "bad_arguments"}
+        level = allowed.get(request["app"])
+        reviewed = request["action"] in composio_generic.REVIEWED_READS
+        if level is None or (level != "write" and not reviewed) or self.apps.get(request["app"]) is None:
+            return {"error": "This agent is not allowed to do that with that app.", "code": "not_allowed"}
+        auto = composio_generic.call_key(args) in self.run.ctx.composio_auto_calls
+        async with rt.session() as db:
+            return await composio_actions.run(db, rt.owner_id, self.client_factory, agent_id=self.run.agent_id, auto_called=auto, request=request)
+
     async def execute(self, name: str, args: dict) -> dict:
         from app.team.bridge import consume_allowed_approval
 
@@ -138,6 +163,8 @@ class ComposioBridge:
                 return {"error": "This agent is no longer allowed to use connected apps.", "code": "not_allowed"}
             async with rt.session() as db:
                 return await composio_service.connected_names(db, rt.owner_id, self.client_factory, set(allowed))
+        if name in composio_generic.GENERIC_TOOLS:
+            return await self.execute_generic(name, args, allowed)
         tool = composio_tools.BY_NAME.get(name)
         if tool is None or not composio_tools.allows(allowed.get(tool.app), tool.kind):
             return {"error": "This agent is not allowed to do that with that app.", "code": "not_allowed"}

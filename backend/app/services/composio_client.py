@@ -14,6 +14,8 @@ section 9.0): session create, link, account listing. Not verified live: the
 `revoke_on_delete` parameter of account removal and the 600 second link life.
 """
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -32,6 +34,9 @@ EXECUTE_TIMEOUT_SECONDS = 60.0
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SLUG = re.compile(r"^[A-Z0-9_]{1,120}$")
+TOOLKIT_SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+CATALOG_PAGE_LIMIT = 500
+MAX_SCHEMA_BYTES = 60_000
 
 
 class ComposioError(Exception):
@@ -62,6 +67,48 @@ class Execution:
     result_type: str   # completed | failed | blocked | anything else Composio adds
     data: object
     error: str | None
+
+
+@dataclass(frozen=True)
+class Toolkit:
+    """One app of Composio's catalog, reduced to display fields."""
+    slug: str
+    name: str
+    description: str
+    logo: str | None
+    categories: tuple
+    no_auth: bool
+    managed_auth: bool        # Composio supplies the sign-in (no auth config of your own is needed)
+    tools_count: int | None
+
+
+@dataclass(frozen=True)
+class ToolkitPage:
+    items: list
+    next_cursor: str | None
+    total_items: int | None
+    current_page: int | None
+    total_pages: int | None
+
+
+@dataclass(frozen=True)
+class ToolInfo:
+    """One Composio tool as the catalog describes it. `schema` is the JSON Schema of its
+    input; None when it was missing or too large to trust."""
+    slug: str
+    name: str
+    description: str
+    toolkit: str
+    version: str | None
+    schema: dict | None
+    tags: tuple
+    deprecated: bool
+
+
+@dataclass(frozen=True)
+class ToolPage:
+    items: list
+    next_cursor: str | None
 
 
 @dataclass(frozen=True)
@@ -108,11 +155,84 @@ def _account(item: object) -> Account | None:
     )
 
 
+def _logo(raw: object) -> str | None:
+    """An image address is passed on only when it is https on a Composio host: the page
+    loads it in the owner's browser, so any other host would learn that they are here."""
+    if not isinstance(raw, str) or len(raw) > 500:
+        return None
+    try:
+        parts = urlsplit(raw)
+        host = parts.hostname or ""
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443):
+        return None
+    return raw if host == "composio.dev" or host.endswith(".composio.dev") else None
+
+
+def _count(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 10_000_000 else None
+
+
+def _toolkit(item: object) -> Toolkit | None:
+    if not isinstance(item, dict):
+        return None
+    slug = item.get("slug")
+    if not isinstance(slug, str) or not TOOLKIT_SLUG.match(slug.lower()):
+        return None
+    meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+    names = []
+    for entry in meta.get("categories") or []:
+        name = entry.get("name") if isinstance(entry, dict) else entry
+        if isinstance(name, str) and name.strip():
+            names.append(name.strip()[:40])
+    managed = item.get("composio_managed_auth_schemes")
+    return Toolkit(
+        slug=slug.lower(),
+        name=_text(item.get("name"), 80) or slug,
+        description=_text(meta.get("description"), 300) or "",
+        logo=_logo(meta.get("logo")),
+        categories=tuple(dict.fromkeys(names))[:4],
+        no_auth=item.get("no_auth") is True,
+        managed_auth=isinstance(managed, list) and any(isinstance(x, str) for x in managed),
+        tools_count=_count(meta.get("tools_count")),
+    )
+
+
+def _tool(item: object) -> ToolInfo | None:
+    if not isinstance(item, dict):
+        return None
+    slug = item.get("slug")
+    toolkit = (item.get("toolkit") or {}).get("slug") if isinstance(item.get("toolkit"), dict) else None
+    if not isinstance(slug, str) or not _SLUG.match(slug) or not isinstance(toolkit, str) or not TOOLKIT_SLUG.match(toolkit.lower()):
+        return None
+    schema = item.get("input_parameters")
+    if not isinstance(schema, dict) or len(json.dumps(schema, default=str)) > MAX_SCHEMA_BYTES:
+        schema = None
+    tags = item.get("tags")
+    return ToolInfo(
+        slug=slug,
+        name=_text(item.get("name"), 120) or slug,
+        description=_text(item.get("description"), 600) or "",
+        toolkit=toolkit.lower(),
+        version=_text(item.get("version"), 40),
+        schema=schema,
+        tags=tuple(t[:40] for t in tags if isinstance(t, str))[:12] if isinstance(tags, list) else (),
+        deprecated=item.get("is_deprecated") is True,
+    )
+
+
 class ComposioClient:
     def __init__(self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None, base_url: str = BASE_URL) -> None:
         self._key = api_key
         self._transport = transport
         self._base = base_url
+
+    def identity(self) -> str:
+        """A short fingerprint of this client's project (key and address), for keeping one project's cached data apart from
+        another's. It cannot be turned back into the key."""
+        return hashlib.sha256(f"{self._base}|{self._key}".encode("utf-8")).hexdigest()[:24]
 
     async def _request(self, method: str, path: str, *, body: dict | None = None, params: dict | None = None,
                        timeout: float = TIMEOUT_SECONDS):
@@ -224,6 +344,56 @@ class ComposioClient:
             data=result.get("data"),
             error=_text(error.replace(self._key, "[key]") if isinstance(error, str) else None),
         )
+
+    async def toolkits(self, cursor: str | None = None, limit: int = CATALOG_PAGE_LIMIT) -> ToolkitPage:
+        """One page of Composio's app catalog, most used first (GET /toolkits)."""
+        params: dict = {"limit": limit, "sort_by": "usage"}
+        if cursor:
+            params["cursor"] = cursor
+        result = await self._request("GET", "/toolkits", params=params)
+        result = result if isinstance(result, dict) else {}
+        items = [found for found in (_toolkit(item) for item in result.get("items") or []) if found is not None]
+        cursor_next = result.get("next_cursor")
+        return ToolkitPage(
+            items=items,
+            next_cursor=cursor_next if isinstance(cursor_next, str) and cursor_next else None,
+            total_items=_count(result.get("total_items")),
+            current_page=_count(result.get("current_page")),
+            total_pages=_count(result.get("total_pages")),
+        )
+
+    async def toolkit(self, slug: str) -> Toolkit:
+        """One app of the catalog (GET /toolkits/{slug}); not_found when Composio has no such app."""
+        if not TOOLKIT_SLUG.match(slug):
+            raise ComposioError("not_found", "Composio could not find that app.")
+        found = _toolkit(await self._request("GET", f"/toolkits/{slug}"))
+        if found is None or found.slug != slug:
+            raise ComposioError("not_found", "Composio could not find that app.")
+        return found
+
+    async def tools(self, toolkit: str, query: str | None = None, cursor: str | None = None, limit: int = 10) -> ToolPage:
+        """Tools of one app, optionally matching words (GET /tools). Only tools that belong to that app are kept."""
+        if not TOOLKIT_SLUG.match(toolkit):
+            raise ComposioError("not_found", "Composio could not find that app.")
+        params: dict = {"toolkit_slug": toolkit, "limit": limit}
+        if query:
+            params["query"] = query
+        if cursor:
+            params["cursor"] = cursor
+        result = await self._request("GET", "/tools", params=params)
+        result = result if isinstance(result, dict) else {}
+        items = [found for found in (_tool(item) for item in result.get("items") or []) if found is not None and found.toolkit == toolkit]
+        cursor_next = result.get("next_cursor")
+        return ToolPage(items=items, next_cursor=cursor_next if isinstance(cursor_next, str) and cursor_next else None)
+
+    async def tool(self, slug: str) -> ToolInfo:
+        """One tool with its input schema (GET /tools/{slug}), as Composio now describes it."""
+        if not _SLUG.match(slug):
+            raise ComposioError("not_found", "Composio could not find that action.")
+        found = _tool(await self._request("GET", f"/tools/{slug}"))
+        if found is None or found.slug != slug:
+            raise ComposioError("not_found", "Composio could not find that action.")
+        return found
 
     async def delete_account(self, account_id: str) -> None:
         if not _ID.match(account_id):

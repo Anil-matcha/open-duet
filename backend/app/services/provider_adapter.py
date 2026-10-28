@@ -186,6 +186,10 @@ class TurnContext:
     # and the apps it was started for. Both None unless the agent was allowed some.
     composio_launch: object | None = None
     composio_apps: dict | None = None  # {app: "read" | "write"}
+    # Generic connected-app actions (composio_generic.py): whether the call being decided has a first use on
+    # record, and the calls decided without a card (the bridge checks those again before it runs them).
+    composio_first_use_hit: bool = False
+    composio_auto_calls: set = field(default_factory=set)
     hold_clock: Callable[[], Callable[[], None]] | None = None
     # Images attached to this message, as {"path", "mime", "name"}. Only ever
     # set for an engine whose capabilities include `images`; attached text

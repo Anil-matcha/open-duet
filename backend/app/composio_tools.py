@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from app import composio_generic
+
 LIST_ACCOUNTS = "list_accounts"
 LEVELS = ("read", "write")  # in order: write includes read
 MAX_RESULT_CHARS = 20_000
@@ -275,6 +277,16 @@ def allows(level: str | None, kind: str) -> bool:
     return level in LEVELS and LEVELS.index(level) >= LEVELS.index(kind)
 
 
+def generic_apps(levels: dict) -> tuple[list[str], list[str]]:
+    """(apps the agent may search, apps it may run actions of) among its apps that have no curated tools.
+    An app with curated tools has only those, and a blocked one has nothing."""
+    other = [app for app, level in levels.items()
+             if level in LEVELS and app not in apps() and not composio_generic.blocked_app(app)]
+    # Every generic action is a change, so only a Read-and-change app can run one; the exception is a reviewed read
+    # (composio_generic.REVIEWED_READS, empty until someone reviews one), which the Read level may run too.
+    return sorted(other), sorted(app for app in other if levels[app] == "write" or composio_generic.REVIEWED_READS)
+
+
 def mcp_tools(levels: dict) -> list[dict]:
     """The tool list the shim shows: only what this agent may use, by app and level."""
     shown = [ACCOUNTS_TOOL]
@@ -287,7 +299,8 @@ def mcp_tools(levels: dict) -> list[dict]:
                 "inputSchema": {"type": "object", "properties": {**tool.properties, "account": ACCOUNT},
                                 "required": list(tool.required), "additionalProperties": False},
             })
-    return shown
+    searchable, runnable = generic_apps(levels)
+    return shown + composio_generic.mcp_tools(searchable, runnable)
 
 
 def tool_note(levels: dict) -> str:
@@ -309,6 +322,14 @@ def tool_note(levels: dict) -> str:
         if app == "googlecalendar" and levels[app] == "write":
             detail += "; adding an event to a calendar (no guests are invited), with approval"
         capabilities.append(detail)
+    searchable, runnable = generic_apps(levels)
+    if searchable:
+        text = f"{', '.join(searchable)} (no tools of their own): find actions with {composio_generic.SEARCH}"
+        if runnable:
+            text += f"; for {', '.join(runnable)} run one with {composio_generic.RUN}, and the person approves every call"
+        if len(runnable) < len(searchable):
+            text += "; the others may only be looked at"
+        capabilities.append(text)
     capabilities = "; ".join(capabilities)
     note = (f"The person has connected apps ({names}). Available capabilities: {capabilities}. "
             "For requests about those apps, use the connected-app tools, not local files or the shell. "

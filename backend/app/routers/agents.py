@@ -157,19 +157,32 @@ def _check_fallback(rt: ThreadRuntime, provider: str, fallback: str | None, mode
     _check_engine(rt, fallback, model)
 
 
-def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provider: str) -> dict | None:
+async def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provider: str, existing: dict | None = None) -> dict | None:
     """The connected apps an agent may use, checked and put in order; None when
-    there are none. Only apps with tools exist, the levels are read and write, and the
-    agent's engine must be able to mount them (409 `engine_without_connected_apps`)."""
-    from app import composio_tools
+    there are none. The levels are read and write; an app is one with curated tools or one
+    Composio lists (asked with the owner's key, for apps not already allowed, so a made-up
+    name fails closed), and never a shell, code or Composio itself. The agent's engine must be
+    able to mount them (409 `engine_without_connected_apps`)."""
+    from app import composio_generic, composio_tools
+    from app.services import composio_bridge, composio_service
 
     if not scopes:
         return None
-    if set(scopes) - set(composio_tools.apps()) or any(
-        level not in composio_tools.LEVELS or (level == "write" and not composio_tools.has_write_tools(app))
-        for app, level in scopes.items()
-    ):
-        raise _error(422, "invalid_connector_scopes", "Connected apps can be allowed for reading, or for reading and changing, and only for apps this version supports.")
+    bad = _error(422, "invalid_connector_scopes", "Connected apps can be allowed for reading, or for reading and changing, and only for apps Composio lists.")
+    for app, level in scopes.items():
+        if level not in composio_tools.LEVELS or not composio_generic.valid_app(app) or composio_generic.blocked_app(app):
+            raise bad
+        if app in composio_tools.apps():
+            if level == "write" and not composio_tools.has_write_tools(app):
+                raise bad
+        elif app not in (existing or {}):
+            try:
+                async with rt.session() as db:
+                    known = await composio_service.known_app(db, rt.owner_id, composio_bridge.make_client, app)
+            except composio_service.UserError as exc:
+                raise _error(502, exc.code, exc.message) from None
+            if not known:
+                raise bad
     try:
         mounts = rt.engines.capabilities(provider).connected_apps
     except Exception:  # noqa: BLE001  (an unknown engine is reported by its own check)
@@ -269,9 +282,10 @@ async def update_agent(
         if field in payload.model_fields_set
     }
     if "connector_scopes" in changes:
-        changes["connector_scopes"] = _check_connector_scopes(rt, changes["connector_scopes"], changes.get("provider", agent.provider))
+        changes["connector_scopes"] = await _check_connector_scopes(
+            rt, changes["connector_scopes"], changes.get("provider", agent.provider), agent.connector_scopes)
     elif agent.connector_scopes and changes.get("provider", agent.provider) != agent.provider:
-        _check_connector_scopes(rt, agent.connector_scopes, changes["provider"])
+        await _check_connector_scopes(rt, agent.connector_scopes, changes["provider"], agent.connector_scopes)
     if "fallback_provider" in changes and changes["fallback_provider"] != agent.fallback_provider:
         changes.setdefault("fallback_model", None)  # the old fallback's model means nothing to the new one
     provider = changes.get("provider", agent.provider)
@@ -311,6 +325,11 @@ async def update_agent(
             agent = await store.update_agent(
                 db, agent_id, archived=payload.archived, make_lead=payload.make_lead, **changes
             )
+        if "connector_scopes" in changes or payload.archived:
+            # What an agent has already run once (generic connected-app actions) is not carried over to new access.
+            from app.services import composio_actions
+            async with rt.session() as db:
+                await composio_actions.forget(db, rt.owner_id, agent_id=agent_id)
         return (await _with_computers(rt, [agent]))[0]
     except store.AgentNotFound:
         raise HTTPException(status_code=404, detail="Agent not found") from None
