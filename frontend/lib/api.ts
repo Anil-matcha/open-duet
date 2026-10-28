@@ -408,6 +408,7 @@ export type ComputerHealth = {
   version: string | null;
   error: string | null;
   hosted?: boolean;
+  browser_local?: boolean;
 };
 
 export type ComputerLastCommand = {

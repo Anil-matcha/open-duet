@@ -12,6 +12,7 @@ import {
   computerCreationGate,
   computersUnsupported,
   effectiveState,
+  hostedBrowserLine,
   imageLabel,
   lastCommandText,
   limitsText,
@@ -140,7 +141,14 @@ function DockerComputerView({
 
   if (phase.kind === "none") {
     const docker = phase.health;
-    if (docker?.hosted) return <p className="text-sm text-muted">{docker.error}</p>;
+    if (docker?.hosted) {
+      return (
+        <div className="space-y-2 text-sm text-muted">
+          <p>{docker.error}</p>
+          <p data-testid="hosted-browser-state">{hostedBrowserLine(docker)}</p>
+        </div>
+      );
+    }
     return (
       <div className="space-y-3 text-sm">
         {alert}

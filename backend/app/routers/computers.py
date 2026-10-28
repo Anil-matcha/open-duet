@@ -77,7 +77,7 @@ def _health(health: Health | None) -> ComputerHealthResponse | None:
         return None
     return ComputerHealthResponse(
         provider=health.provider, available=health.available, version=health.version, error=health.error,
-        hosted=health.hosted,
+        hosted=health.hosted, browser_local=health.browser_local,
     )
 
 

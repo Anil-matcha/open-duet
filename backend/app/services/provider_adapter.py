@@ -170,6 +170,9 @@ class TurnContext:
     # The agent's computer (app/computers/service.TurnComputer) when it has
     # one: the turn's tools then run there, never on the host.
     computer: object | None = None
+    # The browser on this machine (TurnComputer, provider "local-browser") for an agent with no computer. Unlike
+    # `computer` it adds one MCP server and leaves the host tools as they are.
+    browser: object | None = None
     # The engine's saved configuration (app/services/engine_config.py), for an
     # engine that has one: an ACP command, an endpoint and its key. Never
     # logged, stored in events or returned by the API.

@@ -47,6 +47,7 @@ class ComputerHealthResponse(BaseModel):
     version: str | None = None
     error: str | None = None
     hosted: bool = False
+    browser_local: bool = False
 
 
 class LastCommandResponse(BaseModel):

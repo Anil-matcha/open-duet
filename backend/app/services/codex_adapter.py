@@ -47,7 +47,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app import composio_tools
-from app.computers import grants
+from app.computers import browser as browser_tools, grants
 from app.computers.policy import COMPUTER_TOOL_PREFIX
 from app.core import app_settings
 from app.core.config import settings
@@ -139,6 +139,9 @@ def _mcp_text(result) -> str | None:
         return None
     texts = [block["text"] for block in content if isinstance(block, dict) and isinstance(block.get("text"), str)]
     return "\n".join(texts) if texts else None
+
+
+_BROWSER_TOOLS = frozenset(name for name in browser_tools.DEFINITIONS)
 
 
 def _computer_kind(tool: str) -> str:
@@ -368,7 +371,7 @@ class _CodexTurn:
         self.tools = bool(app_settings.get("LOCAL_TOOLS_ENABLED")) or self.computer is not None
         self.mode = self.ctx.approval_mode or "ask"
         self.policy = codex_policy(self.mode, self.tools, self.computer is not None)
-        has_gated_mcp = self.ctx.team_launch is not None or self.ctx.composio_launch is not None
+        has_gated_mcp = self.ctx.team_launch is not None or self.ctx.composio_launch is not None or self.ctx.browser is not None
         if has_gated_mcp and (not self.tools or self.mode == 'plan'):
             # Codex 0.164 refuses MCP elicitation with approvalPolicy=never. The
             # app still gates every attached MCP call; native tools stay read-only/denied.
@@ -487,6 +490,15 @@ class _CodexTurn:
                 "enabled_tools": list(memory_bridge.TOOLS), "default_tools_approval_mode": "approve",
             }})
             instructions = f"{instructions}\n\n{memory_bridge.TOOL_NOTE}" if instructions else memory_bridge.TOOL_NOTE
+        if self.ctx.browser is not None:
+            # The browser tools only, beside Codex's own tools; every call is asked about.
+            browser_launch = self.ctx.browser.launch
+            common.setdefault("config", {}).setdefault("mcp_servers", {})[COMPUTER_SERVER] = {
+                "command": browser_launch.command, "args": list(browser_launch.args), "env": dict(browser_launch.env),
+                "enabled": True, "default_tools_approval_mode": "prompt",
+            }
+            note = self.ctx.browser.prompt_note()
+            instructions = f"{instructions}\n\n{note}" if instructions else note
         if self.ctx.team_launch is not None:
             team_launch = self.ctx.team_launch
             common.setdefault("config", {}).setdefault("mcp_servers", {})["team"] = {
@@ -832,8 +844,9 @@ class _CodexTurn:
             and params.get("serverName") == CODEX_COMPOSIO_SERVER
             and self.ctx.composio_launch is not None
         )
+        browser_call = kind == "mcp" and params.get("serverName") == COMPUTER_SERVER and self.ctx.browser is not None
         # Attached MCP policy decides reads versus mutations with local tools off.
-        if not (team_call or composio_call) and (not self.tools or self.mode == "plan"):
+        if not (team_call or composio_call or browser_call) and (not self.tools or self.mode == "plan"):
             self.rpc.respond(rid, payload(False))
             return
 
@@ -876,6 +889,17 @@ class _CodexTurn:
                     self.rpc.respond(rid, payload(False))
                     return
                 tool, approval_kind = "mcp__team__" + name, "other"
+                summary = summarize_tool(tool, tool_input)
+            elif browser_call:
+                found = self._computer_call(server, text, meta)
+                if found is None:
+                    self.rpc.respond(rid, payload(False))
+                    return
+                name, tool_input = found
+                if name not in _BROWSER_TOOLS:
+                    self.rpc.respond(rid, payload(False))
+                    return
+                tool, approval_kind = COMPUTER_TOOL_PREFIX + name, _computer_kind(name)
                 summary = summarize_tool(tool, tool_input)
             elif composio_call:
                 found = self._computer_call(server, text, meta)
@@ -927,10 +951,11 @@ class _CodexTurn:
             return
         allow = decision.kind == ALLOW
         permit_input = self.permit_inputs.pop(rid, {})
-        if allow and self.computer is not None and handle.tool.startswith(COMPUTER_TOOL_PREFIX):
+        permit_target = self.computer if self.computer is not None else self.ctx.browser
+        if allow and permit_target is not None and handle.tool.startswith(COMPUTER_TOOL_PREFIX):
             # The computer's MCP server runs a call only after it removes this one-use permit.
             try:
-                grants.issue(self.computer.grants_dir, handle.tool[len(COMPUTER_TOOL_PREFIX):], permit_input)
+                grants.issue(permit_target.grants_dir, handle.tool[len(COMPUTER_TOOL_PREFIX):], permit_input)
             except OSError:
                 logger.exception("could not write a computer permit", thread_id=self.ctx.thread_id)
                 allow = False

@@ -84,7 +84,7 @@ async def test_browser_opt_in_is_desktop_only_and_active_turns_refuse_changes(ap
 
 async def test_health_reports_docker_and_degrades_when_it_is_down(api, docker):  # noqa: F811
     body = (await api.get("/api/v1/computers/health")).json()
-    assert body == {"provider": "docker", "available": True, "version": "27.0.0-fake", "error": None, "hosted": False}
+    assert body == {"provider": "docker", "available": True, "version": "27.0.0-fake", "error": None, "hosted": False, "browser_local": False}
     docker.mode("down")
     body = (await api.get("/api/v1/computers/health")).json()
     assert body["available"] is False and "not running" in body["error"]

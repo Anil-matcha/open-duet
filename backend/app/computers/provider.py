@@ -37,6 +37,8 @@ class Health:
     error: str | None = None
     # True on a hosted server, which never runs a computer on its own machine.
     hosted: bool = False
+    # True when agents here can use a browser on this machine (settings.LOCAL_BROWSER_ENABLED).
+    browser_local: bool = False
 
 
 @dataclass

@@ -22,6 +22,14 @@ export function computerCreationGate(supported: boolean | undefined, engineLabel
   };
 }
 
+// The hosted branch of the Computer panel: the server's own words, then whether agents here can browse.
+export function hostedBrowserLine(health: { hosted?: boolean; browser_local?: boolean } | null | undefined): string | null {
+  if (!health?.hosted) return null;
+  return health.browser_local
+    ? "Browser: on. Agents browse with a headless browser inside this server; pages on the server's own network are refused."
+    : "Browser: off. Agents here cannot browse until the server turns it on.";
+}
+
 const STATE_LABEL: Record<string, string> = {
   missing: "Not made yet",
   creating: "Starting…",

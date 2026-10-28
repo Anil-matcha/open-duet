@@ -143,6 +143,10 @@ class Settings(BaseSettings):
     # A hosted account's own sandbox: the app runs engines here, but the sandbox is small, so agents
     # get no Docker computer inside it (the Computer panel says so).
     HOSTED_SANDBOX: bool = False
+    # A headless Chromium on this machine for agents with no Docker computer (computers/local_browser.py):
+    # its tools reach the engine as one extra MCP server, and every page goes through a local egress gate.
+    # Off until the resource guard exists; never on where HOST_EXECUTION_DISABLED is set.
+    LOCAL_BROWSER_ENABLED: bool = False
     # Hosted deployments: the folder holding one subfolder per account for its files (workspace,
     # memory, attachments, decision log). Empty means ~/.open-dots/tenants.
     TENANT_DATA_DIR: str = ""

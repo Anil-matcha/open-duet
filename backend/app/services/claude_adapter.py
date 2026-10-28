@@ -125,10 +125,11 @@ def _issue_permit(ctx: TurnContext, handle: ApprovalHandle, tool_input: dict, na
     """For an allowed computer call, the one-use permit the computer's MCP
     server must find before it runs the call. Other calls need none."""
     tool = getattr(handle, "tool", None) or ""
-    if ctx.computer is None or not tool.startswith(COMPUTER_TOOL_PREFIX):
+    target = ctx.computer if ctx.computer is not None else ctx.browser
+    if target is None or not tool.startswith(COMPUTER_TOOL_PREFIX):
         return True
     try:
-        file = grants.issue(ctx.computer.grants_dir, tool[len(COMPUTER_TOOL_PREFIX):], tool_input)
+        file = grants.issue(target.grants_dir, tool[len(COMPUTER_TOOL_PREFIX):], tool_input)
         if getattr(ctx.computer, "provider", None) == "native":
             if native_epoch is None:
                 file.unlink(missing_ok=True)
@@ -233,7 +234,7 @@ class ClaudeAdapter:
         # The memory search is an MCP tool asked about like any other: the turn
         # then runs with approvals, but with the host's own tools off unless
         # they were on already.
-        tools = host_tools or ctx.memory_launch is not None or ctx.composio_launch is not None
+        tools = host_tools or ctx.memory_launch is not None or ctx.composio_launch is not None or ctx.browser is not None
         attempt = await self._attempt(ctx, sink, gate, resume=ctx.resume, tools=tools, host_tools=host_tools)
         if attempt.already_in_use and not attempt.resume and not ctx.aborted:
             attempt = await self._attempt(ctx, sink, gate, resume=True, tools=tools, host_tools=host_tools)
@@ -407,6 +408,10 @@ class ClaudeAdapter:
             notes.append(ctx.computer.prompt_note())
             extra["computer"] = ctx.computer.launch
         servers = {}
+        if ctx.browser is not None:
+            # Beside the host tools, not in place of them; --strict-mcp-config keeps every other server out.
+            servers[local_claude_runner.COMPUTER_SERVER] = ctx.browser.launch
+            notes.append(ctx.browser.prompt_note())
         if ctx.team_launch is not None:
             servers["team"] = ctx.team_launch
         if ctx.memory_launch is not None:

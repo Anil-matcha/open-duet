@@ -8,6 +8,7 @@ import {
   computerStateLabel,
   computersUnsupported,
   effectiveState,
+  hostedBrowserLine,
   imageLabel,
   isComputerTool,
   lastCommandText,
@@ -121,4 +122,11 @@ test('a computer command can be always allowed, and automatic answers say why', 
   assert.match(decisionText({ ...base, event: 'auto_allowed', source: 'saved_rule' }), /a saved rule allowed it/);
   assert.match(decisionText({ ...base, event: 'denied', source: 'plan_mode' }), /plan only changes nothing/);
   assert.match(decisionText({ ...base, event: 'denied', source: 'user' }), /^You denied/);
+});
+
+test('hostedBrowserLine says whether a hosted server lets agents browse', () => {
+  assert.equal(hostedBrowserLine(null), null);
+  assert.equal(hostedBrowserLine({ hosted: false, browser_local: true }), null);
+  assert.match(hostedBrowserLine({ hosted: true, browser_local: true }), /Browser: on/);
+  assert.match(hostedBrowserLine({ hosted: true, browser_local: false }), /Browser: off/);
 });

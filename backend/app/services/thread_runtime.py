@@ -1062,6 +1062,8 @@ class ThreadRuntime:
                     run.agent_id, run.turn_id, str(run.ctx.workspace) if run.ctx.workspace else None
                 )
                 run.ctx.computer = binding
+                if binding is None and run.agent_id is not None and capabilities_of(adapter).computers:
+                    binding = run.ctx.browser = await self.computers.attach_browser(run.agent_id, run.turn_id)
                 if run.ctx.team is not None:
                     team_bridge = TeamBridge(self, run)
                     run.ctx.team_launch = team_bridge.launch
@@ -1255,6 +1257,7 @@ class ThreadRuntime:
             approval_mode=old.approval_mode,
             instructions=old.instructions,
             computer=old.computer,
+            browser=old.browser,
             team=old.team, team_launch=old.team_launch, memory_launch=old.memory_launch,
             engine_config=config,
             images=list(old.images),
