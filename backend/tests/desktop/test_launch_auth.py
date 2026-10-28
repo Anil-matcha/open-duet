@@ -69,20 +69,26 @@ def test_the_route_walk_sees_the_whole_application():
 
 
 def test_no_route_hides_from_the_walk():
-    """The walk reads the OpenAPI schema, which leaves out a route declared with
-    include_in_schema=False and every WebSocket route. The one WebSocket route
-    (the desktop viewer) is checked on its own below; a second one fails this
-    test, so the check is extended before it can be missed."""
+    """The OpenAPI walk leaves out schema-hidden HTTP routes and WebSockets.
+    Keep the expected viewer sockets explicit, and test below that each rejects
+    a connection without the desktop launch token."""
     sources = "\n".join(path.read_text(encoding="utf-8") for path in (BACKEND_DIR / "app").rglob("*.py"))
     assert "include_in_schema" not in sources
-    assert sources.count("@router.websocket(") == 1
+    websocket_paths = re.findall(r"""@router\.websocket\(\s*["']([^"']+)["']""", sources)
+    assert len(websocket_paths) == sources.count("@router.websocket(")
+    assert set(websocket_paths) == {
+        "/agents/{agent_id}/browser/viewer",
+        "/computers/{computer_id}/viewer",
+    }
 
 
-def test_the_desktop_viewer_socket_is_closed_without_the_token(desktop, client):
-    from starlette.websockets import WebSocketDisconnect
-
+@pytest.mark.parametrize(
+    "path",
+    ["/api/v1/agents/1/browser/viewer", "/api/v1/computers/1/viewer"],
+)
+def test_a_viewer_socket_is_closed_without_the_token(desktop, client, path):
     with pytest.raises(WebSocketDisconnect) as refused:
-        with client.websocket_connect("/api/v1/computers/1/viewer"):
+        with client.websocket_connect(path):
             pass
     assert refused.value.code == 1008
 
