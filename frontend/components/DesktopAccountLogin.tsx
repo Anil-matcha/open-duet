@@ -41,6 +41,7 @@ export function DesktopAccountLogin({ status, onSignedIn }: { status: DesktopAcc
   return <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center space-y-5 px-5 py-8">
     <ThemeToggle />
     <div><h1 className="text-2xl font-semibold">Sign in to Open Duet</h1><p className="mt-2 text-sm text-muted">Use your email to sign in or create an account. Connecting Claude or Codex comes next.</p></div>
+    {status.profile_bound && <p role="status" className="text-sm">Your agents and conversations on this computer are locked until you sign in with the account linked to it.</p>}
     <p className="text-sm text-muted">Your agents and files stay on this computer. Account sign-in does not upload them or connect your email inbox.</p>
     <form className="space-y-4" onSubmit={submit}>
       <label className="block text-sm">Email<input className={field} type="email" autoComplete="email" required maxLength={254} disabled={busy || sent} value={email} onChange={event => setEmail(event.target.value)} /></label>
