@@ -14,7 +14,7 @@ from app.services import agent_store, composio_actions, composio_bridge, composi
 from app.services.composio_client import ComposioClient
 from tests.services.test_composio_bridge import KEY, FakeComposio
 from tests.services.test_composio_chat import agent_with, cli, rt, tool_step  # noqa: F401
-from tests.services.thread_harness import TERMINAL, events_of, finished, owner, pending_approval, sessions, types_of  # noqa: F401
+from tests.services.thread_harness import TERMINAL, events_of, finished, owner, pending_approval, sessions, types_of, wait_until  # noqa: F401
 
 SCHEMA = {"type": "object", "required": ["title"], "properties": {"title": {"type": "string", "maxLength": 100}, "body": {"type": "string"}}}
 VERSION = "20261001_00"
@@ -200,6 +200,7 @@ async def run_and_allow(rt, sessions, cli, composio, args, *, before_allow=None,
             await before_allow(agent)
 
     await turn(rt, sessions, thread, "allow", before=before)
+    await wait_until(lambda: cli.log("mcp_result"))      # the CLI writes its result just before it exits
     return results(cli)
 
 
