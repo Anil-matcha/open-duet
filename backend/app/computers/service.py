@@ -46,7 +46,7 @@ from app.desktop import profile
 from app.core import tenant_paths
 from app.core.config import settings
 
-HOSTED_REASON = "This hosted server does not make a computer inside itself. Agents here work in the server and the built-in browser."
+HOSTED_REASON = "This hosted server does not make a computer inside itself, and agents here have no browser yet. They can read and edit files and run commands in the server."
 
 logger = get_logger(__name__)
 
