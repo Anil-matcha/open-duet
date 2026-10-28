@@ -150,6 +150,14 @@ TOOLS: tuple[Tool, ...] = (
            ("owner", "repo", "issue_number"), fields=CHANGED),
     _write("github_reopen_issue", "GITHUB_REOPEN_ISSUE", "Reopen a closed issue. A person is asked to approve it first.",
            {"owner": OWNER, "repo": REPO, "issue_number": ISSUE}, ("owner", "repo", "issue_number"), fields=CHANGED),
+    _write("github_dispatch_workflow", "GITHUB_CREATE_A_WORKFLOW_DISPATCH_EVENT",
+           "Start a GitHub Actions workflow run on a branch or tag. The workflow must allow manual runs. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO,
+            "workflow_id": _text(200, "The workflow file name, for example \"campaign.yml\", or its numeric ID.", "name"),
+            "ref": _text(200, "The branch or tag to run on, for example \"main\".", "ref"),
+            "inputs": {"type": "object", "maxProperties": 10,
+                       "description": "The workflow's input names and text values, if it takes any."}},
+           ("owner", "repo", "workflow_id", "ref"), special="dispatched"),
     _app_read("gmail_fetch_emails", "gmail", "GMAIL_FETCH_EMAILS",
               "Search Gmail messages. By default this searches the inbox and returns a bounded list of message summaries and previews; use the thread tool for more context.",
               {"query": _text(256, "A Gmail search query. Omit to search the inbox.", "line"),
@@ -247,7 +255,7 @@ def tool_note(levels: dict) -> str:
             continue
         detail = hints[app]
         if app == "github" and levels[app] == "write":
-            detail += "; creating or changing issues and comments with approval"
+            detail += "; creating or changing issues and comments, and starting workflow runs, with approval"
         if app == "gmail" and levels[app] == "write":
             detail += "; saving a draft reply with approval"
         capabilities.append(detail)
@@ -280,6 +288,11 @@ def _check(name: str, spec: dict, value: object):
         if isinstance(value, bool) or not isinstance(value, int) or not spec["minimum"] <= value <= spec["maximum"]:
             raise BadArguments(f"{name} must be a whole number from {spec['minimum']} to {spec['maximum']}.")
         return value
+    if kind == "object":
+        if not isinstance(value, dict) or len(value) > spec["maxProperties"]:
+            raise BadArguments(f"{name} must be an object of at most {spec['maxProperties']} text values.")
+        return {_check(name, {"type": "string", "minLength": 1, "maxLength": 100, "format": "name"}, key):
+                _check(name, {"type": "string", "minLength": 0, "maxLength": 500, "format": "line"}, item) for key, item in value.items()}
     if kind == "array":
         if not isinstance(value, list) or len(value) > spec["maxItems"]:
             raise BadArguments(f"{name} must be a list of at most {spec['maxItems']} texts.")
@@ -439,6 +452,8 @@ def _file(data) -> tuple[object, int]:
 def project(tool: Tool, data: object) -> dict:
     """Composio's `data` reduced to the whitelisted fields, capped in size.
     An answer of an unexpected shape is an error, never passed through."""
+    if tool.special == "dispatched":  # GitHub answers 204 with no body; success is all there is to say
+        return {"result": "done", "app": tool.app, "note": "The workflow run was requested. It starts shortly; this does not report its outcome."}
     if tool.special == "file":
         shown, count = _file(data)
         return {"notice": NOTICE.format(app=tool.app), "app": tool.app, "count": count, "truncated": bool(shown.get("cut")), "result": shown}
