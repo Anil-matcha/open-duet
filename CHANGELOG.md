@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Added
+
+- Add a phone app (`mobile/`, Expo and React Native) that pairs with your own
+  server by QR code or code as a chat-only device. It lists and starts
+  conversations, shows answers as they are written (as Markdown), attaches photos and text files, follows the phone's dark or light setting, starts a conversation from one of your agents, reads and posts to your rooms (tagging agents, stopping them and answering their approvals), stops a running answer, and
+  asks you to allow or deny tool calls, showing every input of the call. The
+  Devices screen now shows a second QR code for the app when a chat-only code is
+  created. Release builds connect over HTTPS only; there are no push
+  notifications and no store release. Checked: 216 Jest tests, lint, typecheck,
+  a bundle export for both platforms, the `mobile` CI job on GitHub Actions, the
+  app's networking code against a local backend, and an Android emulator run in
+  Expo Go (pairing by code and by QR, HTTPS with a valid certificate and refusal
+  of an untrusted one, chat, an approval from a real Claude turn, and Stop).
+  The newest features (Markdown, attachments, dark theme, agent picker, rooms)
+  were checked by tests and against a local backend. A release APK was then
+  installed on a Galaxy S23 Ultra: pairing over HTTPS and chat worked, and after
+  fixes for the system bar and the keyboard the message box and approval
+  buttons stay on screen. Scanning the QR code with that phone did not work yet;
+  typing the server and code does. Not run: iOS, a custom link opening the app,
+  and the newest features beyond chat on a screen. See
+  [the phone app guide](docs/MOBILE.md).
+
 ## 0.5.1 - 2026-10-28
 
 ### Changed

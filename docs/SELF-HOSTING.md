@@ -240,6 +240,11 @@ cd /opt/open-dots/backend && set -a; . /etc/open-dots/open-dots.env; set +a
 
 It prints a full link when `OPEN_DOTS_PUBLIC_URL` is set. A code works once and expires.
 
+The [phone app](MOBILE.md) pairs the same way, with a *Chat only* code. It needs
+the server's HTTPS address (a release build refuses plain HTTP), your name in
+`TRUSTED_HOSTS`, and `LOCAL_EXECUTION_ENABLED=true` for conversations. The app is
+early and source-only; the guide says what has and has not been checked.
+
 ## Engines
 
 Connect engines in **Settings → Engines**. Saved keys are encrypted. With Codex

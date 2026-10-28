@@ -122,6 +122,14 @@ SSH trust, viewer transport, lifecycle, egress and cost before building them.
 For local Docker computers, evaluate a real egress policy and clearer handling
 when another conversation owns the screen. Keep isolated Docker as the default.
 
+### P2 — Finish the phone app
+
+The [phone app](MOBILE.md) covers pairing, conversations, chat with Stop, and
+approvals. Still open: trying it on iOS and a physical phone, a store release
+(signing, a privacy policy, and a way for store reviewers to try it without
+your server), push notifications so approvals reach a closed app, a decision on
+plain-HTTP access for a home network, Markdown answers and a dark theme.
+
 ### P2 — Add voice and richer media
 
 Stage spoken replies before live calls. Add optional text-to-speech settings,

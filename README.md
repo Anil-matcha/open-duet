@@ -37,6 +37,9 @@ does not include a model or a model subscription.
   tool activity and approval decisions in the app. Agents can also be given
   an isolated Docker computer; computer and browser access are experimental
   and off until you enable them.
+- **Use it from your phone.** Pair the phone app with your own server to chat,
+  stop an answer and allow or deny a tool call. It is early and source-only; see
+  the [phone app guide](docs/MOBILE.md).
 - **Keep track of work.** Search conversations, attach text files and images,
   browse or download workspace files, and review reported token use and cost.
 - **Plan tasks and deadlines.** Keep work on a board, assign an agent or team,
@@ -135,6 +138,8 @@ is needed for the agent workspace.
   intended for one owner with paired devices; it is not a multi-user
   organization workspace.
 - Team delegation is new; lead agents need to use Claude or Codex.
+- The phone app is early: source only, tried on an Android emulator but not on
+  iOS or a physical phone, with no push notifications and no store release.
 - Docker computers and their browser tools are experimental and opt-in. The
   macOS native desktop preview is also experimental and available only in the
   desktop app.
@@ -158,6 +163,7 @@ is needed for the agent workspace.
 - [Connected apps](docs/CONNECTED_APPS.md)
 - [Agent computers](docs/COMPUTERS.md) and [browser tools](docs/BROWSER.md)
 - [Self-hosting](docs/SELF-HOSTING.md)
+- [Phone app](docs/MOBILE.md)
 - [Contributing](docs/CONTRIBUTING.md)
 
 ## Contributing
