@@ -257,7 +257,7 @@ DONE_UNREADABLE = {
 }
 
 
-async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None) -> dict:
+async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None, *, account_id: str | None = None) -> dict:
     """Run one allowed tool as one connected account and return what the agent may see.
     Never raises for a Composio problem: the agent gets a short error instead.
 
@@ -273,7 +273,12 @@ async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments
     client = make_client(record["api_key"])
     try:
         active = [a for a in await client.accounts(record["user_id"], tool.app) if a.status == "ACTIVE"]
-        account, problem = _choose(active, alias, tool.app)
+        if account_id is not None:
+            matches = [a for a in active if a.id == account_id and a.toolkit == tool.app]
+            account = matches[0] if len(matches) == 1 else None
+            problem = None if account else {"error": "The granted account is no longer connected.", "code": "not_connected"}
+        else:
+            account, problem = _choose(active, alias, tool.app)
         if problem:
             return problem
         session_id, record = await _session(db, owner_id, client, record)

@@ -106,7 +106,7 @@ of the work. A routine with `retry_limit` 2 makes at most three attempts.
 
 ### Unattended approvals
 
-A routine run never approves anything by itself:
+A routine run uses the person’s saved permissions:
 
 - The turn runs with the stricter of the routine's and the agent's approval
   mode. Every request the engine would ask about creates the usual approval
@@ -246,3 +246,20 @@ And outside `/api/v1`: `POST /hooks/{id}` (bearer secret).
   runs are, and only when the routine has `retry_limit` above 0.
 - Webhook deliveries are not de-duplicated: a sender that retries a delivery
   starts another run.
+
+## Connected apps
+
+The editor lets you authorize exact actions and connected accounts once per
+routine. The agent must also have matching app access, and execution requires
+the server’s default-off `ROUTINE_CONNECTED_APPS_ENABLED` setting. Scheduled and
+manual runs can use granted reads, send a one-recipient plain-text Gmail email,
+create a new GitHub `campaign/` branch, or commit a file on that branch without
+repeated action approvals. Plan mode refuses writes. Webhook, retry and
+computer-backed runs receive no app tools.
+
+New grants apply on the next run and revocations stop subsequent calls. Writes
+are reserved before dispatch and the same exact request cannot be replayed in
+that run. Run history shows receipts and uncertain outcomes. A new manual or
+scheduled run can perform the work again: check the app before rerunning after
+an uncertain result. External changes are not covered by file Undo. Other writes,
+including Gmail drafts, remain unavailable. See [Connected apps](CONNECTED_APPS.md#routine-specific-app-access).

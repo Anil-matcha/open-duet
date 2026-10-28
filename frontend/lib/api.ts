@@ -830,6 +830,18 @@ export type RoutineRun = {
   created_at: string;
 };
 
+// Routine connector grants are exact read tools, each bound to one connected account.
+export type ConnectedAppGrant = { tool: string; account_id: string };
+export type RoutineAppAction = {
+  id: number;
+  tool: string;
+  account_id: string;
+  status: string;
+  code: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type Routine = {
   id: number;
   agent_id: number;
@@ -854,6 +866,7 @@ export type Routine = {
   next_dates: string[];
   webhook_enabled: boolean;
   latest_run: RoutineRun | null;
+  connected_app_grants: ConnectedAppGrant[];
 };
 
 export type RoutineInput = {
@@ -869,6 +882,7 @@ export type RoutineInput = {
   catch_up_minutes: number;
   retry_limit: number;
   retry_delay_minutes: number;
+  connected_app_grants: ConnectedAppGrant[];
 };
 
 export type SchedulePreview = { summary: string; next_dates: string[] };
@@ -1338,6 +1352,8 @@ export const api = {
   resumeRoutine: (id: number) => request<Routine>(`/routines/${id}/resume`, { method: "POST" }),
   runRoutineNow: (id: number) => request<RoutineRun>(`/routines/${id}/run`, { method: "POST" }),
   listRoutineRuns: (id: number, limit = 50) => request<RoutineRun[]>(`/routines/${id}/runs?limit=${limit}`),
+  listRoutineRunAppActions: (routineId: number, runId: number) =>
+    request<RoutineAppAction[]>(`/routines/${routineId}/runs/${runId}/app-actions`),
   previewSchedule: (kind: ScheduleKind, spec: Record<string, unknown>, timezone: string) =>
     request<SchedulePreview>("/routines/preview", {
       method: "POST",

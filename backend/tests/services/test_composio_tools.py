@@ -56,7 +56,7 @@ def test_every_tool_is_one_fixed_tool_and_writes_are_a_short_list():
     assert all(t.slug.startswith(prefixes[t.app]) and t.slug.isupper() for t in tools.TOOLS)
     assert len({t.name for t in tools.TOOLS}) == len(tools.TOOLS) == len({t.slug for t in tools.TOOLS})
     writes = {t.name for t in tools.TOOLS if t.kind == "write"}
-    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply"}
+    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply", "gmail_send_email"}
     for word in ("delete", "merge", "push", "force", "settings", "collaborator", "secret", "token"):
         assert not any(word in t.name or word in t.slug.lower() for t in tools.TOOLS), word
 

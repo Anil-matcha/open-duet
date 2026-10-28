@@ -4,6 +4,12 @@
 
 ### Added
 
+- Add off-by-default routine grants for exact app reads, Gmail email sending,
+  GitHub branch creation and file commits, bound to connected accounts. Includes
+  run snapshots, revocation checks, durable write reservations and action history.
+  Execution requires explicit server enablement after safety qualification;
+  webhooks, retries and agent computers remain excluded.
+
 - Add a phone app (`mobile/`, Expo and React Native) that pairs with your own
   server by QR code or code as a chat-only device. It lists and starts
   conversations, shows answers as they are written (as Markdown), attaches photos and text files, follows the phone's dark or light setting, starts a conversation from one of your agents, reads and posts to your rooms (tagging agents, stopping them and answering their approvals), stops a running answer, and

@@ -108,3 +108,17 @@ test('getProviders reads /providers and returns the boat status', async () => {
   assert.equal(providers.boat.enabled, false);
   assert.match(providers.boat.reason, /BOAT_API_KEY/);
 });
+
+test('routine app actions use the selected routine and run endpoint', async () => {
+  let requested = '';
+  globalThis.fetch = async (url) => {
+    requested = String(url);
+    return new Response(JSON.stringify([{ id: 4, tool: 'gmail_send_email', account_id: 'acct-1', status: 'completed', code: null, result: { message_id: 'm-1' }, created_at: 'now' }]), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  const actions = await api.listRoutineRunAppActions(12, 34);
+  assert.ok(requested.endsWith('/routines/12/runs/34/app-actions'));
+  assert.equal(actions[0].tool, 'gmail_send_email');
+  assert.equal(actions[0].account_id, 'acct-1');
+});
