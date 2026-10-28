@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.1 - 2026-10-28
+
+### Changed
+
+- Desktop sign-in no longer asks for an invitation code; anyone can create an account with an email code.
+
 ## 0.5.0 - 2026-10-28
 
 ### Added

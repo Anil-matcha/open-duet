@@ -10,7 +10,6 @@ export type DesktopAccountStatus = { signed_in: boolean; email: string | null; a
 export function DesktopAccountLogin({ status, onSignedIn }: { status: DesktopAccountStatus; onSignedIn: () => void }) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [invite, setInvite] = useState("");
   const [sent, setSent] = useState(false);
   const [adopt, setAdopt] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,7 +19,7 @@ export function DesktopAccountLogin({ status, onSignedIn }: { status: DesktopAcc
   async function sendCode() {
     setBusy(true); setError(null); setNotice(null);
     try {
-      await request("/desktop-account/email/start", { method: "POST", body: JSON.stringify({ email: email.trim(), ...(invite.trim() ? { invite_code: invite.trim() } : {}) }) });
+      await request("/desktop-account/email/start", { method: "POST", body: JSON.stringify({ email: email.trim() }) });
       setSent(true); setCode(""); setNotice("Check your email for a sign-in code. It expires in 10 minutes.");
     } catch (err) { setError(err instanceof Error ? err.message : "Could not send a code. Try again."); }
     finally { setBusy(false); }
@@ -46,7 +45,6 @@ export function DesktopAccountLogin({ status, onSignedIn }: { status: DesktopAcc
     <p className="text-sm text-muted">Your agents and files stay on this computer. Account sign-in does not upload them or connect your email inbox.</p>
     <form className="space-y-4" onSubmit={submit}>
       <label className="block text-sm">Email<input className={field} type="email" autoComplete="email" required maxLength={254} disabled={busy || sent} value={email} onChange={event => setEmail(event.target.value)} /></label>
-      {!sent && <details><summary className="text-sm">Have an invitation code?</summary><label className="mt-2 block text-sm">Invitation code<input className={field} autoComplete="off" maxLength={256} value={invite} disabled={busy} onChange={event => setInvite(event.target.value)} /></label></details>}
       {sent && <label className="block text-sm">Email code<input className={field} autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={code} disabled={busy} onChange={event => setCode(event.target.value.replace(/\D/g, ""))} /></label>}
       {!status.profile_bound && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={adopt} disabled={busy} onChange={event => setAdopt(event.target.checked)} />Use this account for this local profile, including any agents and conversations already saved here.</label>}
       {notice && <p role="status" className="text-sm text-muted">{notice}</p>}
