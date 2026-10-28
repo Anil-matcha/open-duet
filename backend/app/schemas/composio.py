@@ -34,3 +34,17 @@ class ComposioLink(BaseModel):
     redirect_url: str
     account_id: str
     expires_in_seconds: int
+
+
+class ComposioCatalogTool(BaseModel):
+    name: str
+    kind: str  # "read" or "write"
+    description: str
+
+
+class ComposioCatalogApp(BaseModel):
+    app: str
+    name: str
+    description: str
+    category: str
+    tools: list[ComposioCatalogTool]

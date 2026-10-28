@@ -13,7 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import principal_of
 from app.db.session import get_db
-from app.schemas.composio import ComposioAccount, ComposioApp, ComposioConnectRequest, ComposioLink, ComposioStatus
+from app import composio_catalog
+from app.schemas.composio import (
+    ComposioAccount, ComposioApp, ComposioCatalogApp, ComposioConnectRequest, ComposioLink, ComposioStatus,
+)
 from app.services import composio_service as service
 from app.services.composio_client import LINK_LIFETIME_SECONDS, ComposioClient
 from app.services.local_access_policy import require_local_access
@@ -55,6 +58,13 @@ async def status(response: Response, db: AsyncSession = Depends(get_db)):
         configured=await service.configured(db, LOCAL_OWNER_ID),
         apps=[ComposioApp(slug=slug, label=label) for slug, label in service.SUPPORTED_APPS],
     )
+
+
+@router.get("/catalog", response_model=list[ComposioCatalogApp])
+async def catalog(response: Response):
+    """The apps agents can use and what each lets them do. Local: needs no key and does not call Composio."""
+    response.headers["Cache-Control"] = "no-store"
+    return composio_catalog.catalog()
 
 
 @router.put("/key", response_model=ComposioStatus)

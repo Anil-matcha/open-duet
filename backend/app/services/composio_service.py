@@ -19,6 +19,7 @@ import uuid
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import composio_catalog
 from app.db.models.user_credential import UserCredential
 from app.db.transactions import begin_write
 from app.services import user_credential_service
@@ -27,13 +28,10 @@ from app.services.composio_client import Account, ComposioClient, ComposioError,
 PROVIDER = "integration:composio"
 _NOT_A_FILE = "-"
 
-# The apps Settings offers in this version. A slug outside this list is refused
-# even if Composio knows it; tool actions have a separate fixed allowlist below.
-SUPPORTED_APPS: tuple[tuple[str, str], ...] = (
-    ("github", "GitHub"),
-    ("gmail", "Gmail"),
-    ("googlecalendar", "Google Calendar"),
-)
+# The apps offered in this version: every app with a validated tool (app/composio_catalog.py).
+# A slug outside this list is refused even if Composio knows it; tool actions have a
+# separate fixed allowlist in app/composio_tools.py.
+SUPPORTED_APPS: tuple[tuple[str, str], ...] = composio_catalog.supported_apps()
 MAX_ACCOUNTS_PER_APP = 5
 
 _KEY = re.compile(r"^ak_[A-Za-z0-9_-]{8,200}$")

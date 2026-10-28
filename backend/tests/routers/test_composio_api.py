@@ -317,3 +317,18 @@ async def test_changes_need_the_csrf_token(app, factory, composio, owner_id):
         assert (await api.put(f"{PATH}/key", json={"api_key": KEY})).status_code == 403
         assert (await api.delete(f"{PATH}/key")).status_code == 403
     assert composio.calls == []
+
+
+async def test_the_catalog_needs_no_key_and_never_calls_composio(admin, composio):
+    response = await admin.get(f"{PATH}/catalog")
+    assert response.status_code == 200
+    apps = {entry["app"]: entry for entry in response.json()}
+    assert {"github", "gmail", "googlecalendar"} <= set(apps)
+    assert any(tool["kind"] == "write" for tool in apps["github"]["tools"])
+    assert all(tool["kind"] == "read" for tool in apps["googlecalendar"]["tools"])
+    assert composio.calls == []
+
+
+async def test_the_catalog_is_owner_only(app, factory, composio, owner_id):
+    async with client(app) as anonymous:
+        assert (await anonymous.get(f"{PATH}/catalog")).status_code in (401, 403)
