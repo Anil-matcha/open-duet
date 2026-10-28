@@ -47,7 +47,8 @@ _counter = itertools.count()
 
 
 class Backend:
-    def __init__(self, tmp_path: Path, data_dir: Path | None = None, **message):
+    def __init__(self, tmp_path: Path, data_dir: Path | None = None, *, account_signed_in: bool = True, **message):
+        self.account_signed_in = account_signed_in
         self.tmp = tmp_path
         self.data_dir = data_dir or tmp_path / "data"
         self.ui_dir = tmp_path / "ui"
@@ -77,8 +78,22 @@ class Backend:
         work.mkdir(exist_ok=True)
         (work / ".env").write_text("BOAT_API_KEY=from-dotenv\nDATABASE_BACKEND=postgres\n", encoding="utf-8")
         env = {**os.environ, **HOSTILE_ENV, "PYTHONUTF8": "1"}
+        command = [sys.executable, str(BACKEND_DIR / "desktop_main.py")]
+        if self.account_signed_in:
+            # Lifecycle tests use an already verified account without calling a live service.
+            # Signed-out launch and both credential boundaries have separate tests.
+            bootstrap = (
+                f"import sys, runpy; sys.path.insert(0, {str(BACKEND_DIR)!r})\n"
+                "from app.desktop import account\n"
+                "class VerifiedAccount:\n"
+                "    async def require_account(self): return {'email': 'fixture@acme.dev', 'tenantId': 'fixture'}\n"
+                "    async def status(self): return {'signed_in': True, 'email': 'fixture@acme.dev', 'profile_bound': True, 'account_required': True}\n"
+                "account.get_manager = lambda: VerifiedAccount()\n"
+                f"runpy.run_path({str(BACKEND_DIR / 'desktop_main.py')!r}, run_name='__main__')\n"
+            )
+            command = [sys.executable, "-c", bootstrap]
         self.process = subprocess.Popen(
-            [sys.executable, str(BACKEND_DIR / "desktop_main.py")],
+            command,
             cwd=work, env=env,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr_path.open("wb"),
         )
@@ -429,3 +444,15 @@ def test_a_second_backend_on_the_same_data_folder_is_refused_while_the_first_ser
     third = launch(launches, tmp_path).start()
     third.ready()
     assert third.stop() == 0
+
+
+def test_fresh_launch_requires_email_account_before_reading_local_workspace(launches, tmp_path):
+    backend = launch(launches, tmp_path, account_signed_in=False).start()
+    port = backend.ready()["port"]
+    assert get(port, "/api/v1/desktop-account/status").json()["signed_in"] is False
+    for path in ("/api/v1/threads", "/api/v1/agents", "/api/v1/local/status"):
+        result = get(port, path)
+        assert result.status_code == 401
+        assert result.json()["detail"]["error_code"] == "account_sign_in_required"
+    assert get(port, "/").status_code == 200
+    assert backend.stop() == 0

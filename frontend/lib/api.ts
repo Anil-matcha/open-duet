@@ -121,7 +121,7 @@ export function setSignedOutHandler(handler: (() => void) | null) {
 }
 
 export function isSignedOutError(err: unknown): boolean {
-  return err instanceof ApiError && (err.code === "auth_required" || err.code === "session_invalid");
+  return err instanceof ApiError && (err.code === "auth_required" || err.code === "session_invalid" || err.code === "account_sign_in_required");
 }
 
 function authHeaders(method: string | undefined): Record<string, string> {

@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type ApplicationSetting, type DesktopSettings } from "@/lib/api";
 import { ApprovalsTabs } from "@/components/approvals/ApprovalsPanel";
 import { EngineSettings } from "@/components/EngineSettings";
 import { ConnectedAppsSection } from "@/components/ConnectedAppsSection";
-import { DesktopSetup } from "@/components/DesktopSetup";
+import { DesktopPermissions } from "./DesktopPermissions";
+import { DesktopAccountSection } from "@/components/DesktopAccountSection";
 import { DevicesSection } from "@/components/DevicesSection";
 import { AppUpdates } from "@/components/AppUpdates";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -15,7 +15,9 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 declare global {
   interface Window {
     openDots?: {
+      desktopPermissions?(action: "status" | "accessibility" | "screen_recording"): Promise<{ supported: boolean; accessibility: boolean; screen_recording: boolean }>;
       choosePath(kind: "file" | "folder"): Promise<string | null>;
+      openEngineSignIn?(url: string): Promise<void>;
       openGoogleSignIn(url: string): Promise<void>;
       openComposioLink(url: string): Promise<void>;
       nativeControl(request: import("@/components/chat/NativeComputer").NativeRequest): Promise<import("@/components/chat/NativeComputer").NativeStatus | { held: boolean }>;
@@ -39,7 +41,6 @@ const display = (value: unknown) => value === null || value === undefined ? "Una
 const applies = (row: ApplicationSetting) => row.key === "LOCAL_WORKSPACE_ROOT" ? "New conversations" : row.key === "LOCAL_APPROVAL_TIMEOUT_SECONDS" ? "New approvals" : row.applies === "next_run" ? "Next turn" : row.applies === "restart" ? "After restart" : "Immediately";
 
 export function SettingsApp() {
-  const router = useRouter();
   const [data, setData] = useState<DesktopSettings | null>(null);
   const [drafts, setDrafts] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +50,7 @@ export function SettingsApp() {
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [headless, setHeadless] = useState(false);
-  const [setupReplay, setSetupReplay] = useState(false);
-  const settingUp = setupReplay || data?.settings.some((row) => row.key === "DESKTOP_ONBOARDING_COMPLETED" && row.value === false) === true;
+  const settingUp = false;
 
   useEffect(() => {
     let cancelled = false;
@@ -115,18 +115,10 @@ export function SettingsApp() {
       {headless && <p className="text-sm text-muted">Workspace, executable and timeout preferences use the backend environment configuration in this installation.</p>}
       {!data && !error && !headless && <p role="status">Loading settings…</p>}
       {!headless && <button className={buttonClass} disabled={busy !== null} onClick={() => setLoadTick((n) => n + 1)}>{data ? "Reload saved settings" : "Try again"}</button>}
-      {data && settingUp && <DesktopSetup settings={data} onSaved={(saved) => {
-        setData((previous) => previous && ({ ...previous, settings: previous.settings.map((item) => item.key === saved.key ? saved : item) }));
-        setDrafts((previous) => ({ ...previous, [saved.key]: saved.value }));
-      }} onFinished={(agentId, selection) => {
-        setSetupReplay(false);
-        const query = new URLSearchParams();
-        if (agentId !== undefined) query.set("agent", String(agentId));
-        else if (selection) { query.set("engine", selection.provider); if (selection.model) query.set("model", selection.model); }
-        router.push(`/chat/${query.size ? `?${query}` : ""}`);
-      }} />}
+      <DesktopAccountSection />
+      <DesktopPermissions />
+      <section className="space-y-2 rounded-lg border border-line p-5"><h3 className="font-semibold">Getting started</h3><p className="text-sm text-muted">Revisit engine choice, your first agent and the first-request guide.</p><Link className="text-sm underline" href="/onboarding/">Open setup guide</Link></section>
       {data && !settingUp && <>
-        {data.settings.some((row) => row.key === "DESKTOP_ONBOARDING_COMPLETED") && <button type="button" className={buttonClass} onClick={() => setSetupReplay(true)}>Run setup again</button>}
         <section className="space-y-5 rounded-lg border border-line p-5">
           <h3 className="font-semibold">Claude Code</h3>
           {data.settings.map((row) => {

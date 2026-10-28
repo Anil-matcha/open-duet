@@ -4,6 +4,15 @@
 
 ### Added
 
+- Guide desktop and browser users through engine choice, a purposeful first
+  agent and an editable first-request draft, with saved progress, retry-safe
+  completion and optional Mac permission checks. Desktop also gains email-code
+  app-account sign-in with encrypted sessions and account-bound local profiles.
+  Supported desktop engines can be installed into staged app-managed releases.
+  Real email delivery, provider calls, actual runtime downloads, native permission
+  dialogs, Windows installation, packaged releases and production account-service
+  deployment were not run. See [first-run setup](docs/specs/onboarding/first-run.md).
+
 - Allow existing Codex agents to use the same per-agent GitHub, Gmail and
   Google Calendar Composio grants as Claude agents. Codex mounts a scoped MCP
   server per turn and routes tool requests through the existing one-use approval

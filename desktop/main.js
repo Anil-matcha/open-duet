@@ -19,7 +19,9 @@ const { createKeyStore, KeyStoreError } = require("./src/keystore");
 const { startBackend, backendEnvironment, newToken } = require("./src/backend");
 const { attachTokenTo, lockDown, sameOrigin } = require("./src/origin");
 const { registerPathPicker } = require("./src/path-picker");
+const { registerDesktopPermissions } = require("./src/desktop-permissions");
 const { registerGoogleSignIn } = require("./src/google-sign-in");
+const { registerEngineSignIn } = require("./src/engine-sign-in");
 const { registerComposioLink } = require("./src/composio-link");
 const { lastReason, describeFailure, describeUnexpectedExit } = require("./src/messages");
 const { NativeControl, registerNativeControl } = require("./src/native-control");
@@ -146,7 +148,9 @@ async function main() {
   });
   registerNativeControl({ ipcMain, dialog, service: nativeControl, getWindow: () => window, getOrigin: () => backendOrigin });
   const nativeConnection = await nativeControl.listen();
+  registerDesktopPermissions({ ipcMain, systemPreferences, openExternal: url => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerPathPicker({ ipcMain, dialog, getWindow: () => window, getOrigin: () => backendOrigin });
+  registerEngineSignIn({ ipcMain, openExternal: url => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerGoogleSignIn({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerComposioLink({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   updater = createUpdater({

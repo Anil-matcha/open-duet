@@ -37,6 +37,7 @@ import { RoomView } from "./RoomView";
 import { collaboration, type TeamState } from "@/lib/collaboration";
 import { useSession } from "@/components/AuthGate";
 import { SETUP_STARTER } from "./AgentSetupEntry";
+import { onboarding } from "@/lib/onboarding";
 import { TeamPanel } from "./TeamPanel";
 import { parseRoom, roomHref } from "@/lib/rooms";
 import { useThreadStream } from "./useThreadStream";
@@ -196,13 +197,19 @@ export function ChatApp() {
   const { transcript } = stream;
 
   useEffect(() => {
-    if (!window.openDots) return;
-    let cancelled = false;
-    api.getDesktopSettings().then((value) => {
-      if (!cancelled && value.settings.some((row) => row.key === "DESKTOP_ONBOARDING_COMPLETED" && row.value === false)) router.replace("/settings/");
+    if (params.get("onboarding") !== "1" || threadId !== null) return;
+    let live = true;
+    onboarding.get().then(value => {
+      if (live) setDraft(previous => previous || value.draft.first_request);
     }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [router]);
+    return () => { live = false; };
+  }, [params, threadId]);
+
+  useEffect(() => {
+    if (threadId === null || transcript.runningTurnId !== null || !transcript.items.some(item => item.kind === "turn_end")) return;
+    // The server verifies a successful turn in this owner's thread before recording the milestone.
+    void onboarding.firstReply(threadId).catch(() => {});
+  }, [threadId, transcript.runningTurnId, transcript.items]);
 
   useEffect(() => {
     let cancelled = false;

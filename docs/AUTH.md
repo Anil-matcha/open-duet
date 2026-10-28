@@ -2,8 +2,8 @@
 
 Open Duet runs agents with access to your machine, so the server must know who
 is asking. This document is the design and the operating guide for a
-self-hosted, single-owner install. The desktop app keeps its own launch-token
-model (below) and is not changed by any of this.
+self-hosted, single-owner install. The desktop app requires an app account as
+well as its local launch-token boundary (see Desktop app below).
 
 ## Principals
 
@@ -150,12 +150,27 @@ scripts, and is the default.
 
 ## Desktop app
 
-Unchanged. The desktop profile is switched on only by the launcher, which
-attaches its per-launch token to every request. `LaunchAuthMiddleware` refuses
-anything without it; the auth middleware then marks the request `desktop` and
-adds no checks. The web UI detects the desktop (`GET /api/v1/auth/status`
-says `desktop: true`) and never shows the sign-in screen or the Devices
-section there.
+The launcher still attaches a per-launch token to every request. The token
+keeps the local API private to that app window; it does not identify an email
+account. `DesktopAccountMiddleware` separately requires a verified app account
+before allowing workspace API requests. Account status and email-code routes
+remain reachable inside the token-protected app window so the user can sign in.
+
+The local proxy contacts the account service over HTTPS, keeps its device token
+encrypted using the profile key, and returns account status without the token.
+A profile is bound to its first verified account after explicit confirmation;
+a different account cannot open that profile's agents and conversations.
+Returning to the same account preserves those local files. Sign-out clears the
+local session and attempts remote revocation; existing agents and engine
+credentials are retained. Active turns must be stopped before sign-out. Scheduled
+local work and memory upkeep are paused while signed out or unable to validate
+the account. Session validation is cached for at most 60 seconds and never beyond
+expiry; after that, an unavailable account service fails closed.
+
+This requires the matching account-service endpoints to be deployed. The account
+service is separate from the standalone self-hosted passphrase flow, which
+retains its existing policy. See [first-run setup](specs/onboarding/first-run.md)
+for the user flow and deployment/qualification limits.
 
 ## Web identity (Telegram and guest ids)
 

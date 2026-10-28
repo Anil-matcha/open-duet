@@ -53,7 +53,11 @@ export function ClaudeEngineSetup({ onChanged, signedIn }: { onChanged: () => vo
     })}>Cancel Claude sign-in</button>}
     {running && !link && <p role="status" className="text-xs text-muted">Preparing Claude sign-in…</p>}
     {running && link && <div className="space-y-2 text-sm">
-      <p>Open <a href={link} target="_blank" rel="noreferrer" className="underline">Claude sign-in</a>, then paste the code shown after signing in.</p>
+      <p>Open <a href={link} onClick={event => {
+        if (!window.openDots?.openEngineSignIn) return;
+        event.preventDefault();
+        void window.openDots.openEngineSignIn(link!).catch(() => setError("Could not open your browser. Try signing in again."));
+      }} target="_blank" rel="noreferrer" className="underline">Claude sign-in</a>, then paste the code shown after signing in.</p>
       <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => {
         event.preventDefault();
         if (busy || flow.code_sent) return;

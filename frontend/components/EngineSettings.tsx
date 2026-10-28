@@ -6,11 +6,13 @@ import { ENDPOINT_TEMPLATES, engineConfig, engineDraft, engineGroups } from "@/l
 import { ClaudeEngineSetup } from "./ClaudeEngineSetup";
 import { CodexEngineSetup } from "./CodexEngineSetup";
 import { GoogleEngineSetup } from "./GoogleEngineSetup";
+import { EngineInstall } from "./EngineInstall";
 
 const FIELD = "mt-1 w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm";
 const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:opacity-50";
 
 export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engines: Engine[]) => void } = {}) {
+  const [desktop, setDesktop] = useState(false);
   const [engines, setEngines] = useState<Engine[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +25,7 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
     api.getEngines(refresh > 0).then((items) => {
       if (cancelled) return;
       setEngines(items);
+      setDesktop(!!window.openDots);
       onEnginesChanged?.(items);
       setDrafts((previous) => ({ ...Object.fromEntries(items.map((item) => [item.id, engineDraft(item)])), ...previous }));
       setError(null);
@@ -92,6 +95,7 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
           setDrafts((previous) => { const next = { ...previous }; delete next.antigravity; return next; });
           setRefresh((n) => n + 1);
         }} />}
+        {desktop && (engine.id === "claude" || engine.id === "codex" || engine.id === "opencode") && <EngineInstall engine={engine.id} installed={engine.installed === true} onChanged={() => setRefresh(value => value + 1)} />}
         {engine.setup && <div className="space-y-1 text-xs text-muted">
           {engine.setup.install && <p>Install: <code className="break-all">{engine.setup.install}</code></p>}
           {engine.setup.sign_in && <p>Sign in: <code className="break-all">{engine.setup.sign_in}</code></p>}

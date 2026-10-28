@@ -18,6 +18,7 @@ const SERVER_PAGES = [
   "index.html",
   path.join("chat", "index.html"),
   path.join("settings", "index.html"),
+  path.join("onboarding", "index.html"),
   path.join("login", "index.html"),
   path.join("pair", "index.html"),
 ];
