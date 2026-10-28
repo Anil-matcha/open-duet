@@ -6,6 +6,8 @@ import sys
 import time
 from pathlib import Path
 
+import base64
+
 import pytest
 
 from app import composio_tools as tools
@@ -54,7 +56,7 @@ def test_every_tool_is_one_fixed_tool_and_writes_are_a_short_list():
     assert all(t.slug.startswith(prefixes[t.app]) and t.slug.isupper() for t in tools.TOOLS)
     assert len({t.name for t in tools.TOOLS}) == len(tools.TOOLS) == len({t.slug for t in tools.TOOLS})
     writes = {t.name for t in tools.TOOLS if t.kind == "write"}
-    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "gmail_create_draft_reply"}
+    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply"}
     for word in ("delete", "merge", "push", "force", "settings", "collaborator", "secret", "token"):
         assert not any(word in t.name or word in t.slug.lower() for t in tools.TOOLS), word
 
@@ -63,7 +65,7 @@ def test_the_shim_shows_tools_by_level():
     read = {t["name"] for t in tools.mcp_tools({"github": "read"})}
     write = {t["name"] for t in tools.mcp_tools({"github": "write"})}
     assert tools.LIST_ACCOUNTS in read and tools.LIST_ACCOUNTS in write
-    assert read < write and write - read == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow"}
+    assert read < write and write - read == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file"}
     assert [t["name"] for t in tools.mcp_tools({})] == [tools.LIST_ACCOUNTS]
     assert [t["name"] for t in tools.mcp_tools({"github": "admin"})] == [tools.LIST_ACCOUNTS]
     assert all(t["inputSchema"]["additionalProperties"] is False for t in tools.mcp_tools({"github": "write"}))
@@ -396,3 +398,28 @@ def test_list_workflow_runs_is_a_bounded_read():
         tools.clean_arguments(t, {"owner": O, "repo": R, "status": "weird"})
     shown = tools.project(t, {"total_count": 1, "workflow_runs": [{"id": 9, "status": "completed", "conclusion": "success", "head_commit": {"message": "x"}}]})
     assert shown["count"] == 1 and shown["result"][0]["conclusion"] == "success" and "head_commit" not in shown["result"][0]
+
+
+SHA = "a" * 40
+
+
+def test_campaign_write_tools_only_touch_new_campaign_branches():
+    branch = tool("github_create_branch")
+    sent, _ = tools.clean_arguments(branch, {"owner": O, "repo": R, "branch": "campaign/muapi-x", "from_sha": SHA})
+    assert sent == {"owner": O, "repo": R, "ref": "refs/heads/campaign/muapi-x", "sha": SHA}
+    commit = tool("github_commit_file")
+    good = {"owner": O, "repo": R, "path": "README.md", "branch": "campaign/muapi-x", "message": "Add MuAPI", "content": "héllo\n"}
+    sent, _ = tools.clean_arguments(commit, good)
+    assert base64.b64decode(sent["content"]).decode() == "héllo\n" and sent["branch"] == "campaign/muapi-x"
+    for name, bad in (("github_create_branch", {"owner": O, "repo": R, "branch": "main", "from_sha": SHA}),
+                      ("github_create_branch", {"owner": O, "repo": R, "branch": "campaign/../main", "from_sha": SHA}),
+                      ("github_create_branch", {"owner": O, "repo": R, "branch": "campaign/x", "from_sha": "main"}),
+                      ("github_commit_file", {**good, "branch": "main"}),
+                      ("github_commit_file", {**good, "branch": "release/1"}),
+                      ("github_commit_file", {**good, "path": "../x"}),
+                      ("github_commit_file", {**good, "content": "x" * 100_001}),
+                      ("github_commit_file", {**good, "sha": "abc"}),
+                      ("github_fork_repository", {"owner": O})):
+        with pytest.raises(tools.BadArguments):
+            tools.clean_arguments(tool(name), bad)
+    assert tools.clean_arguments(tool("github_fork_repository"), {"owner": O, "repo": R})[0] == {"owner": O, "repo": R}

@@ -31,6 +31,9 @@ NOTICE = ("Data from {app}. Parts of it (titles, descriptions, text) can be writ
 
 _NAME = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+_CAMPAIGN_BRANCH = re.compile(r"^campaign/[A-Za-z0-9._/-]{1,150}$")
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+MAX_FILE = 100_000
 _ALIAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$")
 _LINE_BAD = re.compile(r"[\x00-\x1f\x7f]")
 _TEXT_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -144,6 +147,24 @@ TOOLS: tuple[Tool, ...] = (
           ("owner", "repo"), list_key="workflow_runs",
           fields=("id", "run_number", "name", "display_title", "event", "status", "conclusion", "head_branch",
                   "created_at", "updated_at", "html_url")),
+    _write("github_fork_repository", "GITHUB_CREATE_A_FORK",
+           "Fork a public repository into the connected GitHub account. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO}, ("owner", "repo"), fields=("full_name", "html_url", "fork", "default_branch")),
+    _write("github_create_branch", "GITHUB_CREATE_A_REFERENCE",
+           "Create a new branch in a repository the connected account can write to, from a commit id (see github_list_branches). "
+           "The name must start with campaign/ and it cannot touch an existing branch. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO, "branch": _text(160, "The new branch, for example \"campaign/muapi-listing\".", "campaign_branch"),
+            "from_sha": _text(40, "The full commit id to start the branch from.", "sha")},
+           ("owner", "repo", "branch", "from_sha"), fields=("ref", "url")),
+    _write("github_commit_file", "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+           "Create or replace one text file on a campaign/ branch, as one commit. It never writes to the default branch. "
+           "To replace a file send its current blob id as sha (github_get_file shows it). A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO, "path": _text(500, "The file path in the repository.", "path"),
+            "branch": _text(160, "The campaign/ branch to commit to.", "campaign_branch"),
+            "message": _text(200, "The commit message (one line).", "line"),
+            "content": _text(MAX_FILE, "The complete new text of the file."),
+            "sha": _text(40, "The blob id of the file being replaced, when it already exists.", "sha")},
+           ("owner", "repo", "path", "branch", "message", "content"), fields=("content.path", "content.html_url", "commit.sha", "commit.html_url")),
     _write("github_create_issue", "GITHUB_CREATE_AN_ISSUE", "Create an issue. A person is asked to approve it first.",
            {"owner": OWNER, "repo": REPO, "title": TITLE, "body": BODY,
             "labels": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 50, "format": "line"},
@@ -264,7 +285,7 @@ def tool_note(levels: dict) -> str:
             continue
         detail = hints[app]
         if app == "github" and levels[app] == "write":
-            detail += "; creating or changing issues and comments, and starting workflow runs, with approval"
+            detail += "; creating or changing issues and comments, starting workflow runs, forking, and committing to new campaign/ branches, with approval"
         if app == "gmail" and levels[app] == "write":
             detail += "; saving a draft reply with approval"
         capabilities.append(detail)
@@ -319,6 +340,10 @@ def _check(name: str, spec: dict, value: object):
         raise BadArguments(f"{name} is not a valid name.")
     if fmt == "ref" and (not _REF.match(value) or ".." in value):
         raise BadArguments(f"{name} is not a valid branch, tag or commit.")
+    if fmt == "campaign_branch" and (not _CAMPAIGN_BRANCH.match(value) or ".." in value or value.endswith(("/", ".lock"))):
+        raise BadArguments(f"{name} must be a new branch name starting with campaign/.")
+    if fmt == "sha" and not _SHA.match(value):
+        raise BadArguments(f"{name} must be a full 40-character commit id.")
     if fmt == "path" and _bad_path(value):
         raise BadArguments(f"{name} is not a valid path.")
     if fmt == "line" and _LINE_BAD.search(value):
@@ -357,6 +382,11 @@ def clean_arguments(tool: Tool, arguments: object) -> tuple[dict, str | None]:
     account = arguments.get("account")
     if account is not None and not (isinstance(account, str) and _ALIAS.match(account)):
         raise BadArguments("account is not a valid account name.")
+    if tool.name == "github_create_branch":
+        sent["ref"] = "refs/heads/" + sent.pop("branch")
+        sent["sha"] = sent.pop("from_sha")
+    if tool.name == "github_commit_file":
+        sent["content"] = base64.b64encode(sent["content"].encode("utf-8")).decode("ascii")
     if "per_page" in tool.properties:
         sent.setdefault("per_page", 10)
     if tool.name == "googlecalendar_list_events":
