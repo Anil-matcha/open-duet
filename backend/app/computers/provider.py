@@ -35,6 +35,8 @@ class Health:
     available: bool
     version: str | None = None
     error: str | None = None
+    # True on a hosted server, which never runs a computer on its own machine.
+    hosted: bool = False
 
 
 @dataclass

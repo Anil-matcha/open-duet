@@ -46,6 +46,8 @@ from app.desktop import profile
 from app.core import tenant_paths
 from app.core.config import settings
 
+HOSTED_REASON = "This hosted server does not make a computer inside itself. Agents here work in the server and the built-in browser."
+
 logger = get_logger(__name__)
 
 HEALTH_TTL_SECONDS = 10.0
@@ -231,6 +233,8 @@ class ComputerService:
         return await asyncio.to_thread(fn, *args)
 
     async def health(self, *, fresh: bool = False) -> Health:
+        if settings.HOST_EXECUTION_DISABLED or settings.HOSTED_SANDBOX:
+            return Health("docker", False, error=HOSTED_REASON, hosted=True)
         now = time.monotonic()
         if not fresh and self._health is not None and now - self._health[0] < HEALTH_TTL_SECONDS:
             return self._health[1]
@@ -299,6 +303,8 @@ class ComputerService:
     async def create_for_agent(self, agent: Agent, *, workspace: str, image: str | None = None, **config) -> tuple[Computer, bool]:
         """The agent's computer row, made if it has none. Returns (computer,
         created). Never touches the provider. Raises ValueError for bad config."""
+        if settings.HOST_EXECUTION_DISABLED or settings.HOSTED_SANDBOX:
+            raise ComputerError(HOSTED_REASON, "hosted_no_local_computer")
         kind = config.pop("kind", "shell")
         if kind not in docker_cli.COMPUTER_KINDS:
             raise ValueError("kind must be shell or desktop")

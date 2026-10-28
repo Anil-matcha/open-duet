@@ -140,6 +140,9 @@ class Settings(BaseSettings):
     # machine (app/core/host_exec.py). Signed-in accounts are then allowed through the
     # local-execution policy, because nothing they do can run here.
     HOST_EXECUTION_DISABLED: bool = False
+    # A hosted account's own sandbox: the app runs engines here, but the sandbox is small, so agents
+    # get no Docker computer inside it (the Computer panel says so).
+    HOSTED_SANDBOX: bool = False
     # Hosted deployments: the folder holding one subfolder per account for its files (workspace,
     # memory, attachments, decision log). Empty means ~/.open-dots/tenants.
     TENANT_DATA_DIR: str = ""

@@ -76,7 +76,8 @@ def _health(health: Health | None) -> ComputerHealthResponse | None:
     if health is None:
         return None
     return ComputerHealthResponse(
-        provider=health.provider, available=health.available, version=health.version, error=health.error
+        provider=health.provider, available=health.available, version=health.version, error=health.error,
+        hosted=health.hosted,
     )
 
 

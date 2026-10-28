@@ -140,6 +140,7 @@ function DockerComputerView({
 
   if (phase.kind === "none") {
     const docker = phase.health;
+    if (docker?.hosted) return <p className="text-sm text-muted">{docker.error}</p>;
     return (
       <div className="space-y-3 text-sm">
         {alert}

@@ -46,6 +46,7 @@ class ComputerHealthResponse(BaseModel):
     available: bool
     version: str | None = None
     error: str | None = None
+    hosted: bool = False
 
 
 class LastCommandResponse(BaseModel):

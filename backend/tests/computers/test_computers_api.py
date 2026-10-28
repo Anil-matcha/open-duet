@@ -84,7 +84,7 @@ async def test_browser_opt_in_is_desktop_only_and_active_turns_refuse_changes(ap
 
 async def test_health_reports_docker_and_degrades_when_it_is_down(api, docker):  # noqa: F811
     body = (await api.get("/api/v1/computers/health")).json()
-    assert body == {"provider": "docker", "available": True, "version": "27.0.0-fake", "error": None}
+    assert body == {"provider": "docker", "available": True, "version": "27.0.0-fake", "error": None, "hosted": False}
     docker.mode("down")
     body = (await api.get("/api/v1/computers/health")).json()
     assert body["available"] is False and "not running" in body["error"]
@@ -205,3 +205,15 @@ async def test_screen_busy_status_expires_without_exposing_private_owner(api, rt
     assert "private-grant-path" not in response.text
     screen.write_state(owner_file, {"turn_id": "private-grant-path", "until": 0})
     assert not (await api.get(path, params={"live": "false"})).json()["screen_busy"]
+
+
+@pytest.mark.parametrize("switch", ["HOST_EXECUTION_DISABLED", "HOSTED_SANDBOX"])
+async def test_a_hosted_server_reports_it_and_makes_no_local_computer(api, docker, monkeypatch, switch):  # noqa: F811
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, switch, True)
+    body = (await api.get("/api/v1/computers/health")).json()
+    assert body["hosted"] is True and body["available"] is False and "hosted server" in body["error"]
+    agent = await new_agent(api)
+    made = await api.post(f"/api/v1/agents/{agent['id']}/computer", json={})
+    assert made.status_code == 409

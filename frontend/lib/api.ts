@@ -407,6 +407,7 @@ export type ComputerHealth = {
   available: boolean;
   version: string | null;
   error: string | null;
+  hosted?: boolean;
 };
 
 export type ComputerLastCommand = {
