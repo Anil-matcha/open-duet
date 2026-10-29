@@ -817,9 +817,12 @@ class ComputerService:
                 if not (await self.provider_health(computer.provider, fresh=True)).available:
                     continue
                 async with self._lock(computer.id):
-                    try:
-                        current = await self.get(computer.id)
-                    except ComputerNotFound:
+                    # `get()` hides deleting rows from normal callers. Upkeep
+                    # is the caller responsible for finishing those rows, so
+                    # reload it directly while still enforcing ownership.
+                    async with self.session() as db:
+                        current = await db.get(Computer, computer.id)
+                    if current is None or current.owner_id != self.owner_id:
                         continue
                     if current.state == "deleting":
                         await self._finish_delete(current)
