@@ -23,8 +23,9 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 - **Chat.** Send a message and watch the answer as it is written, with one-line
   tool steps. **Stop** ends a running answer. If the connection drops, the app
   reconnects and carries on from the last event it saw. Answers are shown as
-  Markdown (headings, lists, bold, italic, code, quotes, links). There is no HTML,
-  and only `http` and `https` links can be tapped; they open in your browser.
+  Markdown (headings, lists, tables, bold, italic, code, quotes, links). A wide table
+  scrolls sideways so no column is cut off. There is no HTML, and only `http` and
+  `https` links can be tapped; they open in your browser.
 - **Attachments.** The **+** button next to the message box attaches photos
   (PNG, JPEG, GIF, WebP up to 10 MB) and text files (up to 1 MB, the types in
   [everyday features](EVERYDAY.md)), up to 8 per message. Files upload as you pick
