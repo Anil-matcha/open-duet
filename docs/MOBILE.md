@@ -26,6 +26,10 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   Markdown (headings, lists, tables, bold, italic, code, quotes, links). A wide table
   scrolls sideways so no column is cut off. There is no HTML, and only `http` and
   `https` links can be tapped; they open in your browser.
+- **Look.** The colors, corner radii, typeface (Geist and Geist Mono) and agent colors are the web
+  app's, in the light and dark looks. An agent is shown as a circle with its first letter on its own
+  color, as on the web; a plain chat gets a chat glyph. A test reads the web stylesheet and fails when a
+  phone color or radius differs from the web's.
 - **Search.** The **Search conversations** box on the list searches the titles
   and the messages of your conversations (what you wrote and what the agent
   answered). Every word you type must appear in one title or message; it starts
