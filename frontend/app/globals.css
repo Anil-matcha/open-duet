@@ -3,7 +3,9 @@
 /* Colours are semantic tokens, declared once per theme. <html data-theme="light|dark"> is
    always set before first paint (lib/theme.ts), so there is no media-query fallback to
    keep in step. scripts/check-contrast.mjs reads these blocks and fails CI when a text
-   colour on a surface drops under 4.5:1, so edit values here and run `npm run check:contrast`. */
+   colour on a surface drops under 4.5:1, so edit values here and run `npm run check:contrast`.
+   The phone app copies these values (mobile/src/lib/theme.ts) and mobile/src/tests/theme-drift.test.ts
+   fails when they differ, so change a colour here first, then there. */
 :root,
 :root[data-theme="light"] {
   --bg-app: #f7f6f3;

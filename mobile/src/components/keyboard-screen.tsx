@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
+import { useTheme } from '@/lib/theme';
+
 // Keeps the bottom of a screen above the on-screen keyboard on iOS and Android.
 //
 // The built Android app draws edge to edge, and the keyboard height that React Native's own
@@ -17,8 +19,10 @@ import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 export function KeyboardScreen({ children }: { children: ReactNode }) {
   const insets = useContext(SafeAreaInsetsContext);
   const keyboardOpen = useKeyboardState((state) => state.isVisible);
+  const theme = useTheme();
+  // The padding for the bottom bar is part of the screen, so it takes the screen's background.
   return (
-    <View style={[styles.flex, { paddingBottom: keyboardOpen ? 0 : (insets?.bottom ?? 0) }]} testID="keyboard-screen">
+    <View style={[styles.flex, { backgroundColor: theme.background, paddingBottom: keyboardOpen ? 0 : (insets?.bottom ?? 0) }]} testID="keyboard-screen">
       <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         {children}
       </KeyboardAvoidingView>

@@ -37,6 +37,8 @@ jobs:
               - '.github/workflows/ci.yml'
             mobile:
               - 'mobile/**'
+              # The phone's colors are checked against these tokens (mobile/src/tests/theme-drift.test.ts).
+              - 'frontend/app/globals.css'
               - '.github/workflows/ci.yml'
             desktop:
               - 'desktop/**'

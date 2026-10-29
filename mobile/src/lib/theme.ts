@@ -1,6 +1,11 @@
 // Colors for the light and dark looks. The app follows the phone's setting; there is no switch of its own.
 // Every screen takes its colors from here, so a pair that reads well in one look is checked once in
-// `theme.test.ts` (text on its background must reach a 4.5:1 contrast).
+// `theme.test.tsx` (text on its background must reach a 4.5:1 contrast).
+//
+// The values are the web app's own tokens (frontend/app/globals.css), so the phone and the web look alike.
+// `theme-drift.test.ts` reads that file and fails when a value here no longer matches its token; change
+// a color in globals.css first, then here. `warnBackground` is the one phone-only color: the web has no
+// tinted background for a warning.
 
 import { useMemo } from 'react';
 import { useColorScheme } from 'react-native';
@@ -10,7 +15,7 @@ export type Palette = {
   background: string;
   /** Assistant bubbles, chips and the like. */
   surface: string;
-  /** Code blocks and inline code, a step stronger than `surface`. */
+  /** Code blocks and inline code (the web's code background, set into a bubble). */
   surfaceStrong: string;
   text: string;
   muted: string;
@@ -33,43 +38,43 @@ export type Palette = {
 };
 
 export const light: Palette = {
-  background: '#ffffff',
-  surface: '#eceff1',
-  surfaceStrong: '#dfe4e8',
-  text: '#111111',
-  muted: '#555555',
-  border: '#bbbbbb',
-  inputBorder: '#999999',
-  accent: '#0a7ea4',
+  background: '#f7f6f3',
+  surface: '#e9e6df',
+  surfaceStrong: '#f0ede6',
+  text: '#1c1b19',
+  muted: '#5b574f',
+  border: '#dcd8cf',
+  inputBorder: '#6b665d',
+  accent: '#3151c8',
   onAccent: '#ffffff',
-  accentText: '#0a6c8e',
-  danger: '#b91c1c',
-  dangerFill: '#b91c1c',
-  notice: '#b45309',
+  accentText: '#3151c8',
+  danger: '#b92b27',
+  dangerFill: '#b92b27',
+  notice: '#8f5200',
   warnBackground: '#fff8e1',
-  warnBorder: '#d9a400',
-  warnText: '#6b5200',
-  quoteBar: '#9aa5ab',
+  warnBorder: '#8f5200',
+  warnText: '#8f5200',
+  quoteBar: '#6b665d',
 };
 
 export const dark: Palette = {
-  background: '#101417',
-  surface: '#1f272c',
-  surfaceStrong: '#2c363c',
-  text: '#e8eaed',
-  muted: '#a3adb3',
-  border: '#3a444a',
-  inputBorder: '#5b676e',
-  accent: '#0a7ea4',
-  onAccent: '#ffffff',
-  accentText: '#4cc2e8',
-  danger: '#f87171',
-  dangerFill: '#b91c1c',
-  notice: '#f0a35e',
+  background: '#0e0e10',
+  surface: '#2a2a2e',
+  surfaceStrong: '#19191c',
+  text: '#ececee',
+  muted: '#a3a3ab',
+  border: '#2f2f35',
+  inputBorder: '#9595a0',
+  accent: '#7b95ff',
+  onAccent: '#0b0d14',
+  accentText: '#7b95ff',
+  danger: '#ff7b7b',
+  dangerFill: '#ff7b7b',
+  notice: '#e5a03a',
   warnBackground: '#2e2608',
-  warnBorder: '#d9a400',
-  warnText: '#f2c94c',
-  quoteBar: '#6b777e',
+  warnBorder: '#e5a03a',
+  warnText: '#e5a03a',
+  quoteBar: '#9595a0',
 };
 
 export function paletteFor(scheme: string | null | undefined): Palette {
