@@ -60,7 +60,7 @@ One table, `computer` (migration `4b7e1d9c2a58`), at most one row per agent:
 | `auto_start` | A turn may start a stopped computer, or make a missing one from an image that is already here. Default on. |
 | `state` | `missing`, `creating`, `running`, `stopped`, `error`, `deleting`: the last state the app saw. |
 | `workspace_path` | The folder mounted at `/workspace` when the machine was made. |
-| `container_id`, `last_error`, `last_used_at` | What the provider last reported. `provider_generation` gives each newly created provider resource its own idempotency identity. `provider_delete_id` tracks an accepted cloud deletion until Boat reports completion. |
+| `container_id`, `last_error`, `last_used_at` | What the provider last reported. `provider_generation` gives each newly created provider resource its own idempotency identity. `provider_delete_id` tracks an accepted cloud deletion; if Boat no longer has that operation record, the app checks the sandbox and either finishes removal or requests a new deletion operation. |
 
 On SQLite the id is `AUTOINCREMENT`: the container name is derived from it and
 must never be handed to a different computer.
@@ -106,8 +106,11 @@ any state --remove--> deleting --(machine removed)--> (row gone)
 - **Removal is journalled.** Removing a computer first marks the row
   `deleting`, then removes the machine, then the row. If Docker is not
   answering, the row stays `deleting` (hidden from every list) and the upkeep
-  job finishes the removal when Docker comes back. Removing an agent removes
-  its computer the same way. Removal never touches the workspace folder.
+  job finishes the removal when Docker comes back. Boat deletion is asynchronous:
+  the app tracks the provider's deletion operation; if that operation expires,
+  it checks whether the sandbox still exists before clearing the row or asking
+  Boat to delete it again. Removing an agent removes its computer the same way.
+  Removal never touches the workspace folder.
 - **Orphans.** The first time the upkeep job finds Docker answering (at startup
   or later), it removes machines this installation made that no row knows of
   (for example after restoring an older database).

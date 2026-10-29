@@ -31,6 +31,8 @@ GUEST_WORKSPACE = "/workspace"
 _READY_STATES = {"ready", "idle", "running"}
 _STOPPED_STATES = {"archived"}
 _MAX_OUTPUT = 2_000_000
+_MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024
+_SCREENSHOT_PATH = "/tmp/open-dots-screen.png"
 
 
 class BoatProvider:
@@ -274,7 +276,24 @@ class BoatProvider:
             operation_id = spec.provider_delete_id
             if not re.fullmatch(r"bdop_[a-f0-9]{32}", operation_id):
                 raise ComputerError("The saved cloud deletion operation ID is invalid.", "boat_invalid_response")
-            data = self._request("GET", f"/deletion-operations/{quote(operation_id, safe='')}")
+            try:
+                data = self._request("GET", f"/deletion-operations/{quote(operation_id, safe='')}")
+            except ComputerError as exc:
+                if exc.code != "boat_computer_missing":
+                    raise
+                sandbox_id = self._id(spec)
+                if sandbox_id is None:
+                    return None
+                try:
+                    self._get(sandbox_id)
+                except ComputerError as sandbox_error:
+                    if sandbox_error.code == "boat_computer_missing":
+                        return None
+                    raise
+                # The operation record expired while the sandbox remained.
+                # Reissue the already-requested deletion so upkeep can track a
+                # fresh operation instead of leaving this agent locked forever.
+                return self._request_sandbox_delete(sandbox_id)
             found_id, status = self._deletion_operation(data)
             if found_id != operation_id:
                 raise ComputerError("The cloud service returned a different deletion operation.", "boat_invalid_response")
@@ -287,6 +306,9 @@ class BoatProvider:
         sandbox_id = self._id(spec)
         if sandbox_id is None:
             return None
+        return self._request_sandbox_delete(sandbox_id)
+
+    def _request_sandbox_delete(self, sandbox_id: str) -> str | None:
         try:
             data = self._request(
                 "DELETE", f"/sandboxes/{quote(sandbox_id, safe='')}",
@@ -361,14 +383,27 @@ class BoatProvider:
         sandbox_id = self._id(spec)
         if sandbox_id is None:
             raise ComputerError("Start the cloud computer to see its screen.", "computer_not_running")
-        self._request("POST", f"/sandboxes/{quote(sandbox_id, safe='')}/desktop?vnc=1", body={"publicAccess": False})
-        command = "DISPLAY=:1 scrot -o /tmp/open-dots-screen.png && base64 -w0 /tmp/open-dots-screen.png"
-        data = self._command(sandbox_id, command, 20)
+        return self._capture_screenshot(sandbox_id)
+
+    def _capture_screenshot(self, sandbox_id: str, *, area: tuple[int, int, int, int] | None = None) -> bytes:
+        encoded_id = quote(sandbox_id, safe="")
+        self._request("POST", f"/sandboxes/{encoded_id}/desktop?vnc=1", body={"publicAccess": False})
+        result = self._command(sandbox_id, _screenshot_command(area), 20)
+        if result.get("exitCode") != 0:
+            raise ComputerError("The cloud desktop could not capture its screen. Try again after the desktop is ready.", "desktop_not_ready")
+
+        response = self._request(
+            "GET",
+            f"/sandboxes/{encoded_id}/files?path={quote(_SCREENSHOT_PATH, safe='')}&encoding=base64",
+        )
+        content = response.get("content")
+        if not isinstance(content, str) or len(content) > ((_MAX_SCREENSHOT_BYTES + 2) // 3) * 4:
+            raise ComputerError("The cloud desktop screenshot is missing or too large.", "desktop_not_ready")
         try:
-            raw = base64.b64decode(data.get("stdout", ""), validate=True)
+            raw = base64.b64decode(content, validate=True)
         except (ValueError, TypeError):
-            raise ComputerError("The cloud desktop did not return a valid screenshot. Check that the desktop is ready.", "desktop_not_ready") from None
-        if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ComputerError("The cloud desktop did not return a valid screenshot.", "desktop_not_ready") from None
+        if len(raw) > _MAX_SCREENSHOT_BYTES or not raw.startswith(b"\x89PNG\r\n\x1a\n"):
             raise ComputerError("The cloud desktop did not return a valid screenshot.", "desktop_not_ready")
         return raw
 
@@ -457,14 +492,10 @@ class BoatProvider:
         if name == "screenshot":
             x, y = args.get("x", 0), args.get("y", 0)
             width, height = args.get("width", screen.WIDTH), args.get("height", screen.HEIGHT)
-            command = f"DISPLAY=:1 scrot -a {x},{y},{width},{height} -o /tmp/open-dots-screen.png && base64 -w0 /tmp/open-dots-screen.png"
-            result = self._command(sandbox_id, command, 20)
-            try:
-                raw = base64.b64decode(result.get("stdout", ""), validate=True)
-            except (ValueError, TypeError):
-                raise ComputerError("The cloud desktop did not return a valid screenshot.", "desktop_not_ready") from None
-            if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
-                raise ComputerError("The cloud desktop did not return a valid screenshot.", "desktop_not_ready")
+            issue = screen.validate(name, args)
+            if issue:
+                raise ComputerError(issue, "invalid_computer_tool")
+            raw = self._capture_screenshot(sandbox_id, area=(x, y, width, height))
             return {
                 "content": [
                     {"type": "text", "text": f"screen {screen.WIDTH}x{screen.HEIGHT}"},
@@ -476,12 +507,32 @@ class BoatProvider:
                 ]
             }
         args_list = screen.input_args(name, args)
-        command = "DISPLAY=:1 " + shlex.join(["xdotool", *args_list])
+        command = 'd=$(cat /tmp/open-dots-display 2>/dev/null); export DISPLAY="${d:-${DISPLAY:-:0}}"; ' + shlex.join(["xdotool", *args_list])
         result = self._command(sandbox_id, command, 25)
         if result.get("exitCode") != 0:
             raise ComputerError("The cloud screen action failed. Check that the desktop is ready.", "boat_screen_failed")
         subject = f"{len(args['text'])} characters" if name == "type" else json.dumps(args)
         return _text(f"{name}: {subject}")
+
+
+def _screenshot_command(area: tuple[int, int, int, int] | None = None) -> str:
+    if area is None:
+        capture = (
+            'scrot -o "$f" 2>/dev/null '
+            '|| import -window root "$f" 2>/dev/null '
+            '|| ffmpeg -y -f x11grab -draw_mouse 1 -i "$DISPLAY" -frames:v 1 "$f" >/dev/null 2>&1'
+        )
+    else:
+        x, y, width, height = area
+        capture = f'scrot -a {x},{y},{width},{height} -o "$f" 2>/dev/null'
+    return (
+        f'f={_SCREENSHOT_PATH}; rm -f "$f"; '
+        'for display in "${DISPLAY:-}" :0 :1; do '
+        '[ -n "$display" ] || continue; export DISPLAY="$display"; '
+        f'{capture}; '
+        'if test -s "$f"; then printf "%s\\n" "$DISPLAY" > /tmp/open-dots-display; echo captured; exit 0; fi; '
+        'done; echo "The desktop display is not ready." >&2; exit 1'
+    )
 
 
 def _with_container_id(spec: Spec, container_id: str) -> Spec:

@@ -12,6 +12,14 @@
   backend behavior tests, live-provider and packaged-app qualification remain
   open.
 
+### Fixed
+
+- Recover cloud-computer removal when Boat has already deleted the sandbox or
+  no longer retains its deletion-operation record, instead of leaving the
+  agent blocked in `deleting`. Cloud desktop screenshots now transfer through
+  Boat's file API and try the available X display/capture tools rather than
+  sending base64 image data through command output.
+
 ## 0.6.0 - 2026-10-29
 
 ### Added
