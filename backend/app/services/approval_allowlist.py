@@ -276,11 +276,10 @@ async def matching_rule(
     command = tool_input.get("command")
     if not isinstance(command, str) or not command.strip():
         return None
-    # A rule never allows a floor call, whatever the allowlist holds today. The
-    # property is asserted here rather than left to the accident that every
-    # prefix-safe program is read-only.
-    if not safety_floor.clears_floor(command):
-        return None
+    # A floor-held command matches its rule here so the caller can hold it and
+    # record the verdict on the card; the caller's gate never lets the rule
+    # allow the call (a person decides on the card). The matching itself is
+    # pure resolution: whatever rule names this command goes up with it.
     for rule in await list_rules(db, owner_id):
         if not rule.connector or not rule.tool:
             continue
