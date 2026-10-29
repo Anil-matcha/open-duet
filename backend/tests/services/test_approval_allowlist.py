@@ -391,11 +391,11 @@ async def test_only_bash_calls_with_a_string_command_can_match(db_session):
     assert not await allow.matching_rule(db_session, owner, "Bash", {"command": ["ls"]})
 
 
-async def test_a_rule_never_matches_a_call_on_the_floor(db_session):
-    # The floor claim in matching_rule must hold on its own, not because every
-    # prefix-safe program happens to be read-only. Write a matching rule for a
-    # floor command straight into the table (bypassing validate_rule) and assert
-    # the floor still refuses the match.
+async def test_a_floor_call_matches_the_rule_and_the_gate_holds_it(db_session):
+    # The matching layer is pure: a floor-held command matches its rule, and the
+    # hold lives at the gate (thread_runtime's approval branch sets rule=None
+    # and records the verdict on the shown card -- covered by the approval-flow
+    # suite). Written straight into the table: add_rule refuses floor commands.
     from app.db.models.permission_rule import PermissionRule
 
     owner = "rule-owner-floor"
@@ -406,7 +406,8 @@ async def test_a_rule_never_matches_a_call_on_the_floor(db_session):
         )
     )
     await db_session.commit()
-    assert not await allow.matching_rule(db_session, owner, "Bash", {"command": "rm -rf /"})
+    matched = await allow.matching_rule(db_session, owner, "Bash", {"command": "rm -rf /"})
+    assert matched is not None and matched.tool == "rm -rf /"
     assert not await allow.matching_rule(db_session, owner, "Bash", {})
 
 
