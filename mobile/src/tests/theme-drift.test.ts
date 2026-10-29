@@ -1,3 +1,4 @@
+import { IDENTITY_COLORS, identityIndex, initialOf } from '@/lib/identity';
 import { dark, light, radius, type Palette } from '@/lib/theme';
 
 // `fs` and `path` run under Jest, but this TypeScript project has no Node types (only Jest's): describe what is used.
@@ -69,5 +70,32 @@ describe('the corner radii against the web tokens', () => {
   it('are the web field and card radii', () => {
     expect(radius.field).toBe(points('field'));
     expect(radius.card).toBe(points('card'));
+  });
+});
+
+describe('the agent identity against the web', () => {
+  const tokenValues = Array.from({ length: IDENTITY_COLORS.length }, (_, n) => {
+    const match = new RegExp(String.raw`--identity-${n + 1}\s*:\s*(#[0-9a-fA-F]{6})\s*;`).exec(css);
+    if (!match) throw new Error(`--identity-${n + 1} is not declared in globals.css`);
+    return match[1].toLowerCase();
+  });
+
+  it('has the ten web colours, in order, and no others', () => {
+    expect([...IDENTITY_COLORS]).toEqual(tokenValues);
+    expect(css).not.toMatch(/--identity-11\s*:/);
+  });
+
+  it('picks the same colour and letter as the web function, for many ids and names', () => {
+    // The web's own source, compiled and run here, so a change to it is noticed.
+    const { transpileModule } = jest.requireActual<{ transpileModule(source: string, options: object): { outputText: string } }>('typescript');
+    const source = readFileSync(resolve(__dirname, '../../../frontend/lib/identity.ts'), 'utf8');
+    const exported: { identityIndex?: (id: number | string) => number; initialOf?: (name: string | null | undefined) => string; IDENTITY_COUNT?: number } = {};
+    new Function('exports', transpileModule(source, { compilerOptions: { module: 1, target: 7 } }).outputText)(exported);
+    expect(exported.IDENTITY_COUNT).toBe(IDENTITY_COLORS.length);
+    const ids: (number | string)[] = [...Array.from({ length: 300 }, (_, i) => i), 123456, 999999999, '7', 'abc', 'agent-12', ''];
+    for (const id of ids) expect(identityIndex(id)).toBe(exported.identityIndex!(id));
+    for (const name of ['scout', '  ✨ mira', 'émile', '42 things', '', '---', null, undefined, 'Ωmega', '日本語']) {
+      expect(initialOf(name)).toBe(exported.initialOf!(name));
+    }
   });
 });

@@ -25,6 +25,7 @@
   "dependencies": {
     "@expo-google-fonts/geist": "^0.4.2",
     "@expo-google-fonts/geist-mono": "^0.4.3",
+    "@expo/vector-icons": "^15.0.2",
     "expo": "~58.0.19",
     "expo-camera": "~58.0.12",
     "expo-constants": "~58.0.13",

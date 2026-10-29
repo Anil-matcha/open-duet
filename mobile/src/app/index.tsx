@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { Avatar } from '@/components/avatar';
 import { Text } from '@/components/text';
 import { agentName, type Agent } from '@/lib/agents';
 import { describeApiError, type Thread } from '@/lib/api';
@@ -87,13 +88,16 @@ export default function Conversations() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
           ListEmptyComponent={threads ? <Text style={styles.empty}>No conversations yet.</Text> : undefined}
           renderItem={({ item }) => (
-            <Pressable accessibilityRole="button" style={styles.row} onPress={() => router.push({ pathname: '/thread/[id]', params: { id: String(item.id) } })}>
-              <Text style={styles.title} numberOfLines={1}>
-                {item.title || 'New conversation'}
-              </Text>
-              <Text style={styles.meta} numberOfLines={1}>
-                {[agentName(agents, item.agent_id) ?? item.provider, item.model, relativeTime(item.updated_at)].filter(Boolean).join(' · ')}
-              </Text>
+            <Pressable accessibilityRole="button" style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={() => router.push({ pathname: '/thread/[id]', params: { id: String(item.id) } })}>
+              <Avatar agentId={item.agent_id ?? null} name={agentName(agents, item.agent_id)} />
+              <View style={styles.rowText}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {item.title || 'New conversation'}
+                </Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {[agentName(agents, item.agent_id) ?? item.provider, item.model, relativeTime(item.updated_at)].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
             </Pressable>
           )}
         />
@@ -113,7 +117,9 @@ const createStyles = (p: Palette) =>
     searchText: { color: p.muted, fontSize: 16 },
     error: { color: p.danger, paddingHorizontal: 12, paddingBottom: 8, fontSize: 14 },
     empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: p.muted },
-    row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },
+    rowText: { flex: 1 },
+    pressed: { backgroundColor: p.surface },
     title: { fontSize: 16, fontWeight: '600', color: p.text },
     meta: { fontSize: 13, color: p.muted, marginTop: 2 },
   });

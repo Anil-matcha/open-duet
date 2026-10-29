@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { Avatar } from '@/components/avatar';
 import { Text } from '@/components/text';
 import { agentSummary, approvalModeLabel, type Agent } from '@/lib/agents';
 import { describeApiError } from '@/lib/api';
@@ -68,20 +69,26 @@ export default function NewConversation() {
         data={agents}
         keyExtractor={(agent) => String(agent.id)}
         ListHeaderComponent={
-          <Pressable accessibilityRole="button" style={[styles.row, starting !== null && styles.disabled]} disabled={starting !== null} onPress={() => start(null)}>
-            <Text style={styles.name}>Default assistant</Text>
-            <Text style={styles.meta}>Your server’s usual engine and settings</Text>
+          <Pressable accessibilityRole="button" style={({ pressed }) => [styles.row, pressed && styles.pressed, starting !== null && styles.disabled]} disabled={starting !== null} onPress={() => start(null)}>
+            <Avatar agentId={null} />
+            <View style={styles.rowText}>
+              <Text style={styles.name}>Default assistant</Text>
+              <Text style={styles.meta}>Your server’s usual engine and settings</Text>
+            </View>
           </Pressable>
         }
         renderItem={({ item }) => (
-          <Pressable accessibilityRole="button" style={[styles.row, starting !== null && styles.disabled]} disabled={starting !== null} onPress={() => start(item)}>
-            <Text style={styles.name} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <Text style={styles.meta} numberOfLines={2}>
-              {agentSummary(item)}
-            </Text>
-            <Text style={styles.mode}>{approvalModeLabel(item.approval_mode)}</Text>
+          <Pressable accessibilityRole="button" style={({ pressed }) => [styles.row, pressed && styles.pressed, starting !== null && styles.disabled]} disabled={starting !== null} onPress={() => start(item)}>
+            <Avatar agentId={item.id} name={item.name} />
+            <View style={styles.rowText}>
+              <Text style={styles.name} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.meta} numberOfLines={2}>
+                {agentSummary(item)}
+              </Text>
+              <Text style={styles.mode}>{approvalModeLabel(item.approval_mode)}</Text>
+            </View>
           </Pressable>
         )}
       />
@@ -94,7 +101,9 @@ const createStyles = (p: Palette) =>
     flex: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     error: { color: p.danger, padding: 12, fontSize: 14 },
-    row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },
+    rowText: { flex: 1 },
+    pressed: { backgroundColor: p.surface },
     name: { fontSize: 16, fontWeight: '600', color: p.text },
     meta: { fontSize: 13, color: p.muted, marginTop: 2 },
     mode: { fontSize: 12, color: p.muted, marginTop: 4 },

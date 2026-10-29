@@ -22,7 +22,8 @@ function SettingsLink() {
 
 function RoomsLink() {
   const theme = useTheme();
-  const style = useFont({ color: theme.accentText, fontWeight: '500' });
+  // Room to the right, so the link does not touch the title beside it.
+  const style = useFont({ color: theme.accentText, fontWeight: '500', marginRight: 16 });
   return (
     <Link href="/rooms" style={style}>
       Rooms
