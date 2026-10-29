@@ -590,6 +590,8 @@ export type GoogleSetupOperation = {
   phase: "running" | "succeeded" | "failed" | "cancelled";
   authorization_url: string | null;
   error: string | null;
+  progress?: number | null;
+  detail?: string | null;
 };
 
 // Topic notes (memory/<topic>.md), the journal and proposed notes (docs/MEMORY.md).

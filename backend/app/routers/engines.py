@@ -137,7 +137,17 @@ async def setup_antigravity(action: str, response: Response, rt: ThreadRuntime =
 
     async def work():
         if action == "install":
-            await antigravity_runtime.install(adapter.validate_runtime)
+            def update_progress(percent, downloaded=0, total=0, detail=None):
+                if adapter.operation:
+                    adapter.operation["progress"] = percent
+                    if detail:
+                        adapter.operation["detail"] = detail
+                    elif total > 0:
+                        mb_down = downloaded / (1024 * 1024)
+                        mb_tot = total / (1024 * 1024)
+                        adapter.operation["detail"] = f"Downloading official Google runtime ({mb_down:.1f} MB / {mb_tot:.1f} MB)..."
+
+            await antigravity_runtime.install(adapter.validate_runtime, on_progress=update_progress)
         elif action == "sign_in":
             if not antigravity_runtime.installed():
                 raise ValueError("Install Antigravity first.")
