@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { engineConfig, engineDraft, engineGroups, firstReadyEngine } from "./engines.ts";
+import { ENDPOINT_TEMPLATES, engineConfig, engineDraft, engineGroups, firstReadyEngine } from "./engines.ts";
 
 const engines = [
   { id: "claude", available: false },
@@ -31,4 +31,10 @@ test("generated forms never prefill a secret or submit fields the engine does no
   assert.deepEqual(engineDraft(engine), { api_key: "", model: "vendor/model" });
   assert.deepEqual(engineConfig(engine, { api_key: "", model: " v/m ", base_url: "https://wrong.test" }), { model: "v/m" });
   assert.deepEqual(engineConfig(engine, { api_key: "new-key", model: "" }), { api_key: "new-key" });
+});
+
+test("endpoint templates fill an https or local /v1 address and include Atlas Cloud", () => {
+  const atlas = ENDPOINT_TEMPLATES.find((t) => t.label === "Atlas Cloud");
+  assert.equal(atlas?.url, "https://api.atlascloud.ai/v1");
+  assert.equal(new Set(ENDPOINT_TEMPLATES.map((t) => t.label)).size, ENDPOINT_TEMPLATES.length);
 });

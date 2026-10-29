@@ -33,5 +33,6 @@ export const ENDPOINT_TEMPLATES = [
   { label: "Groq", url: "https://api.groq.com/openai/v1" },
   { label: "Cerebras", url: "https://api.cerebras.ai/v1" },
   { label: "Mistral", url: "https://api.mistral.ai/v1" },
+  { label: "Atlas Cloud", url: "https://api.atlascloud.ai/v1" },
   { label: "OpenAI", url: "https://api.openai.com/v1" },
 ];
