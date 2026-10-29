@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { parseMarkdown, type Align, type Span } from '@/lib/markdown';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const HEADING_SIZE = [0, 22, 20, 18, 17, 16, 16];
@@ -128,7 +128,7 @@ const createStyles = (p: Palette) =>
     italic: { fontStyle: 'italic' },
     link: { color: p.accentText, textDecorationLine: 'underline' },
     inlineCode: { fontFamily: MONO, backgroundColor: p.surfaceStrong },
-    codeBlock: { backgroundColor: p.surfaceStrong, borderRadius: 8, padding: 8 },
+    codeBlock: { backgroundColor: p.surfaceStrong, borderRadius: radius.field, padding: 8 },
     codeText: { fontFamily: MONO, fontSize: 13, color: p.text },
     quote: { borderLeftWidth: 3, borderLeftColor: p.quoteBar, paddingLeft: 8 },
     list: { gap: 4 },

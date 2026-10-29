@@ -6,7 +6,7 @@ import { KeyboardScreen } from '@/components/keyboard-screen';
 import { highlightPieces, hitLabel, hitTarget, MIN_SEARCH_CHARS, type SearchHit } from '@/lib/search';
 import { relativeTime } from '@/lib/time';
 import { useSearch } from '@/lib/use-search';
-import { useStyles, useTheme, type Palette } from '@/lib/theme';
+import { radius, useStyles, useTheme, type Palette } from '@/lib/theme';
 
 function Hit({ hit, onOpen }: { hit: SearchHit; onOpen: () => void }) {
   const styles = useStyles(createStyles);
@@ -100,12 +100,12 @@ export default function Search() {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
-    input: { margin: 12, borderWidth: 1, borderColor: p.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
+    input: { margin: 12, borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
     list: { flex: 1, minHeight: 0 },
     center: { alignItems: 'center', marginTop: 40, gap: 12 },
     hint: { textAlign: 'center', marginTop: 40, paddingHorizontal: 24, fontSize: 16, color: p.muted },
     error: { color: p.danger, textAlign: 'center', paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
-    retry: { borderWidth: 1, borderColor: p.accentText, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
+    retry: { borderWidth: 1, borderColor: p.accentText, borderRadius: radius.field, paddingHorizontal: 16, paddingVertical: 10 },
     retryText: { color: p.accentText, fontSize: 16, fontWeight: '600' },
     more: { marginVertical: 16 },
     row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },

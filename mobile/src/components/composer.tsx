@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MAX_ATTACHMENTS, type Attachment } from '@/lib/attachments';
-import { useStyles, useTheme, type Palette } from '@/lib/theme';
+import { radius, useStyles, useTheme, type Palette } from '@/lib/theme';
 
 type Props = {
   running: boolean;
@@ -114,15 +114,15 @@ const createStyles = (p: Palette) =>
   StyleSheet.create({
     wrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: p.border },
     chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingTop: 8 },
-    chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '60%', backgroundColor: p.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
+    chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '60%', backgroundColor: p.surface, borderRadius: radius.card, paddingHorizontal: 10, paddingVertical: 4 },
     chipText: { fontSize: 13, color: p.text, flexShrink: 1 },
     mentions: { gap: 6, paddingHorizontal: 8, paddingTop: 8 },
     chipRemove: { fontSize: 13, color: p.muted },
     bar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 8 },
     attach: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
     attachText: { fontSize: 28, color: p.accentText, lineHeight: 30 },
-    input: { flex: 1, maxHeight: 140, borderWidth: 1, borderColor: p.inputBorder, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, fontSize: 16, color: p.text },
-    button: { backgroundColor: p.accent, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10 },
+    input: { flex: 1, maxHeight: 140, borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 14, paddingVertical: 8, fontSize: 16, color: p.text },
+    button: { backgroundColor: p.accent, borderRadius: radius.field, paddingHorizontal: 16, paddingVertical: 10 },
     stop: { backgroundColor: p.dangerFill },
     buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
     disabled: { opacity: 0.5 },

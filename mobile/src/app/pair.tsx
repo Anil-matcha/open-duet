@@ -7,7 +7,7 @@ import { ALLOW_HTTP, useAuth } from '@/lib/auth-context';
 import { describePairingError, PairingError } from '@/lib/pairing-api';
 import { formatPairingCode, normalizePairingCode } from '@/lib/pairing-link';
 import { describeServerUrlProblem, normalizeServerUrl, serverLabel } from '@/lib/server-url';
-import { useStyles, useTheme, type Palette } from '@/lib/theme';
+import { radius, useStyles, useTheme, type Palette } from '@/lib/theme';
 
 export default function Pair() {
   const styles = useStyles(createStyles);
@@ -114,14 +114,14 @@ const createStyles = (p: Palette) =>
     body: { fontSize: 15, marginBottom: 8, color: p.text },
     notice: { fontSize: 15, color: p.notice, marginBottom: 8 },
     label: { fontSize: 14, fontWeight: '600', marginTop: 12, color: p.text },
-    input: { borderWidth: 1, borderColor: p.inputBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
+    input: { borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
     code: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 2 },
     target: { fontSize: 14, color: p.text },
     bold: { fontWeight: '700' },
     problem: { fontSize: 14, color: p.danger },
-    primary: { marginTop: 16, backgroundColor: p.accent, borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+    primary: { marginTop: 16, backgroundColor: p.accent, borderRadius: radius.field, paddingVertical: 14, alignItems: 'center' },
     primaryText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
-    secondary: { borderWidth: 1, borderColor: p.accentText, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+    secondary: { borderWidth: 1, borderColor: p.accentText, borderRadius: radius.field, paddingVertical: 12, alignItems: 'center' },
     secondaryText: { color: p.accentText, fontSize: 16, fontWeight: '600' },
     disabled: { opacity: 0.5 },
   });

@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 
 import { approvalFields, previewValue } from '@/lib/approval-text';
 import type { TranscriptItem } from '@/lib/transcript';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
@@ -83,7 +83,7 @@ export function ApprovalCard({ item, waiting, agentName, onAnswer }: Props) {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
-    card: { margin: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, maxHeight: '45%', flexShrink: 1, minHeight: 0 },
+    card: { margin: 8, padding: 12, borderRadius: radius.card, borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, maxHeight: '45%', flexShrink: 1, minHeight: 0 },
     details: { flexShrink: 1, minHeight: 0 },
     title: { fontSize: 15, fontWeight: '700', color: p.text },
     mono: { fontFamily: MONO },
@@ -94,7 +94,7 @@ const createStyles = (p: Palette) =>
     fieldValue: { fontSize: 14, color: p.text, fontFamily: MONO },
     link: { fontSize: 13, color: p.accentText, paddingVertical: 4 },
     buttons: { flexDirection: 'row', gap: 10, marginTop: 12 },
-    button: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+    button: { flex: 1, borderRadius: radius.field, paddingVertical: 12, alignItems: 'center' },
     allow: { backgroundColor: p.accent },
     deny: { backgroundColor: p.background, borderWidth: 1, borderColor: p.danger },
     buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },

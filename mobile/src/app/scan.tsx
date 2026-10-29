@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { parsePairingLink } from '@/lib/pairing-link';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 export default function Scan() {
   const styles = useStyles(createStyles);
@@ -55,7 +55,7 @@ const createStyles = (p: Palette) =>
     fill: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
     text: { fontSize: 16, textAlign: 'center', color: p.text },
-    button: { backgroundColor: p.accent, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 20 },
+    button: { backgroundColor: p.accent, borderRadius: radius.field, paddingVertical: 12, paddingHorizontal: 20 },
     buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
     link: { color: p.accentText, fontSize: 16 },
     // Over the camera picture, so it does not follow the look.

@@ -3,7 +3,7 @@ import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-n
 import { Markdown } from '@/components/markdown';
 import type { Attachment } from '@/lib/attachments';
 import type { TranscriptItem } from '@/lib/transcript';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 export type Row = TranscriptItem | { kind: 'typing'; key: string; text: string };
 
@@ -94,16 +94,16 @@ export function TranscriptRow({ row, attachmentSource }: Props) {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
-    bubble: { maxWidth: '88%', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
+    bubble: { maxWidth: '88%', borderRadius: radius.card, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
     user: { alignSelf: 'flex-end', backgroundColor: p.accent },
     assistant: { alignSelf: 'flex-start', backgroundColor: p.surface },
     userText: { color: p.onAccent, fontSize: 16 },
     assistantText: { color: p.text, fontSize: 16 },
     files: { gap: 6, marginBottom: 6 },
-    thumb: { width: 180, height: 180, borderRadius: 10, backgroundColor: '#ffffff33' },
-    fileChip: { color: p.onAccent, fontSize: 13, backgroundColor: '#ffffff33', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
+    thumb: { width: 180, height: 180, borderRadius: radius.field, backgroundColor: '#ffffff33' },
+    fileChip: { color: p.onAccent, fontSize: 13, backgroundColor: '#ffffff33', borderRadius: radius.field, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
     muted: { color: p.muted, fontSize: 12, marginTop: 4 },
     line: { color: p.muted, fontSize: 13, marginVertical: 3, paddingHorizontal: 4 },
-    approval: { alignSelf: 'stretch', borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, borderRadius: 10, padding: 10, marginVertical: 6 },
+    approval: { alignSelf: 'stretch', borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, borderRadius: radius.field, padding: 10, marginVertical: 6 },
     approvalTitle: { color: p.warnText, fontSize: 13, fontWeight: '700', marginBottom: 2 },
   });

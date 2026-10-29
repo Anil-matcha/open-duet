@@ -77,6 +77,13 @@ export const dark: Palette = {
   quoteBar: '#9595a0',
 };
 
+/**
+ * Corner radii, in points. `field` (inputs, buttons, chips) and `card` (bubbles, cards, blocks) are the web's
+ * `--radius-field` and `--radius-card`, 0.625rem and 0.875rem at 16 points to the rem; `theme-drift.test.ts`
+ * checks them. `round` makes a circle of any small square.
+ */
+export const radius = { field: 10, card: 14, round: 999 } as const;
+
 export function paletteFor(scheme: string | null | undefined): Palette {
   return scheme === 'dark' ? dark : light;
 }

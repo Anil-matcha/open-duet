@@ -4,7 +4,7 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Tex
 
 import { describeApiError } from '@/lib/api';
 import { roomBusy, workingNames, type Room } from '@/lib/rooms';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 import { useApi } from '@/lib/use-api';
 
 export default function Rooms() {
@@ -85,6 +85,6 @@ const createStyles = (p: Palette) =>
     line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     name: { fontSize: 16, color: p.text, flexShrink: 1 },
     unreadName: { fontWeight: '700' },
-    dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: p.accent },
+    dot: { width: 9, height: 9, borderRadius: radius.round, backgroundColor: p.accent },
     meta: { fontSize: 13, color: p.muted, marginTop: 2 },
   });

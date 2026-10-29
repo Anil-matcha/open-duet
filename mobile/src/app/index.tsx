@@ -6,7 +6,7 @@ import { agentName, type Agent } from '@/lib/agents';
 import { describeApiError, type Thread } from '@/lib/api';
 import { relativeTime } from '@/lib/time';
 import { useApi } from '@/lib/use-api';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 export default function Conversations() {
   const styles = useStyles(createStyles);
@@ -105,10 +105,10 @@ const createStyles = (p: Palette) =>
   StyleSheet.create({
     flex: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    new: { margin: 12, backgroundColor: p.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+    new: { margin: 12, backgroundColor: p.accent, borderRadius: radius.field, paddingVertical: 14, alignItems: 'center' },
     newText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
     disabled: { opacity: 0.5 },
-    search: { marginHorizontal: 12, marginBottom: 4, borderWidth: 1, borderColor: p.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12 },
+    search: { marginHorizontal: 12, marginBottom: 4, borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 12, paddingVertical: 12 },
     searchText: { color: p.muted, fontSize: 16 },
     error: { color: p.danger, paddingHorizontal: 12, paddingBottom: 8, fontSize: 14 },
     empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: p.muted },

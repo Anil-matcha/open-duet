@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Markdown } from '@/components/markdown';
 import type { RoomItem } from '@/lib/rooms';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 // Yours on the right; each agent's on the left under its name; roster changes and the like as a muted line.
 export function RoomMessage({ item }: { item: RoomItem }) {
@@ -27,7 +27,7 @@ export function RoomMessage({ item }: { item: RoomItem }) {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
-    bubble: { maxWidth: '88%', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
+    bubble: { maxWidth: '88%', borderRadius: radius.card, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
     mine: { alignSelf: 'flex-end', backgroundColor: p.accent },
     theirs: { alignSelf: 'flex-start', backgroundColor: p.surface },
     mineText: { color: p.onAccent, fontSize: 16 },

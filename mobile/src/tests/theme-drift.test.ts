@@ -1,4 +1,4 @@
-import { dark, light, type Palette } from '@/lib/theme';
+import { dark, light, radius, type Palette } from '@/lib/theme';
 
 // `fs` and `path` run under Jest, but this TypeScript project has no Node types (only Jest's): describe what is used.
 declare const __dirname: string;
@@ -55,5 +55,19 @@ describe.each([
 
   it('names where every color comes from, except the one that is the phone\'s own', () => {
     expect(Object.keys(palette).sort()).toEqual([...Object.keys(FROM_WEB), 'warnBackground'].sort());
+  });
+});
+
+describe('the corner radii against the web tokens', () => {
+  // The web writes them in rem; a rem is 16 points.
+  const points = (name: string) => {
+    const match = new RegExp(String.raw`--radius-${name}\s*:\s*([\d.]+)rem`).exec(css);
+    if (!match) throw new Error(`--radius-${name} is not declared in rem in globals.css`);
+    return Number(match[1]) * 16;
+  };
+
+  it('are the web field and card radii', () => {
+    expect(radius.field).toBe(points('field'));
+    expect(radius.card).toBe(points('card'));
   });
 });
