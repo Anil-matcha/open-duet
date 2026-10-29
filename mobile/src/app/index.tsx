@@ -67,6 +67,9 @@ export default function Conversations() {
       <Pressable accessibilityRole="button" accessibilityLabel="New conversation" style={[styles.new, creating && styles.disabled]} disabled={creating} onPress={create}>
         {creating ? <ActivityIndicator color={styles.newText.color} /> : <Text style={styles.newText}>New conversation</Text>}
       </Pressable>
+      <Pressable accessibilityRole="search" accessibilityLabel="Search conversations" style={styles.search} onPress={() => router.push('/search')}>
+        <Text style={styles.searchText}>Search conversations</Text>
+      </Pressable>
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}
@@ -105,6 +108,8 @@ const createStyles = (p: Palette) =>
     new: { margin: 12, backgroundColor: p.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
     newText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
     disabled: { opacity: 0.5 },
+    search: { marginHorizontal: 12, marginBottom: 4, borderWidth: 1, borderColor: p.inputBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12 },
+    searchText: { color: p.muted, fontSize: 16 },
     error: { color: p.danger, paddingHorizontal: 12, paddingBottom: 8, fontSize: 14 },
     empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: p.muted },
     row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },

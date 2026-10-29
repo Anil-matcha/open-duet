@@ -26,6 +26,14 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   Markdown (headings, lists, tables, bold, italic, code, quotes, links). A wide table
   scrolls sideways so no column is cut off. There is no HTML, and only `http` and
   `https` links can be tapped; they open in your browser.
+- **Search.** The **Search conversations** box on the list searches the titles
+  and the messages of your conversations (what you wrote and what the agent
+  answered). Every word you type must appear in one title or message; it starts
+  after two letters and a short pause. Results are marked where the words match,
+  are loaded a page at a time as you scroll (oldest conversations included, not
+  only the newest 100), and a tap opens the conversation at the matching message,
+  or the room for a room message. It uses the server's `GET /api/v1/search`
+  (chat scope), which pages with `offset` since this version of the server.
 - **Attachments.** The **+** button next to the message box attaches photos
   (PNG, JPEG, GIF, WebP up to 10 MB) and text files (up to 1 MB, the types in
   [everyday features](EVERYDAY.md)), up to 8 per message. Files upload as you pick
@@ -136,6 +144,7 @@ from a short folder path, or build on EAS, WSL, Linux or macOS. See `mobile/AGEN
 | Pairing, conversations, chat, approvals | Automated: Jest tests, lint, typecheck and a bundle export for both platforms, on Windows. The app's networking code was also run against a local backend (pairing, the live stream, a dropped connection resuming without a gap or repeat, approvals answered, errors explained). |
 | The app on a screen | An Android emulator in Expo Go, against a local backend: manual chat-only pairing, staying paired after a restart, creating and listing conversations, sending a message and getting the answer, reopening history, Settings, sign-out revoking the server session, Allow and Deny on approvals that were created directly in the database, and, with a real Claude turn, a Write tool call that waited for Allow and then created the file, and Stop on a running answer (the app showed "Stopped" and the server recorded it as cancelled). |
 | Markdown, attachments, dark theme, agent picker, rooms | Automated: Jest tests (including a 4.5:1 contrast check of every text and background pair in both looks), lint, typecheck and a bundle export. The app's networking code was run against a local backend: uploading a text file, a PNG, names with accents and quotes, an oversized file and an unsupported type, and reading an image back with the token; listing agents and starting a conversation from one; and, for rooms, the live stream of a room, posting, marking read, a pending request found on the right agent's thread and answered, and a chat-only device being refused when it tries to create a room. No agent was run for any of it. |
+| Tables and search | Automated: Jest tests, lint, typecheck and a bundle export; the server's paged search with its own tests on SQLite. On an Android emulator in Expo Go against a throwaway backend with seeded data (no agent run): a seven-column table with long cells scrolls sideways to every column, wraps, keeps right alignment and inline code, and shows the text after it, also at 1.5x system font size; search for a word in 91 hits loaded five pages (offsets 0 to 80, each once), marked the matches, closed the keyboard on drag, and a result in the middle of a 14-turn conversation opened at that message. Not checked: a standalone build, a physical phone, iOS, a server with thousands of conversations. In that same Expo Go session the message box was still hidden under the full Gboard keyboard (see the keyboard note below). |
 | QR scanning and HTTPS | The Android emulator in Expo Go: scanning the QR code from the web app filled in the server and code and waited for Connect; pairing worked over HTTPS with a valid certificate, and a server with an untrusted certificate was refused. |
 | CI | The `mobile` job (install, lint, typecheck, tests, bundle export) passed on GitHub Actions on Linux. |
 

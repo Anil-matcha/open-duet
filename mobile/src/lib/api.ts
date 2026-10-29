@@ -4,6 +4,7 @@
 import type { Agent } from './agents';
 import { buildMultipart, type Attachment } from './attachments';
 import type { ApprovalRow, Room } from './rooms';
+import { readSearchPage, SEARCH_PAGE_SIZE } from './search';
 
 export type Session = { server: string; token: string };
 
@@ -107,6 +108,9 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
   return {
     session,
     listThreads: () => request<Thread[]>('GET', '/threads?limit=100'),
+    // Titles and messages containing every word, newest first, a page at a time (`offset` is the page's start).
+    searchConversations: async (query: string, offset = 0, limit = SEARCH_PAGE_SIZE) =>
+      readSearchPage(await request<unknown>('GET', `/search?q=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`), query),
     // Engine and model are left out, so the server's own default (or the agent's) applies.
     createThread: (agentId?: number) => request<Thread>('POST', '/threads', agentId === undefined ? {} : { agent_id: agentId }),
     // Not archived ones, pinned first.

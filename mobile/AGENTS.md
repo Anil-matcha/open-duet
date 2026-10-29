@@ -35,7 +35,7 @@ All of these work on Windows, macOS and Linux. Building or running the iOS app n
 
 ## Rules for this package
 
-- Scope is fixed by the maintainer's design note: pair, threads, chat with stop, approvals, plus the features added one by one afterwards (Markdown, attachments, dark theme, agent picker, rooms). Do not add voice, push, settings editing or other features without a decision.
+- Scope is fixed by the maintainer's design note: pair, threads, chat with stop, approvals, plus the features added one by one afterwards (Markdown, attachments, dark theme, agent picker, rooms, conversation search). Do not add voice, push, settings editing or other features without a decision.
 - The app is a chat-scope client. It must reject a pairing session that has admin scope, and must not rely on hiding screens as authorization.
 - The bearer token goes only into the OS secure store, never into logs, URLs or plain storage.
 - Release builds talk to the server over HTTPS only. Plain HTTP works only in development builds (`__DEV__`), and `pairDevice` re-checks this before it sends a code. Any wider exception needs a maintainer decision and platform configuration.
