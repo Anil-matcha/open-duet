@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.schemas.routine import (
     NotificationResponse,
     RoutineCreateRequest,
+    RoutineAppActionResponse,
     RoutineImportRequest,
     RoutineResponse,
     RoutineRunResponse,
@@ -44,6 +45,37 @@ def _not_found() -> HTTPException:
 
 def _invalid(exc: service.InvalidRoutine) -> HTTPException:
     return _error(422, exc.code, str(exc))
+
+
+async def _validated_grants(db, owner_id, agent_id, grants):
+    """Only the person-facing editor can assign grants; imports/chat omit them."""
+    from app import composio_tools
+    from app.db.models import Agent
+    from app.services import composio_service
+    from app.services.composio_bridge import apps_for, make_client
+
+    if grants is None:
+        raise _error(422, "invalid_app_grant", "Use an empty list to switch app access off.")
+    if not grants:
+        return []
+    tools = [g.tool for g in grants]
+    if len(set(tools)) != len(tools):
+        raise _error(422, "invalid_app_grant", "Choose only one account per action.")
+    agent = await db.get(Agent, agent_id)
+    if agent is None or agent.owner_id != owner_id or agent.archived_at is not None:
+        raise _error(422, "invalid_app_grant", "Choose an available agent.")
+    scopes = apps_for(agent.connector_scopes)
+    try:
+        accounts = await composio_service.accounts(db, owner_id, make_client)
+    except composio_service.UserError as exc:
+        raise _error(exc.status, exc.code, exc.message) from None
+    for grant in grants:
+        tool = composio_tools.BY_NAME.get(grant.tool)
+        if tool is None or (tool.kind != "read" and grant.tool not in composio_tools.ROUTINE_WRITE_TOOLS) or not composio_tools.allows(scopes.get(tool.app), tool.kind):
+            raise _error(422, "invalid_app_grant", "The agent must have access to this action's app.")
+        if not any(a.id == grant.account_id and a.toolkit == tool.app and a.status == "ACTIVE" for a in accounts):
+            raise _error(422, "invalid_app_grant", "Select an active connected account for each action.")
+    return [g.model_dump() for g in grants]
 
 
 def _describe(routine, latest=None, now: datetime | None = None) -> RoutineResponse:
@@ -89,7 +121,11 @@ async def list_routines(sch: service.RoutineScheduler = Depends(service.get_sche
 async def create_routine(payload: RoutineCreateRequest, sch: service.RoutineScheduler = Depends(service.get_scheduler)):
     async with sch.session() as db:
         try:
-            routine = await service.create_routine(db, sch.owner_id, payload.model_dump())
+            grants = await _validated_grants(db, sch.owner_id, payload.agent_id, payload.connected_app_grants)
+            routine = await service.create_routine(db, sch.owner_id, payload.model_dump(), commit=False)
+            routine.connected_app_grants = grants
+            await db.commit()
+            await db.refresh(routine)
         except service.InvalidRoutine as exc:
             raise _invalid(exc) from None
         return _describe(routine)
@@ -142,9 +178,21 @@ async def update_routine(
 ):
     async with sch.session() as db:
         try:
+            grants = None
+            if "connected_app_grants" in payload.model_fields_set or payload.agent_id is not None:
+                existing = await service.get_routine(db, sch.owner_id, routine_id)
+                selected = payload.connected_app_grants
+                if "connected_app_grants" not in payload.model_fields_set:
+                    from app.schemas.routine import ConnectedAppGrant
+                    selected = [ConnectedAppGrant.model_validate(g) for g in existing.connected_app_grants]
+                grants = await _validated_grants(db, sch.owner_id, payload.agent_id or existing.agent_id, selected)
             routine = await service.update_routine(
-                db, sch.owner_id, routine_id, payload.model_dump(exclude_unset=True)
+                db, sch.owner_id, routine_id, payload.model_dump(exclude_unset=True), commit=False
             )
+            if grants is not None:
+                routine.connected_app_grants = grants
+            await db.commit()
+            await db.refresh(routine)
         except service.RoutineNotFound:
             raise _not_found() from None
         except service.InvalidRoutine as exc:
@@ -204,6 +252,28 @@ async def routine_runs(
         except service.RoutineNotFound:
             raise _not_found() from None
         return await service.list_runs(db, sch.owner_id, routine_id, limit=limit)
+
+
+@router.get("/routines/{routine_id}/runs/{run_id}/app-actions", response_model=list[RoutineAppActionResponse])
+async def routine_app_actions(
+    routine_id: int, run_id: int, sch: service.RoutineScheduler = Depends(service.get_scheduler)
+):
+    from sqlalchemy import select
+    from app.db.models import RoutineAppAction, RoutineRun
+
+    async with sch.session() as db:
+        try:
+            await service.get_routine(db, sch.owner_id, routine_id)
+        except service.RoutineNotFound:
+            raise _not_found() from None
+        run = await db.get(RoutineRun, run_id)
+        if run is None or run.routine_id != routine_id:
+            raise _error(404, "routine_run_not_found", "Routine run not found")
+        rows = await db.scalars(
+            select(RoutineAppAction).where(RoutineAppAction.run_id == run_id)
+            .order_by(RoutineAppAction.created_at.desc(), RoutineAppAction.id.desc()).limit(100)
+        )
+        return list(rows.all())
 
 
 @router.get("/routines/{routine_id}/export")

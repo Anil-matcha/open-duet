@@ -1,14 +1,30 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ScheduleKind = Literal["cron", "weekdays", "interval", "once", "manual"]
 ApprovalMode = Literal["ask", "accept_edits", "plan"]
 
 
+class ConnectedAppGrant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool: str
+    account_id: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_-]+$")
+
+    @field_validator("tool")
+    @classmethod
+    def routine_tool(cls, value):
+        from app.composio_tools import BY_NAME, ROUTINE_WRITE_TOOLS
+        tool = BY_NAME.get(value)
+        if tool is None or (tool.kind != "read" and value not in ROUTINE_WRITE_TOOLS):
+            raise ValueError("Select a read action or a supported routine write action")
+        return value
+
+
 class RoutineCreateRequest(BaseModel):
     agent_id: int
+    connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list, max_length=50)
     name: str = Field(min_length=1, max_length=80)
     prompt: str = Field(min_length=1, max_length=20_000)
     schedule_kind: ScheduleKind = "manual"
@@ -24,6 +40,7 @@ class RoutineCreateRequest(BaseModel):
 
 
 class RoutineUpdateRequest(BaseModel):
+    connected_app_grants: list[ConnectedAppGrant] | None = Field(default=None, max_length=50)
     agent_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=80)
     prompt: str | None = Field(default=None, min_length=1, max_length=20_000)
@@ -49,11 +66,23 @@ class SchedulePreviewResponse(BaseModel):
     next_dates: list[datetime]
 
 
+class RoutineAppActionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    tool: str
+    account_id: str
+    status: str
+    code: str | None
+    result: dict | None
+    created_at: datetime
+
+
 class RoutineRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     routine_id: int
+    connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list)
     trigger: str
     state: str
     scheduled_for: datetime | None
@@ -75,6 +104,7 @@ class RoutineResponse(BaseModel):
 
     id: int
     agent_id: int
+    connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list)
     name: str
     prompt: str
     schedule_kind: str

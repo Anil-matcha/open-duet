@@ -62,6 +62,7 @@ class Routine(Base):
     retry_delay_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"
     )
+    connected_app_grants: Mapped[list] = mapped_column(JSONValue, nullable=False, default=list, server_default="[]")
     # SHA-256 hex of the webhook secret; null means the webhook is off. The
     # secret itself is never stored.
     webhook_secret_hash: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -102,6 +103,7 @@ class RoutineRun(Base):
     routine_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("routine.id", name="fk_routine_run_routine_id_routine"), nullable=False
     )
+    connected_app_grants: Mapped[list] = mapped_column(JSONValue, nullable=False, default=list, server_default="[]")
     trigger: Mapped[str] = mapped_column(String, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False, default="queued", server_default="queued")
     scheduled_for: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
@@ -125,6 +127,28 @@ class RoutineRun(Base):
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime, server_default=func.now(), nullable=False
     )
+
+
+class RoutineAppAction(Base):
+    """Durable connector decision receipt, and at-most-once write reservation."""
+
+    __tablename__ = "routine_app_action"
+    __table_args__ = (
+        Index("uq_routine_app_action_request", "run_id", "account_id", "request_key", unique=True),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(always=True), primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("routine_run.id", name="fk_routine_app_action_run_id", ondelete="CASCADE"), nullable=False
+    )
+    tool: Mapped[str] = mapped_column(String, nullable=False)
+    account_id: Mapped[str] = mapped_column(String, nullable=False)
+    request_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    code: Mapped[str | None] = mapped_column(String, nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSONValue, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), nullable=False)
 
 
 class WebhookReceipt(Base):

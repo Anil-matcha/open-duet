@@ -185,6 +185,7 @@ class TurnContext:
     # The MCP server giving the turn read access to connected apps (composio_bridge.py)
     # and the apps it was started for. Both None unless the agent was allowed some.
     composio_launch: object | None = None
+    composio_exact_tools: list[str] | None = None
     composio_apps: dict | None = None  # {app: "read" | "write"}
     # Generic connected-app actions (composio_generic.py): whether the call being decided has a first use on
     # record, and the calls decided without a card (the bridge checks those again before it runs them).

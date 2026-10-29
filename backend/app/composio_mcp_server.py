@@ -20,9 +20,11 @@ from app import composio_tools
 
 
 class Server:
-    def __init__(self, mailbox, levels):
+    def __init__(self, mailbox, levels, exact_tools=None):
         self.mailbox = Path(mailbox)
         self.tools = composio_tools.mcp_tools(levels)
+        if exact_tools is not None:
+            self.tools = [t for t in self.tools if t["name"] in exact_tools]
         self.names = {tool["name"] for tool in self.tools}
 
     def call(self, name, arguments):
@@ -68,9 +70,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mailbox", required=True)
     parser.add_argument("--apps", default="")
+    parser.add_argument("--exact-tools", default=None)
     arguments = parser.parse_args()
     levels = dict(pair.split("=", 1) for pair in arguments.apps.split(",") if "=" in pair)
-    server = Server(arguments.mailbox, levels)
+    server = Server(arguments.mailbox, levels, arguments.exact_tools.split(",") if arguments.exact_tools is not None else None)
     for line in sys.stdin:
         try:
             if len(line) > 100000:

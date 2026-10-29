@@ -172,6 +172,9 @@ class ActiveRun:
     settings_snapshot: dict = field(default_factory=dict)
     # The named agent the turn runs as, if any (its computer is attached at start).
     agent_id: int | None = None
+    routine_run_id: int | None = None
+    routine_id: int | None = None
+    routine_grants: dict[str, str] | None = None
     # Seconds an approval waits before it expires (is denied); None means the
     # LOCAL_APPROVAL_TIMEOUT_SECONDS setting. Routines set their own.
     approval_timeout: float | None = None
@@ -663,6 +666,7 @@ class ThreadRuntime:
         attachment_ids: list[str] | None = None,
         skills: list[str] | None = None,
         team_origin: str = "person",
+        routine_run_id: int | None = None,
         configuration_allowed: bool = True,
         internal: bool = False,
     ) -> store.Turn:
@@ -862,6 +866,9 @@ class ThreadRuntime:
                 ctx.prompt = intro + '\n\n' + note + ctx.prompt
         if thread.job_id is not None and not internal:
             await self.team_jobs.on_person_message(thread, turn, prompt_text)
+        run.routine_run_id = routine_run_id
+        run.routine_id = None
+        run.routine_grants = None
         run.settings_snapshot = snapshot
         run.recorder = TurnRecorder(self, run)
         run.gate = ThreadApprovalGate(self, run)
@@ -885,8 +892,30 @@ class ThreadRuntime:
                 agent = await db.get(Agent, run.agent_id)
                 turn = await db.get(Turn, run.turn_id)
                 apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else {}
-                if not apps or (turn is not None and turn.origin not in (None, "person")):
+                if not apps:
                     return {}
+                if turn is not None and turn.origin not in (None, "person"):
+                    from app.db.models.routine import Routine, RoutineRun
+                    from app.core.config import settings
+                    if not settings.ROUTINE_CONNECTED_APPS_ENABLED or turn.origin != "routine":
+                        return {}
+                    rr = await db.get(RoutineRun, run.routine_run_id) if run.routine_run_id else None
+                    routine = await db.get(Routine, rr.routine_id) if rr else None
+                    if (not routine or routine.owner_id != self.owner_id or routine.agent_id != run.agent_id
+                            or rr.trigger not in ("schedule", "manual") or rr.thread_id != run.thread_id):
+                        return {}
+                    from app import composio_tools
+                    run.routine_id = routine.id
+                    run.routine_grants = {
+                        g["tool"]: g["account_id"] for g in rr.connected_app_grants
+                        if g.get("tool") in composio_tools.BY_NAME
+                        and (composio_tools.BY_NAME[g["tool"]].kind == "read" or g["tool"] in composio_tools.ROUTINE_WRITE_TOOLS)
+                        and composio_tools.allows(apps.get(composio_tools.BY_NAME[g["tool"]].app), composio_tools.BY_NAME[g["tool"]].kind)
+                    }
+                    apps = {app: ("write" if any(composio_tools.BY_NAME[t].app == app and composio_tools.BY_NAME[t].kind == "write" for t in run.routine_grants) else "read")
+                            for app in {composio_tools.BY_NAME[t].app for t in run.routine_grants}}
+                    if not apps:
+                        return {}
                 return apps if await composio_service.configured(db, self.owner_id) else {}
         except Exception:  # noqa: BLE001
             logger.exception("could not work out connected apps; the turn goes on without them", thread_id=run.thread_id)
@@ -1086,6 +1115,7 @@ class ThreadRuntime:
                 if composio_apps:
                     composio_bridge = ComposioBridge(self, run, composio_apps)
                     run.ctx.composio_launch, run.ctx.composio_apps = composio_bridge.launch, composio_apps
+                    run.ctx.composio_exact_tools = list(run.routine_grants) if run.routine_grants is not None else None
                     composio_bridge.start()
                 # Watched from here: starting a computer can take a while, and
                 # is not the engine doing nothing.

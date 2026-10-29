@@ -123,3 +123,17 @@ test('the app catalog is asked for with only the filters that are set, encoded',
   assert.deepEqual(Object.fromEntries(urls[1].searchParams), { search: 'sales & crm', category: 'Developer Tools', cursor: 'o48', limit: '24' });
   assert.equal(urls[2].search, '');
 });
+
+test('routine app actions use the selected routine and run endpoint', async () => {
+  let requested = '';
+  globalThis.fetch = async (url) => {
+    requested = String(url);
+    return new Response(JSON.stringify([{ id: 4, tool: 'gmail_send_email', account_id: 'acct-1', status: 'completed', code: null, result: { message_id: 'm-1' }, created_at: 'now' }]), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  const actions = await api.listRoutineRunAppActions(12, 34);
+  assert.ok(requested.endsWith('/routines/12/runs/34/app-actions'));
+  assert.equal(actions[0].tool, 'gmail_send_email');
+  assert.equal(actions[0].account_id, 'acct-1');
+});

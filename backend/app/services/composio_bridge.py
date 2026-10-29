@@ -62,11 +62,13 @@ class ComposioBridge:
     @property
     def launch(self):
         apps = ",".join(f"{app}={level}" for app, level in sorted(self.apps.items()))
+        grants = getattr(self.run, "routine_grants", None)
+        exact = ["--exact-tools", ",".join(sorted(grants))] if grants is not None else []
         if getattr(sys, "frozen", False):
-            return SimpleNamespace(command=sys.executable, args=["--composio-mcp", "--mailbox", str(self.folder), "--apps", apps], env={})
+            return SimpleNamespace(command=sys.executable, args=["--composio-mcp", "--mailbox", str(self.folder), "--apps", apps] + exact, env={})
         root = str(Path(__file__).resolve().parents[2])
         return SimpleNamespace(
-            command=sys.executable, args=["-m", "app.composio_mcp_server", "--mailbox", str(self.folder), "--apps", apps],
+            command=sys.executable, args=["-m", "app.composio_mcp_server", "--mailbox", str(self.folder), "--apps", apps] + exact,
             env={"PYTHONPATH": root},
         )
 
@@ -121,7 +123,7 @@ class ComposioBridge:
 
         async with self.runtime.session() as db:
             agent = await db.get(Agent, self.run.agent_id)
-        current = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None else {}
+        current = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None and agent.owner_id == self.runtime.owner_id else {}
         return {app: ("write" if level == "write" and self.apps.get(app) == "write" else "read")
                 for app, level in current.items() if app in self.apps}
 
@@ -148,6 +150,26 @@ class ComposioBridge:
             return await composio_actions.run(db, rt.owner_id, self.client_factory, agent_id=self.run.agent_id, auto_called=auto, request=request)
 
     async def execute(self, name: str, args: dict) -> dict:
+        result = await self._execute_checked(name, args)
+        # Provider results already have reservation receipts. Keep pre-dispatch
+        # refusals too, without retaining untrusted input arguments.
+        if (getattr(self.run, "routine_grants", None) is not None
+                and result.get("code") in {"not_allowed", "not_approved", "bad_arguments", "stopped", "already_attempted"}):
+            from app.db.models.routine import RoutineAppAction, RoutineRun, Routine
+            from app.db.transactions import begin_write
+            async with self.runtime.session() as db:
+                await begin_write(db)
+                run_id = getattr(self.run, "routine_run_id", None)
+                rr = await db.get(RoutineRun, run_id) if run_id else None
+                routine = await db.get(Routine, rr.routine_id) if rr else None
+                if routine is not None and routine.owner_id == self.runtime.owner_id:
+                    db.add(RoutineAppAction(run_id=rr.id, tool=name[:200],
+                           account_id=self.run.routine_grants.get(name, ""),
+                           status="refused", code=result["code"]))
+                    await db.commit()
+        return result
+
+    async def _execute_checked(self, name: str, args: dict) -> dict:
         from app.team.bridge import consume_allowed_approval
 
         run, rt = self.run, self.runtime
@@ -173,4 +195,65 @@ class ComposioBridge:
         except composio_tools.BadArguments as exc:
             return {"error": str(exc), "code": "bad_arguments"}
         async with rt.session() as db:
+            grants = getattr(run, "routine_grants", None)
+            if grants is not None:
+                return await self.execute_routine(db, name, tool, sent, account)
             return await composio_service.run_tool(db, rt.owner_id, self.client_factory, tool, sent, account)
+
+    async def execute_routine(self, db, name, tool, sent, account):
+        """A grant is checked again at dispatch; reserve writes before any I/O.
+
+        A process exit or cancellation leaves a reserved receipt. It is deliberately
+        never reclaimed: an external write may have completed without an answer.
+        """
+        import hashlib
+        from sqlalchemy.exc import IntegrityError
+        from app.core.config import settings
+        from app.db.models.routine import Routine, RoutineRun, RoutineAppAction
+        from app.db.transactions import begin_write
+
+        run, rt = self.run, self.runtime
+        grants = run.routine_grants
+        bound = grants.get(name)
+        routine = await db.get(Routine, run.routine_id)
+        rr = await db.get(RoutineRun, getattr(run, "routine_run_id", None))
+        current = {g["tool"]: g["account_id"] for g in routine.connected_app_grants} if routine else {}
+        write = tool.kind == "write"
+        permitted = (settings.ROUTINE_CONNECTED_APPS_ENABLED and bound
+                     and current.get(name) == bound and routine.agent_id == run.agent_id
+                     and routine.owner_id == rt.owner_id and run.ctx.computer is None
+                     and rr is not None and rr.routine_id == routine.id
+                     and rr.trigger in ("schedule", "manual") and rr.thread_id == run.thread_id
+                     and rr.state in ("running", "needs_input")
+                     and (not write or (name in composio_tools.ROUTINE_WRITE_TOOLS and run.ctx.approval_mode != "plan")))
+        if not permitted or account is not None:
+            return {"error": "Routine access was not granted, has been revoked, or the run is ineligible.", "code": "not_allowed"}
+        request_key = hashlib.sha256(json.dumps({"tool": name, "arguments": sent}, sort_keys=True, separators=(",", ":")).encode()).hexdigest() if write else None
+        receipt = RoutineAppAction(run_id=rr.id, tool=name, account_id=bound,
+                                   request_key=request_key, status="reserved")
+        await begin_write(db)
+        db.add(receipt)
+        try:
+            await db.commit()
+            await db.refresh(receipt)
+        except IntegrityError:
+            await db.rollback()
+            return {"error": "This exact write was already attempted in this run. Check the external app and action history; do not repeat it.", "code": "already_attempted"}
+        # Save the primary key before provider helpers commit or expire objects.
+        receipt_id = receipt.id
+        result = await composio_service.run_tool(db, rt.owner_id, self.client_factory, tool, sent, None, account_id=bound)
+        code = result.get("code")
+        if code == "outcome_unknown":
+            status = "outcome_unknown"
+        elif result.get("error"):
+            status = "failed"
+        else:
+            status = "completed"
+        await begin_write(db)
+        receipt = await db.get(RoutineAppAction, receipt_id)
+        receipt.status, receipt.code = status, code
+        # Persist bounded projected write results (IDs/commit references), never
+        # the input email body, file content or full read responses.
+        receipt.result = result if write and not result.get("error") else None
+        await db.commit()
+        return result

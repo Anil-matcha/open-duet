@@ -8,11 +8,14 @@ import {
   ApiError,
   type Agent,
   type ApprovalMode,
+  type ConnectedAppGrant,
   type Routine,
   type RoutineInput,
+  type RoutineAppAction,
   type RoutineRun,
   type SchedulePreview,
 } from "@/lib/api";
+import type { ComposioAccount } from "@/lib/connected-apps";
 import { activeAgents, APPROVAL_MODES } from "@/lib/agents";
 import {
   curlExample,
@@ -58,13 +61,37 @@ type Draft = {
   catchUp: string;
   retryLimit: string;
   retryDelay: string;
+  connectedAppGrants: ConnectedAppGrant[];
 };
+
+// These exact tool identifiers mirror the routine-safe read inventory and the
+// three separately authorized writes supported by the backend.
+const ROUTINE_READ_TOOLS = [
+  { app: "github", label: "GitHub", tools: [
+    ["github_get_authenticated_user", "View account profile"], ["github_list_my_repositories", "List repositories"],
+    ["github_list_issues", "List repository issues"], ["github_get_issue", "Read an issue"],
+    ["github_list_issue_comments", "Read issue comments"], ["github_list_pull_requests", "List pull requests"],
+    ["github_get_pull_request", "Read a pull request"], ["github_list_pull_request_files", "List pull request files"],
+    ["github_list_commits", "List commits"], ["github_list_branches", "List branches"],
+    ["github_get_file", "Read repository files"], ["github_search_issues", "Search issues and pull requests"],
+    ["github_list_workflow_runs", "List workflow runs"],
+  ], writes: [
+    ["github_create_branch", "Create a campaign/ branch"], ["github_commit_file", "Commit one file to a campaign/ branch"],
+  ] },
+  { app: "gmail", label: "Gmail", tools: [
+    ["gmail_fetch_emails", "Search messages"], ["gmail_fetch_message", "Read a message"],
+    ["gmail_fetch_thread", "Read a thread"], ["gmail_get_profile", "View account profile"],
+  ], writes: [["gmail_send_email", "Send one plain-text email to one recipient"]] },
+  { app: "googlecalendar", label: "Google Calendar", tools: [
+    ["googlecalendar_list_calendars", "List calendars"], ["googlecalendar_list_events", "List events"],
+  ], writes: [] },
+] as const;
 
 function newDraft(agents: Agent[]): Draft {
   return {
     id: null, name: "", agentId: agents[0]?.id ?? null, prompt: "", schedule: emptySchedule(),
     runLimit: "30", approvalMode: "ask", approvalWait: "30", catchUp: "60",
-    retryLimit: "0", retryDelay: "5",
+    retryLimit: "0", retryDelay: "5", connectedAppGrants: [],
   };
 }
 
@@ -75,6 +102,7 @@ function draftOf(routine: Routine): Draft {
     approvalMode: routine.approval_mode, approvalWait: String(routine.approval_timeout_minutes),
     catchUp: String(routine.catch_up_minutes), retryLimit: String(routine.retry_limit),
     retryDelay: String(routine.retry_delay_minutes),
+    connectedAppGrants: routine.connected_app_grants ?? [],
   };
 }
 
@@ -92,6 +120,7 @@ function inputOf(draft: Draft): RoutineInput {
     catch_up_minutes: Number(draft.catchUp),
     retry_limit: Number(draft.retryLimit),
     retry_delay_minutes: Number(draft.retryDelay),
+    connected_app_grants: draft.connectedAppGrants,
   };
 }
 
@@ -198,6 +227,7 @@ function ScheduleFields({ value, onChange, onPreviewResult }: {
 function RunHistory({ routine, onClose, onOpen }: { routine: Routine; onClose: () => void; onOpen: () => void }) {
   const [runs, setRuns] = useState<RoutineRun[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
     const load = () => api.listRoutineRuns(routine.id).then((r) => live && setRuns(r)).catch((err) => live && setError(errorText(err, "Could not load runs.")));
@@ -220,10 +250,14 @@ function RunHistory({ routine, onClose, onOpen }: { routine: Routine; onClose: (
                 {run.thread_id !== null && (
                   <Link href={`/chat?thread=${run.thread_id}`} onClick={onOpen} className="ml-auto text-xs underline">Open conversation</Link>
                 )}
+                <button type="button" className="ml-auto text-xs underline" aria-expanded={selectedRunId === run.id} onClick={() => setSelectedRunId(selectedRunId === run.id ? null : run.id)}>
+                  {selectedRunId === run.id ? "Hide app actions" : "App actions"}
+                </button>
               </div>
               {(run.error || run.result) && (
                 <p className={`mt-1 line-clamp-3 whitespace-pre-wrap text-xs ${run.error ? "text-danger" : "text-muted"}`}>{run.error || run.result}</p>
               )}
+              {selectedRunId === run.id && <RunAppActions routineId={routine.id} runId={run.id} />}
             </li>
           ))}
         </ul>
@@ -232,8 +266,31 @@ function RunHistory({ routine, onClose, onOpen }: { routine: Routine; onClose: (
   );
 }
 
+function RunAppActions({ routineId, runId }: { routineId: number; runId: number }) {
+  const [actions, setActions] = useState<RoutineAppAction[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.listRoutineRunAppActions(routineId, runId)
+      .then((items) => { if (live) setActions(items); })
+      .catch((err) => { if (live) setError(errorText(err, "Could not load app actions.")); });
+    return () => { live = false; };
+  }, [routineId, runId]);
+  return <div className="mt-2 space-y-2 border-t border-line pt-2">
+    <p className="text-xs text-muted">External app actions cannot be undone with file Undo. If an action outcome is uncertain, check the connected account before running it again.</p>
+    {error ? <p role="alert" className="text-xs text-danger">{error}</p> : actions === null ? <p role="status" className="text-xs text-muted">Loading app actions…</p> : actions.length === 0 ? <p className="text-xs text-muted">No recorded app actions.</p> : (
+      <ul className="space-y-1">{actions.map((action) => <li key={action.id} className="rounded border border-line p-2 text-xs">
+        <p className="font-medium">{action.tool} · {action.status}</p>
+        <p className="text-muted">Connected account: {action.account_id}{action.code ? ` · ${action.code}` : ""}</p>
+        {action.result && <pre className="mt-1 whitespace-pre-wrap break-words">{JSON.stringify(action.result, null, 2)}</pre>}
+      </li>)}</ul>
+    )}
+  </div>;
+}
+
 export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: Agent[]; onClose: () => void; routineId?: number | null }) {
   const [routines, setRoutines] = useState<Routine[] | null>(null);
+  const [connectedAccounts, setConnectedAccounts] = useState<ComposioAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -256,9 +313,26 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
 
   useEffect(() => {
     load();
+    api.listComposioAccounts().then(setConnectedAccounts).catch(() => setConnectedAccounts([]));
     const timer = setInterval(load, REFRESH_MS);
     return () => clearInterval(timer);
   }, [load]);
+
+  const toggleRoutineGrant = (tool: string, accountId: string) => {
+    if (!draft) return;
+    const exists = draft.connectedAppGrants.some((grant) => grant.tool === tool);
+    setDraft({ ...draft, connectedAppGrants: exists
+      ? draft.connectedAppGrants.filter((grant) => grant.tool !== tool)
+      : [...draft.connectedAppGrants, { tool, account_id: accountId }] });
+  };
+
+  const setRoutineGrantAccount = (app: string, accountId: string) => {
+    if (!draft) return;
+    const group = ROUTINE_READ_TOOLS.find((candidate) => candidate.app === app);
+    const names = new Set<string>([...(group?.tools ?? []), ...(group?.writes ?? [])].map(([name]) => name));
+    setDraft({ ...draft, connectedAppGrants: draft.connectedAppGrants.map((grant) =>
+      names.has(grant.tool) ? { ...grant, account_id: accountId } : grant) });
+  };
 
   const act = async (work: () => Promise<unknown>, fallback: string) => {
     setBusy(true);
@@ -315,6 +389,48 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                 }}
                 onPreviewResult={reportPreviewResult}
               />
+              <section className="space-y-3 rounded-md border border-line p-3" aria-labelledby="routine-app-access-title">
+                <div>
+                  <h3 id="routine-app-access-title" className="text-sm font-medium">Connected app access</h3>
+                  <p className="mt-1 text-xs text-muted">Off by default. Choose exact read actions and the connected account each action uses. When routine app access is enabled on the server, these reads can run without an action-time approval. This does not expand the agent&apos;s own app access. Draft replies, other writes, webhooks, and routines with a computer are not available here.</p>
+                </div>
+                {connectedAccounts === null ? <p role="status" className="text-xs text-muted">Loading connected accounts…</p> : ROUTINE_READ_TOOLS.map((group) => {
+                  const available = connectedAccounts.filter((account) => account.toolkit === group.app && account.status === "ACTIVE");
+                  const allTools = [...group.tools, ...group.writes];
+                  const current = draft.connectedAppGrants.find((grant) => allTools.some(([tool]) => tool === grant.tool));
+                  const selectedAccount = (available.some((account) => account.id === current?.account_id)
+                    ? current?.account_id : (available[0]?.id ?? current?.account_id)) ?? "";
+                  return <fieldset key={group.app} className="space-y-2 border-t border-line pt-2">
+                    <legend className="text-xs font-medium">{group.label}</legend>
+                    <label className="block text-xs text-muted">Connected account
+                      <select aria-label={`${group.label} connected account`} value={selectedAccount} disabled={available.length === 0 || !draft.connectedAppGrants.some((grant) => allTools.some(([tool]) => tool === grant.tool))} onChange={(event) => setRoutineGrantAccount(group.app, event.target.value)} className={input}>
+                        {available.length === 0 ? <option value="">No connected account</option> : available.map((account) => <option key={account.id} value={account.id}>{account.alias ?? account.id}</option>)}
+                        {current && !available.some((account) => account.id === current.account_id) && <option value={current.account_id}>Unavailable account ({current.account_id})</option>}
+                      </select>
+                    </label>
+                    <div className="grid gap-1 sm:grid-cols-2">{group.tools.map(([tool, label]) => {
+                      const grant = draft.connectedAppGrants.find((item) => item.tool === tool);
+                      return <label key={tool} className="flex items-start gap-2 text-xs">
+                        <input type="checkbox" checked={Boolean(grant)} disabled={!grant && !available.some((account) => account.id === selectedAccount)} onChange={() => toggleRoutineGrant(tool, grant?.account_id ?? selectedAccount)} />
+                        <span>{label}{grant && grant.account_id !== selectedAccount ? <span className="text-warning"> · account unavailable</span> : null}</span>
+                      </label>;
+                    })}</div>
+                    {group.writes.length > 0 && <div className="space-y-2 border-t border-line pt-2">
+                      <div><p className="text-xs font-semibold">Write actions · explicitly authorize each one</p>
+                        <p className="text-xs text-muted">Selecting an action is your one-time authorization for this exact action and account. Once authorized, it runs without an action-time approval. The agent must also have write access to this app. This is separate from the routine&apos;s approval mode and only takes effect when routine app access is enabled on the server.</p></div>
+                      {group.writes.map(([tool, label]) => {
+                        const grant = draft.connectedAppGrants.find((item) => item.tool === tool);
+                        const agent = agents.find((item) => item.id === draft.agentId);
+                        const hasWriteScope = agent?.connector_scopes?.[group.app] === "write";
+                        return <label key={tool} className="flex items-start gap-2 text-xs">
+                          <input type="checkbox" checked={Boolean(grant)} disabled={!grant && (!hasWriteScope || !available.some((account) => account.id === selectedAccount))} onChange={() => toggleRoutineGrant(tool, grant?.account_id ?? selectedAccount)} />
+                          <span>{label}{grant && grant.account_id !== selectedAccount ? <span className="text-warning"> · account unavailable</span> : null}{!hasWriteScope && !grant ? <span className="text-muted"> · allow write access for this agent first</span> : null}</span>
+                        </label>;
+                      })}
+                    </div>}
+                  </fieldset>;
+                })}
+              </section>
               <details className="rounded-md border border-line p-3 text-xs">
                 <summary className="cursor-pointer font-medium text-muted">Limits and approvals</summary>
                 <div className="mt-2 grid grid-cols-2 gap-2">

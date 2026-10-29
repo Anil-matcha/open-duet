@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from app import composio_generic
 
 LIST_ACCOUNTS = "list_accounts"
+ROUTINE_WRITE_TOOLS = ("gmail_send_email", "github_create_branch", "github_commit_file")
 LEVELS = ("read", "write")  # in order: write includes read
 MAX_RESULT_CHARS = 20_000
 MAX_ITEMS = 30
@@ -213,6 +214,12 @@ TOOLS: tuple[Tool, ...] = (
     _app_read("gmail_get_profile", "gmail", "GMAIL_GET_PROFILE",
               "Read the connected Gmail account's profile address and message counts.", {},
               fields=("emailAddress", "messagesTotal", "threadsTotal", "historyId"), defaults=(("user_id", "me"),)),
+    _app_write("gmail_send_email", "gmail", "GMAIL_SEND_EMAIL",
+               "Send a plain-text email to one recipient. This sends email immediately. Interactive calls require approval; routines require an explicit Send email grant.",
+               {"recipient_email": EMAIL, "subject": TITLE, "body": BODY},
+               ("recipient_email", "subject", "body"),
+               fields=("id", "messageId", "threadId", "labelIds"),
+               defaults=(("user_id", "me"), ("is_html", False))),
     _app_write("gmail_create_draft_reply", "gmail", "GMAIL_CREATE_EMAIL_DRAFT",
                "Create a plain-text Gmail draft in an existing thread for one recipient. This does not send email. A person must approve every draft first; sending, forwarding and extra recipients are not available.",
                {"thread_id": MESSAGE_ID, "recipient_email": EMAIL, "subject": TITLE, "body": BODY},
@@ -318,7 +325,7 @@ def tool_note(levels: dict) -> str:
         if app == "github" and levels[app] == "write":
             detail += "; creating or changing issues and comments, starting workflow runs, forking, and committing to new campaign/ branches, with approval"
         if app == "gmail" and levels[app] == "write":
-            detail += "; saving a draft reply with approval"
+            detail += "; saving a draft reply or sending a one-recipient plain-text email with approval"
         if app == "googlecalendar" and levels[app] == "write":
             detail += "; adding an event to a calendar (no guests are invited), with approval"
         capabilities.append(detail)

@@ -1006,13 +1006,16 @@ class RoutineScheduler:
         title = f"{routine.name} · {_local(run.scheduled_for or now, routine.timezone)}"[:120]
         try:
             thread = await rt.create_thread(agent_id=agent.id, title=title)
-            await self._set(run.id, thread_id=thread.id)
+            await self._set(run.id, thread_id=thread.id, connected_app_grants=(
+                routine.connected_app_grants if run.trigger in ("schedule", "manual") else []
+            ))
             turn = await rt.send_turn(
                 thread.id,
                 run.prompt or routine.prompt,
                 approval_mode=mode,
                 approval_timeout=float(routine.approval_timeout_minutes * MINUTE_SECONDS),
                 team_origin="outside" if run.trigger == "webhook" else "routine",
+                routine_run_id=run.id,
             )
         except runtime_module.ProviderUnavailable as exc:
             await self._fail(run.id, f"The engine is not available: {exc}")

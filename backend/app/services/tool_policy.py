@@ -13,6 +13,19 @@ def automatic(tool, mode, run, arguments):
         return teams.automatic(tool, mode, run.ctx.team, arguments)
     if tool.startswith(composio_policy.PREFIX):
         # Connected apps (composio_bridge.py): decided here, never by a saved command rule.
+        grants = getattr(run, "routine_grants", None)
+        if grants is not None:
+            name = tool.removeprefix(composio_policy.PREFIX)
+            from app import composio_tools
+            found = composio_tools.BY_NAME.get(name)
+            if name not in grants or found is None:
+                return "denied", "routine_action_not_granted"
+            if found.kind == "write":
+                if name not in composio_tools.ROUTINE_WRITE_TOOLS or not composio_tools.allows((run.ctx.composio_apps or {}).get(found.app), "write"):
+                    return "denied", "routine_write_not_granted"
+                if mode == "plan":
+                    return "denied", "plan_mode"
+                return "allowed", "routine_write_grant"
         decision = composio_policy.automatic(tool, mode, run.ctx.composio_apps, arguments, getattr(run.ctx, "composio_first_use_hit", False))
         if tool == composio_policy.PREFIX + composio_generic.RUN:
             # A generic call decided without a card is remembered, so the bridge checks it again before it runs.
