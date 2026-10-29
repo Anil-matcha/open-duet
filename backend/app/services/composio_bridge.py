@@ -46,14 +46,31 @@ def apps_for(scopes: object) -> dict:
             and (app in composio_tools.apps() or not composio_generic.blocked_app(app))}
 
 
+def accounts_for(scopes: object) -> dict[str, list[str]]:
+    """Validated account-ID selections stored on an agent; malformed entries deny access."""
+    if not isinstance(scopes, dict):
+        return {}
+    result = {}
+    for app, account_ids in scopes.items():
+        if (not isinstance(app, str) or not composio_generic.valid_app(app)
+                or composio_generic.blocked_app(app) or not isinstance(account_ids, list)):
+            continue
+        ids = sorted({item for item in account_ids if isinstance(item, str) and item and len(item) <= 300})
+        if ids:
+            result[app] = ids
+    return result
+
+
 def make_client(key: str) -> ComposioClient:
     return ComposioClient(key)
 
 
 class ComposioBridge:
-    def __init__(self, runtime, run, apps: dict, client_factory=None):
+    def __init__(self, runtime, run, apps: dict, client_factory=None, account_scopes: dict | None = None):
         # Looked up when used, so a test can replace make_client.
         self.runtime, self.run, self.apps = runtime, run, apps
+        self.account_scopes = accounts_for(account_scopes if account_scopes is not None else
+                                           getattr(run.ctx, "composio_account_scopes", {}))
         self.client_factory = client_factory or (lambda key: make_client(key))
         self.folder = Path(tempfile.mkdtemp(prefix=f"open-dots-composio-{run.turn_id}-"))
         self.task: asyncio.Task | None = None
@@ -127,27 +144,48 @@ class ComposioBridge:
         return {app: ("write" if level == "write" and self.apps.get(app) == "write" else "read")
                 for app, level in current.items() if app in self.apps}
 
-    async def execute_generic(self, name: str, args: dict, allowed: dict) -> dict:
+    async def allowed_account_ids_now(self) -> dict[str, list[str]]:
+        """Intersect the turn snapshot with the agent's current selection.
+
+        A mid-turn revocation takes effect immediately; a newly selected account
+        cannot join a turn that began without it.
+        """
+        from app.db.models import Agent
+
+        async with self.runtime.session() as db:
+            agent = await db.get(Agent, self.run.agent_id)
+        current = accounts_for(agent.connector_account_scopes) if (
+            agent is not None and agent.archived_at is None and agent.owner_id == self.runtime.owner_id
+        ) else {}
+        return {app: [account_id for account_id in account_ids if account_id in current.get(app, [])]
+                for app, account_ids in self.account_scopes.items()
+                if app in self.apps and any(account_id in current.get(app, []) for account_id in account_ids)}
+
+    async def execute_generic(self, name: str, args: dict, allowed: dict,
+                              allowed_account_ids: dict[str, list[str]]) -> dict:
         """`app_search_actions` and `app_run_action` (composio_generic.py), after the approval above. What the agent may do is
         read again here: an app taken away, or a level lowered, while the card waited stops the call."""
         rt = self.runtime
         try:
             if name == composio_generic.SEARCH:
                 app, query, cursor = composio_generic.parse_search(args)
-                if app not in allowed:
+                if app not in allowed or not allowed_account_ids.get(app):
                     return {"error": "This agent is not allowed to use that app.", "code": "not_allowed"}
                 async with rt.session() as db:
-                    return await composio_actions.search(db, rt.owner_id, self.client_factory, app=app, query=query, cursor=cursor)
+                    return await composio_actions.search(db, rt.owner_id, self.client_factory, app=app, query=query,
+                                                         cursor=cursor, allowed_account_ids=allowed_account_ids[app])
             request = composio_generic.parse_run(args)
         except composio_generic.GenericError as exc:
             return {"error": str(exc), "code": "bad_arguments"}
         level = allowed.get(request["app"])
         reviewed = request["action"] in composio_generic.REVIEWED_READS
-        if level is None or (level != "write" and not reviewed) or self.apps.get(request["app"]) is None:
+        if (level is None or (level != "write" and not reviewed) or self.apps.get(request["app"]) is None
+                or not allowed_account_ids.get(request["app"])):
             return {"error": "This agent is not allowed to do that with that app.", "code": "not_allowed"}
         auto = composio_generic.call_key(args) in self.run.ctx.composio_auto_calls
         async with rt.session() as db:
-            return await composio_actions.run(db, rt.owner_id, self.client_factory, agent_id=self.run.agent_id, auto_called=auto, request=request)
+            return await composio_actions.run(db, rt.owner_id, self.client_factory, agent_id=self.run.agent_id,
+                auto_called=auto, request=request, allowed_account_ids=allowed_account_ids[request["app"]])
 
     async def execute(self, name: str, args: dict) -> dict:
         result = await self._execute_checked(name, args)
@@ -180,13 +218,16 @@ class ComposioBridge:
         if not approved:
             return {"error": "This call has no matching, unused approval.", "code": "not_approved"}
         allowed = await self.allowed_now()
+        allowed_account_ids = await self.allowed_account_ids_now()
+        allowed = {app: level for app, level in allowed.items() if allowed_account_ids.get(app)}
         if name == composio_tools.LIST_ACCOUNTS:
             if not allowed:
                 return {"error": "This agent is no longer allowed to use connected apps.", "code": "not_allowed"}
             async with rt.session() as db:
-                return await composio_service.connected_names(db, rt.owner_id, self.client_factory, set(allowed))
+                return await composio_service.connected_names(db, rt.owner_id, self.client_factory, set(allowed),
+                                                             allowed_account_ids)
         if name in composio_generic.GENERIC_TOOLS:
-            return await self.execute_generic(name, args, allowed)
+            return await self.execute_generic(name, args, allowed, allowed_account_ids)
         if name == "gmail_prepare_checked_reply" and not getattr(run.ctx, "draft_only", False):
             return {"error": "This tool requires a confined draft-only routine.", "code": "not_allowed"}
         tool = composio_tools.BY_NAME.get(name)
@@ -199,10 +240,11 @@ class ComposioBridge:
         async with rt.session() as db:
             grants = getattr(run, "routine_grants", None)
             if grants is not None:
-                return await self.execute_routine(db, name, tool, sent, account)
-            return await composio_service.run_tool(db, rt.owner_id, self.client_factory, tool, sent, account)
+                return await self.execute_routine(db, name, tool, sent, account, allowed_account_ids)
+            return await composio_service.run_tool(db, rt.owner_id, self.client_factory, tool, sent, account,
+                                                   allowed_account_ids=allowed_account_ids.get(tool.app, []))
 
-    async def execute_routine(self, db, name, tool, sent, account):
+    async def execute_routine(self, db, name, tool, sent, account, allowed_account_ids: dict[str, list[str]]):
         """A grant is checked again at dispatch; reserve writes before any I/O.
 
         A process exit or cancellation leaves a reserved receipt. It is deliberately
@@ -217,11 +259,12 @@ class ComposioBridge:
         run, rt = self.run, self.runtime
         grants = run.routine_grants
         bound = grants.get(name)
+        permitted_accounts = allowed_account_ids.get(tool.app, [])
         routine = await db.get(Routine, run.routine_id)
         rr = await db.get(RoutineRun, getattr(run, "routine_run_id", None))
         current = {g["tool"]: g["account_id"] for g in routine.connected_app_grants} if routine else {}
         write = tool.kind == "write"
-        permitted = (settings.ROUTINE_CONNECTED_APPS_ENABLED and bound
+        permitted = (settings.ROUTINE_CONNECTED_APPS_ENABLED and bound and bound in permitted_accounts
                      and current.get(name) == bound and routine.agent_id == run.agent_id
                      and routine.owner_id == rt.owner_id and run.ctx.computer is None
                      and rr is not None and rr.routine_id == routine.id
@@ -242,11 +285,13 @@ class ComposioBridge:
                 return {"error": "Read this exact message in this run before drafting.", "code": "not_allowed"}
             source_tool = replace(composio_tools.BY_NAME["gmail_fetch_message"], special="checked_message")
             fresh = await composio_service.run_tool(db, rt.owner_id, self.client_factory, source_tool,
-                {"message_id": sent["message_id"], "user_id": "me", "format": "full"}, None, account_id=bound)
+                {"message_id": sent["message_id"], "user_id": "me", "format": "full"}, None,
+                account_id=bound, allowed_account_ids=permitted_accounts)
             if fresh.get("_checked_source") != checked:
                 return {"error": "The source message changed or cannot be verified. No draft was created.", "code": "not_allowed"}
             profile = await composio_service.run_tool(db, rt.owner_id, self.client_factory,
-                composio_tools.BY_NAME["gmail_get_profile"], {"user_id": "me"}, None, account_id=bound)
+                composio_tools.BY_NAME["gmail_get_profile"], {"user_id": "me"}, None,
+                account_id=bound, allowed_account_ids=permitted_accounts)
             own = profile.get("result", {}).get("emailAddress") if isinstance(profile.get("result"), dict) else None
             if not isinstance(own, str) or own.lower() == checked["sender"]:
                 return {"error": "The sender is unavailable or is the connected account.", "code": "not_allowed"}
@@ -255,11 +300,13 @@ class ComposioBridge:
             await db.refresh(rr)
             current = {g["tool"]: g["account_id"] for g in routine.connected_app_grants}
             allowed = await self.allowed_now()
+            allowed_account_ids = await self.allowed_account_ids_now()
             if (current != grants or routine.owner_id != rt.owner_id or routine.agent_id != run.agent_id
                     or rr.state not in ("running", "needs_input") or rr.thread_id != run.thread_id
                     or rr.routine_id != routine.id or rr.trigger not in ("schedule", "manual")
                     or {g["tool"]: g["account_id"] for g in rr.connected_app_grants} != grants
                     or not composio_tools.allows(allowed.get("gmail"), "write")
+                    or bound not in allowed_account_ids.get("gmail", [])
                     or run.ctx.aborted or not settings.ROUTINE_CONNECTED_APPS_ENABLED):
                 return {"error": "Draft access was revoked or stopped.", "code": "not_allowed"}
             sent = {key: value for key, value in sent.items() if key != "message_id"}
@@ -280,7 +327,8 @@ class ComposioBridge:
         # Save the primary key before provider helpers commit or expire objects.
         receipt_id = receipt.id
         dispatch_tool = replace(tool, special="checked_message") if draft_mode and name == "gmail_fetch_message" else tool
-        result = await composio_service.run_tool(db, rt.owner_id, self.client_factory, dispatch_tool, sent, None, account_id=bound)
+        result = await composio_service.run_tool(db, rt.owner_id, self.client_factory, dispatch_tool, sent, None,
+                                                 account_id=bound, allowed_account_ids=permitted_accounts)
         checked_source = result.pop("_checked_source", None)
         if checked_source and checked_source["message_id"] == sent.get("message_id"):
             if not hasattr(run, "checked_reply_sources"):

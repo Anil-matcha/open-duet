@@ -15,7 +15,7 @@ import {
   redactionNotice,
 } from "@/lib/agents";
 import { computerStateLabel } from "@/lib/computers";
-import { agentAppOptions, levelOf, scopesToSend, supportsConnectedApps, withApp, type ComposioAccount, type Level, type Scopes } from "@/lib/connected-apps";
+import { accountScopesToSend, agentAppOptions, levelOf, scopesToSend, supportsConnectedApps, withAccount, withApp, type AccountScopes, type ComposioAccount, type Level, type Scopes } from "@/lib/connected-apps";
 import { ComputerView } from "./ComputerPanel";
 import { EngineModelFields } from "./EngineModelFields";
 import { MemoryPanel } from "./MemoryPanel";
@@ -41,6 +41,8 @@ type Draft = {
   fallback_model: string | null;
   // Connected apps this agent may read; changed only on an existing agent.
   connector_scopes: Scopes;
+  // Exact connected account IDs this agent may use.
+  connector_account_scopes: AccountScopes;
   // Create only: the first contents of the agent's notes.
   starter_notes: string;
 };
@@ -59,6 +61,7 @@ const EMPTY: Draft = {
   fallback_provider: null,
   fallback_model: null,
   connector_scopes: {},
+  connector_account_scopes: {},
   starter_notes: "",
 };
 
@@ -77,6 +80,7 @@ function toDraft(agent: Agent): Draft {
     fallback_provider: agent.fallback_provider ?? null,
     fallback_model: agent.fallback_model ?? null,
     connector_scopes: agent.connector_scopes ?? {},
+    connector_account_scopes: agent.connector_account_scopes ?? {},
     starter_notes: "",
   };
 }
@@ -97,7 +101,10 @@ function toInput(draft: Draft): AgentInput {
     fallback_model: draft.fallback_provider && draft.fallback_provider !== draft.provider ? draft.fallback_model?.trim() || null : null,
   };
   if (draft.id === null && draft.starter_notes.trim()) input.starter_notes = draft.starter_notes;
-  if (draft.id !== null) input.connector_scopes = scopesToSend(draft.connector_scopes, draft.provider);
+  if (draft.id !== null) {
+    input.connector_scopes = scopesToSend(draft.connector_scopes, draft.provider);
+    input.connector_account_scopes = accountScopesToSend(draft.connector_account_scopes, draft.connector_scopes, draft.provider);
+  }
   return input;
 }
 
@@ -561,15 +568,35 @@ export function AgentsPanel({
               </fieldset>
               {draft.id !== null && supportsConnectedApps(draft.provider) && <fieldset className="space-y-3 text-xs text-muted">
                 <legend>Connected apps</legend>
-                {agentAppOptions(appAccounts, draft.connector_scopes).map((app) => <div key={app.slug} className="space-y-1">
+                {agentAppOptions(appAccounts, draft.connector_scopes).map((app) => <div key={app.slug} className="space-y-2">
                   <p className="text-sm text-ink">{app.label}{app.generic && <span className="ml-2 text-xs text-muted">no tools of its own: every action asks you</span>}</p>
                   {((app.write ? ["off", "read", "write"] : ["off", "read"]) as Level[]).map((level) => <label key={level} className="flex cursor-pointer items-start gap-2">
                     <input type="radio" name={`app-${app.slug}`} className="mt-0.5" disabled={busy} checked={levelOf(draft.connector_scopes, app.slug) === level}
                       onChange={() => setDraft({ ...draft, connector_scopes: withApp(draft.connector_scopes, app.slug, level) })} />
                     <span>{level === "off" ? "Off" : level === "read" ? <>{app.generic ? "Look up only." : "Read only."} {app.read}</> : <>{app.generic ? "Look up and run." : "Read and change."} {app.write}</>}</span>
                   </label>)}
+                  {levelOf(draft.connector_scopes, app.slug) !== "off" && <div className="ml-5 space-y-1 border-l border-line pl-3">
+                    <p className="text-xs text-muted">Allow this agent to use these connected accounts:</p>
+                    {appAccounts === null ? <p className="text-xs text-muted">Loading connected accounts…</p> : (() => {
+                      const accounts = appAccounts.filter((account) => account.toolkit === app.slug && account.status === "ACTIVE");
+                      const selected = draft.connector_account_scopes[app.slug] ?? [];
+                      const unavailable = selected.filter((id) => !accounts.some((account) => account.id === id));
+                      return <>
+                        {accounts.length ? accounts.map((account) => <label key={account.id} className="flex cursor-pointer items-center gap-2">
+                          <input type="checkbox" disabled={busy} checked={selected.includes(account.id)}
+                            onChange={(event) => setDraft({ ...draft, connector_account_scopes: withAccount(draft.connector_account_scopes, app.slug, account.id, event.target.checked) })} />
+                          <span>{account.alias || account.id}</span>
+                        </label>) : <p className="text-xs text-muted">No connected account is available. Connect one on the Apps page.</p>}
+                        {unavailable.map((id) => <label key={id} className="flex cursor-pointer items-center gap-2">
+                          <input type="checkbox" disabled={busy} checked onChange={() => setDraft({ ...draft, connector_account_scopes: withAccount(draft.connector_account_scopes, app.slug, id, false) })} />
+                          <span>Unavailable account ({id}) · remove access</span>
+                        </label>)}
+                      </>;
+                    })()}
+                    {appAccounts !== null && (draft.connector_account_scopes[app.slug] ?? []).length === 0 && <p className="text-xs text-muted">No accounts selected; this app is unavailable to the agent.</p>}
+                  </div>}
                 </div>)}
-                <p>Connect apps first on the Apps page (sidebar → Apps); any app you connect there appears here. Allowed apps are used only in conversations you start, never in routines or from outside messages.</p>
+                <p>Connect apps first on the Apps page (sidebar → Apps), then choose which exact accounts this agent can use. Access is used only in conversations you start, never in routines or from outside messages.</p>
               </fieldset>}
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                 <input

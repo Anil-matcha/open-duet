@@ -298,8 +298,10 @@ async def collect_providers(db, owner_id: str, lead_id: int | None, *, now: date
         # Freshly check the lead, owner and grants before each provider call.
         agent = await db.scalar(select(Agent).where(Agent.id == lead_id, Agent.owner_id == owner_id,
             Agent.archived_at.is_(None)).execution_options(populate_existing=True)) if lead_id else None
+        from app.services.composio_bridge import accounts_for
         scopes = agent.connector_scopes if agent and isinstance(agent.connector_scopes, dict) else {}
-        if agent is None or not composio_tools.allows(scopes.get(app), "read"):
+        account_ids = accounts_for(agent.connector_account_scopes).get(app, []) if agent else []
+        if agent is None or not composio_tools.allows(scopes.get(app), "read") or not account_ids:
             continue
         tool = composio_tools.BY_NAME[name]
         if source == "calendar":
@@ -308,7 +310,8 @@ async def collect_providers(db, owner_id: str, lead_id: int | None, *, now: date
         sent, alias = composio_tools.clean_arguments(tool, arguments)
         try:
             async with asyncio.timeout(15):
-                result = await composio_service.run_tool(db, owner_id, make_client, tool, sent, alias)
+                result = await composio_service.run_tool(db, owner_id, make_client, tool, sent, alias,
+                                                         allowed_account_ids=account_ids)
         except Exception:
             # Never expose provider error text, request details or credentials.
             sources[source] = "failed"
@@ -468,8 +471,11 @@ class NeedsYou:
         # lead, grants, zone or local day invalidates it immediately.
         agent = await db.scalar(select(Agent).where(Agent.id == lead_id, Agent.owner_id == self.owner_id,
             Agent.archived_at.is_(None)).execution_options(populate_existing=True)) if lead_id else None
+        from app.services.composio_bridge import accounts_for
         scopes = agent.connector_scopes if agent and isinstance(agent.connector_scopes, dict) else {}
-        key = (self.owner_id, lead_id, json.dumps(scopes, sort_keys=True), zone.key, local_day(now, zone))
+        account_scopes = accounts_for(agent.connector_account_scopes) if agent else {}
+        key = (self.owner_id, lead_id, json.dumps(scopes, sort_keys=True),
+               json.dumps(account_scopes, sort_keys=True), zone.key, local_day(now, zone))
         def unknown(sources):
             return any(scopes.get(app) in {"read", "write"} and sources[source] in {"failed", "unavailable", "partial"}
                        for source, app in (("gmail", "gmail"), ("calendar", "googlecalendar")))

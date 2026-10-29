@@ -483,6 +483,8 @@ export type Agent = {
   recall_enabled?: boolean;
   // Connected apps (Composio) the agent may read, {app: "read"}; null for none.
   connector_scopes?: Record<string, string> | null;
+  // Exact connected accounts this agent may use, keyed by Composio app slug.
+  connector_account_scopes?: Record<string, string[]>;
   // Off: no quick model call files facts noticed in its conversations.
   memory_upkeep?: boolean;
   compaction_summary?: boolean;
@@ -519,6 +521,8 @@ export type AgentInput = {
   fallback_model?: string | null;
   // Update only: connected apps this agent may read, {app: "read"}; null or {} for none.
   connector_scopes?: Record<string, string> | null;
+  // Update only: exact connected account IDs this agent may use, keyed by app.
+  connector_account_scopes?: Record<string, string[]>;
   // Create only: the first contents of the agent's notes.
   starter_notes?: string | null;
 };

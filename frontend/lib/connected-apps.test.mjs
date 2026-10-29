@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AGENT_APPS, GENERIC_READ, GENERIC_WRITE, accountsOf, agentAppOptions, appLabel, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, supportsConnectedApps, withApp } from "./connected-apps.ts";
+import { AGENT_APPS, GENERIC_READ, GENERIC_WRITE, accountScopesToSend, accountsOf, agentAppOptions, appLabel, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, supportsConnectedApps, withAccount, withApp } from "./connected-apps.ts";
 
 const LINK = "https://connect.composio.dev/link/lk_abc";
 const account = (id, status, toolkit = "github") => ({ id, status, toolkit, alias: null, created_at: null, updated_at: null });
@@ -97,6 +97,17 @@ test("a level is read back as off unless it is a known one", () => {
   assert.equal(levelOf({ github: "write" }, "github"), "write");
   for (const odd of [{ github: "admin" }, { github: "" }, {}, null, undefined]) assert.equal(levelOf(odd, "github"), "off");
   assert.equal(levelOf({ gmail: "read" }, "github"), "off");
+});
+
+test("account grants are exact IDs, can be toggled, and only survive for enabled apps", () => {
+  assert.deepEqual(withAccount(null, "gmail", "ca_a", true), { gmail: ["ca_a"] });
+  assert.deepEqual(withAccount({ gmail: ["ca_a"] }, "gmail", "ca_b", true), { gmail: ["ca_a", "ca_b"] });
+  assert.deepEqual(withAccount({ gmail: ["ca_a", "ca_b"] }, "gmail", "ca_a", false), { gmail: ["ca_b"] });
+  assert.deepEqual(withAccount({ gmail: ["ca_a"] }, "gmail", "ca_a", false), {});
+  assert.deepEqual(accountScopesToSend({ gmail: ["ca_b", "ca_a", "ca_a"], slack: ["ca_s"] },
+    { gmail: "read", slack: "off" }, "claude"), { gmail: ["ca_a", "ca_b"] });
+  assert.deepEqual(accountScopesToSend({ gmail: ["ca_a"] }, { gmail: "read" }, "openai_compat"), {});
+  assert.deepEqual(accountScopesToSend({ gmail: ["", "x".repeat(301)] }, { gmail: "read" }, "claude"), {});
 });
 
 test("saving sends known levels for engines that support apps", () => {

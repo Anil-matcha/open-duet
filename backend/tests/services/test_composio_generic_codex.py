@@ -51,7 +51,8 @@ def composio(monkeypatch):
 async def codex_agent(crt, sessions, owner, composio):  # noqa: F811
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=owner, name="Notion helper", provider="codex")
-        await agent_store.update_agent(db, agent.id, connector_scopes={"notion": "write"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"notion": "write"},
+                                       connector_account_scopes={"notion": ["ca_n"]})
         await composio_service._save(db, owner, {"api_key": KEY, "user_id": "u1", "session_id": "sess_1"})
     yield agent
     async with sessions() as db:

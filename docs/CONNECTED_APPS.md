@@ -33,11 +33,13 @@ cannot use connected apps yet.
    Composio supplies (they need an auth config of your own in Composio, which this
    app does not set up); their card says so and has no Connect button. Your browser opens a Composio page; sign in to that app and
    approve. This page notices when you are done. You may give the account a
-   name; with more than one account for an app (up to five) the agent must say
-   which one to use.
+   name; you may connect up to five accounts for an app.
 4. **Allow an agent.** Open an existing Claude or Codex agent, find Connected
    apps, choose **Off** or **Read only** for each app; every app also has
-   **Read and change**. Any app you connected appears there. For apps without
+   **Read and change**. Then check the exact connected account or accounts that
+   agent may use. If you allow several, the agent must say which one to use. An
+   app with no account selected is unavailable to that agent.
+   Any app you connected appears there. For apps without
    their own tools, "Look up only" lets the agent see what actions exist and
    "Look up and run" lets it ask to run them. Save, start a new conversation with that agent,
    and ask naturally, for example, “Find the latest unread message from Alex
@@ -86,8 +88,9 @@ nothing. **Run** runs one named action.
   description uses anything the checker does not understand is not run. Arguments
   must be small enough to show in full, and credentials are refused.
 - If Composio changes the action while a card waits, if you disconnect the
-  account, lower the agent's access or remove the key, the call is cancelled, not
-  run.
+  account, remove that account from the agent, lower the agent's access or
+  remove the key, the call is cancelled, not run. An agent cannot switch to a
+  different connected account unless you selected it for that agent.
 - Nothing that runs code, a shell or a raw request to an app is available, and
   GitHub, Gmail and Calendar stay limited to their own tools (so Gmail still
   cannot send, and GitHub still cannot delete or merge).
@@ -110,7 +113,8 @@ is unknown and not to repeat it: check the app before asking again. If a change
 went through but its reply could not be read, the agent is told it is done.
 
 Connected apps are available in conversations you start yourself and explicitly
-granted scheduled/manual routines (see below). They are not
+granted scheduled/manual routines (see below). Routine grants must use an account
+the agent is already allowed to access. They are not
 available in webhooks or other messages that arrive from outside, and not
 to an agent that has its own computer.
 
@@ -139,8 +143,8 @@ at Composio, so disconnect them first if you want them gone.
 
 ## If something does not work
 
-- **The agent ignores a connected app.** Check the app is allowed on that
-  existing Claude or Codex agent, then start a new conversation. For GitHub,
+- **The agent ignores a connected app.** Check the app and at least one exact
+  account are allowed on that existing Claude or Codex agent, then start a new conversation. For GitHub,
   name the repository as `owner/name`; for Gmail and Calendar, ask for a
   specific search or date window.
 - **"No account named …" or "more than one account".** Name the account to use,

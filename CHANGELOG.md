@@ -4,6 +4,11 @@
 
 ### Added
 
+- Let each Claude or Codex agent use only the specific connected accounts its
+  owner selects for each app. The backend validates account IDs against active
+  connections and checks the agent's current grant on every call, including
+  generic actions, routines and Today reads. Existing agents start with no
+  account access until their owner selects it.
 - Add an Apps page (sidebar → Apps) that lists Composio's own catalog of apps,
   with search, categories, a Connected section, what agents can do with each app,
   connecting and disconnecting, and the Composio key. Without a key it shows a

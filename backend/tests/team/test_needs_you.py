@@ -457,6 +457,9 @@ async def provider_fixture(sessions, owner, lead, monkeypatch):
     async with sessions() as db:
         agent = await db.get(Agent, lead.id)
         agent.connector_scopes = {"gmail": "read", "googlecalendar": "read"}
+        agent.connector_account_scopes = {
+            "gmail": ["account_gmail"], "googlecalendar": ["account_googlecalendar"]
+        }
         await db.commit()
     return lambda key: ComposioClient(key, transport=httpx.MockTransport(handler)), answers, calls
 
@@ -504,6 +507,7 @@ async def test_provider_quiet_failure_grant_revocation_and_owner_isolation(sessi
         assert sources["gmail"] == "failed" and sources["calendar"] == "quiet"
         agent = await db.get(Agent, lead.id)
         agent.connector_scopes = {}
+        agent.connector_account_scopes = {}
         await db.commit()
         before = len(calls)
         _, sources = await collect()
@@ -543,6 +547,7 @@ async def test_provider_cache_throttles_refresh_preserves_failure_and_invalidate
     async with sessions() as db:
         agent = await db.get(Agent, lead.id)
         agent.connector_scopes = {"googlecalendar": "read"}
+        agent.connector_account_scopes = {"googlecalendar": ["account_googlecalendar"]}
         await db.commit()
     revoked = await ny.read()
     assert revoked["sources"]["gmail"] == "unavailable" and len(calls) == 5

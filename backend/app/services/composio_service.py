@@ -233,8 +233,9 @@ def _choose(active: list[Account], alias: str | None, app: str) -> tuple[Account
     return active[0], None
 
 
-async def connected_names(db: AsyncSession, owner_id: str, make_client, allowed_apps) -> dict:
-    """The names of the active accounts per allowed app, for the agent."""
+async def connected_names(db: AsyncSession, owner_id: str, make_client, allowed_apps,
+                          allowed_account_ids: dict[str, list[str]] | None = None) -> dict:
+    """The names of active accounts that this agent selected, grouped by app."""
     record = await load(db, owner_id)
     if record is None:
         return {"error": "Connected apps are not set up. The person can add their Composio key in Settings.", "code": "not_configured"}
@@ -242,7 +243,8 @@ async def connected_names(db: AsyncSession, owner_id: str, make_client, allowed_
         found = await make_client(record["api_key"]).accounts(record["user_id"])
     except ComposioError as exc:
         return _agent_error(exc)
-    return {"apps": {app: sorted(a.alias or a.id for a in found if a.toolkit == app and a.status == "ACTIVE")
+    return {"apps": {app: sorted(a.alias or a.id for a in found if a.toolkit == app and a.status == "ACTIVE"
+                                  and (allowed_account_ids is None or a.id in allowed_account_ids.get(app, [])))
                      for app in sorted(allowed_apps)}}
 
 
@@ -275,7 +277,8 @@ DONE_UNREADABLE = {
 }
 
 
-async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None, *, account_id: str | None = None) -> dict:
+async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None, *,
+                   account_id: str | None = None, allowed_account_ids: list[str] | None = None) -> dict:
     """Run one allowed tool as one connected account and return what the agent may see.
     Never raises for a Composio problem: the agent gets a short error instead.
 
@@ -291,6 +294,13 @@ async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments
     client = make_client(record["api_key"])
     try:
         active = [a for a in await client.accounts(record["user_id"], tool.app) if a.status == "ACTIVE"]
+        if allowed_account_ids is not None:
+            permitted = set(allowed_account_ids)
+            if account_id is not None and account_id not in permitted:
+                return {"error": "This agent is not allowed to use that connected account.", "code": "not_allowed"}
+            active = [a for a in active if a.id in permitted]
+            if not active:
+                return {"error": "The selected connected account is no longer connected.", "code": "not_connected"}
         if account_id is not None:
             matches = [a for a in active if a.id == account_id and a.toolkit == tool.app]
             account = matches[0] if len(matches) == 1 else None
