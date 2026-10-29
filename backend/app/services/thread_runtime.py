@@ -363,13 +363,11 @@ class ThreadApprovalGate:
         # A change to a connected app (mcp__composio__) is only ever allowed on its own card, never by a saved rule.
         rule = None if tool.startswith(("mcp__team__", "mcp__composio__")) or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
         held = None
-        # A command on the safety floor, or one that could not be read, is never
-        # allowed by a rule: a person decides on the card, and the card names the
-        # floor rule. (matching_rule also refuses a floor call, so `rule` is
-        # already None here; this labels why.)
-        if isinstance(input.get("command"), str):
-            reading = safety_floor.floor_reading(input["command"])
-            if not reading.clear:
+        if rule is not None:
+            # A command on the safety floor, or one that could not be read, is
+            # never allowed by a rule: a person decides on the card.
+            reading = safety_floor.floor_reading(input.get("command", "")) if isinstance(input.get("command"), str) else None
+            if reading is not None and not reading.clear:
                 held = reading.verdict.rule if reading.verdict else "unreadable"
                 rule = None
         if rule is not None:
@@ -385,6 +383,8 @@ class ThreadApprovalGate:
                     "auto_allowed", approval.id, source="saved_rule", rule=approval_allowlist.rule_label(rule)
                 )
         else:
+            import sys as _sys
+            print(f"DBG held={held!r} rule={rule!r} tool={tool!r} cmd={input.get('command', '')!r}", file=_sys.stderr, flush=True)
             self._log("shown", approval.id, rule=f"safety_floor:{held}" if held else None)
         runtime.hub.notify(run.thread_id)
         return ApprovalHandle(approval_id=approval.id, request_id=request_id, tool=tool)
@@ -906,6 +906,49 @@ class ThreadRuntime:
         self.hub.notify(thread_id)
         return turn
 
+    async def _composio_apps(self, run, adapter) -> dict:
+        """The connected apps this turn's tools may use, {app: level}, or none. Only a turn a
+        person started, on an engine that can mount them, for an agent the person
+        allowed, with a Composio key saved, and not in an agent computer (its data
+        would leave the sandbox)."""
+        if run.agent_id is None or not capabilities_of(adapter).connected_apps or run.ctx.computer is not None:
+            return {}
+        try:
+            from app.db.models import Agent, Turn
+            from app.services import composio_service
+
+            async with self.session() as db:
+                agent = await db.get(Agent, run.agent_id)
+                turn = await db.get(Turn, run.turn_id)
+                apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None and agent.owner_id == self.owner_id else {}
+                if not apps:
+                    return {}
+                if turn is not None and turn.origin not in (None, "person"):
+                    from app.db.models.routine import Routine, RoutineRun
+                    from app.core.config import settings
+                    if not settings.ROUTINE_CONNECTED_APPS_ENABLED or turn.origin != "routine":
+                        return {}
+                    rr = await db.get(RoutineRun, run.routine_run_id) if run.routine_run_id else None
+                    routine = await db.get(Routine, rr.routine_id) if rr else None
+                    if (not routine or routine.owner_id != self.owner_id or routine.agent_id != run.agent_id
+                            or rr.trigger not in ("schedule", "manual") or rr.thread_id != run.thread_id):
+                        return {}
+                    from app import composio_tools
+                    run.routine_id = routine.id
+                    run.routine_grants = {
+                        g["tool"]: g["account_id"] for g in rr.connected_app_grants
+                        if g.get("tool") in composio_tools.BY_NAME
+                        and (composio_tools.BY_NAME[g["tool"]].kind == "read" or g["tool"] in composio_tools.ROUTINE_WRITE_TOOLS)
+                        and composio_tools.allows(apps.get(composio_tools.BY_NAME[g["tool"]].app), composio_tools.BY_NAME[g["tool"]].kind)
+                    }
+                    apps = {app: ("write" if any(composio_tools.BY_NAME[t].app == app and composio_tools.BY_NAME[t].kind == "write" for t in run.routine_grants) else "read")
+                            for app in {composio_tools.BY_NAME[t].app for t in run.routine_grants}}
+                    if not apps:
+                        return {}
+                return apps if await composio_service.configured(db, self.owner_id) else {}
+        except Exception:  # noqa: BLE001
+            logger.exception("could not work out connected apps; the turn goes on without them", thread_id=run.thread_id)
+            return {}
     def _run_ended(self, run: ActiveRun) -> None:
         self._runs.pop(run.turn_id, None)
         self.hub.message_done(run.thread_id)
