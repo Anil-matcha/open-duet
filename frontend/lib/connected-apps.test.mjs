@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AGENT_APPS, accountsOf, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, supportsConnectedApps, withApp } from "./connected-apps.ts";
+import { AGENT_APPS, GENERIC_READ, GENERIC_WRITE, accountsOf, agentAppOptions, appLabel, isComposioLink, levelOf, outcomeFor, pollDeadline, reservePage, scopesToSend, statusLabel, supportsConnectedApps, withApp } from "./connected-apps.ts";
 
 const LINK = "https://connect.composio.dev/link/lk_abc";
 const account = (id, status, toolkit = "github") => ({ id, status, toolkit, alias: null, created_at: null, updated_at: null });
@@ -106,9 +106,39 @@ test("saving sends known levels for engines that support apps", () => {
   assert.equal(scopesToSend({}, "claude"), null);
   assert.equal(scopesToSend(null, "claude"), null);
   assert.equal(scopesToSend({ github: "write" }, "openai_compat"), null);
-  assert.deepEqual(scopesToSend({ github: "write", gmail: "read", slack: "write" }, "claude"), { github: "write", gmail: "read" });
+  assert.deepEqual(scopesToSend({ github: "write", gmail: "read", slack: "write" }, "claude"), { github: "write", gmail: "read", slack: "write" });
+  assert.deepEqual(scopesToSend({ googlecalendar: "write", notion: "read" }, "codex"), { googlecalendar: "write", notion: "read" });
+  assert.equal(scopesToSend({ "Bad Name": "read", "../x": "read", "": "read", ["a".repeat(65)]: "read" }, "claude"), null);
   assert.equal(scopesToSend({ github: "admin" }, "claude"), null);
   assert.equal(supportsConnectedApps("codex"), true);
   assert.equal(supportsConnectedApps("openai_compat"), false);
   assert.ok(AGENT_APPS.every((app) => app.slug && app.label && app.read && (app.write === null || typeof app.write === 'string')));
+});
+
+test("a name that is not an app's, or a level that is not one, is never sent", () => {
+  assert.equal(scopesToSend({ Slack: "read" }, "claude"), null);
+  assert.equal(scopesToSend({ slack: "admin" }, "claude"), null);
+  assert.equal(scopesToSend({ slack: true }, "claude"), null);
+});
+
+test("an app name Composio writes becomes a readable label", () => {
+  assert.equal(appLabel("slack"), "Slack");
+  assert.equal(appLabel("google_sheets"), "Google sheets");
+  assert.equal(appLabel("ms-teams"), "Ms teams");
+});
+
+test("an agent can be given the curated apps, then every other app with an account or already allowed", () => {
+  const accounts = [account("a", "ACTIVE", "slack"), account("b", "INITIATED", "notion"), account("c", "ACTIVE", "slack"), account("d", "ACTIVE", "github")];
+  const options = agentAppOptions(accounts, { zoho: "read", github: "read" }, { slack: "Slack" });
+  assert.deepEqual(options.map((o) => o.slug), ["github", "gmail", "googlecalendar", "notion", "slack", "zoho"]);
+  const bySlug = Object.fromEntries(options.map((o) => [o.slug, o]));
+  assert.equal(bySlug.github.generic, false);
+  assert.equal(bySlug.slack.generic, true);
+  assert.equal(bySlug.slack.label, "Slack");
+  assert.equal(bySlug.zoho.label, "Zoho");
+  assert.equal(bySlug.slack.read, GENERIC_READ);
+  assert.equal(bySlug.slack.write, GENERIC_WRITE);
+  assert.match(GENERIC_WRITE, /approve every call/);
+  assert.deepEqual(agentAppOptions(null, null).map((o) => o.slug), ["github", "gmail", "googlecalendar"]);
+  assert.deepEqual(agentAppOptions([account("a", "ACTIVE", "Bad Name")], { "../x": "read" }).map((o) => o.slug), ["github", "gmail", "googlecalendar"]);
 });

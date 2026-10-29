@@ -109,6 +109,21 @@ test('getProviders reads /providers and returns the boat status', async () => {
   assert.match(providers.boat.reason, /BOAT_API_KEY/);
 });
 
+test('the app catalog is asked for with only the filters that are set, encoded', async () => {
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(new URL(String(url)));
+    return new Response(JSON.stringify({ source: 'starter', apps: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  await api.getComposioCatalog();
+  await api.getComposioCatalog({ search: 'sales & crm', category: 'Developer Tools', cursor: 'o48', limit: 24 });
+  await api.getComposioCatalog({ search: '', category: null, cursor: null });
+  assert.deepEqual(urls.map((u) => u.pathname), Array(3).fill('/api/v1/integrations/composio/catalog'));
+  assert.equal(urls[0].search, '');
+  assert.deepEqual(Object.fromEntries(urls[1].searchParams), { search: 'sales & crm', category: 'Developer Tools', cursor: 'o48', limit: '24' });
+  assert.equal(urls[2].search, '');
+});
+
 test('routine app actions use the selected routine and run endpoint', async () => {
   let requested = '';
   globalThis.fetch = async (url) => {

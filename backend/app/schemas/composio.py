@@ -34,3 +34,36 @@ class ComposioLink(BaseModel):
     redirect_url: str
     account_id: str
     expires_in_seconds: int
+
+
+class ComposioCatalogTool(BaseModel):
+    name: str
+    kind: str  # "read" or "write"
+    description: str
+
+
+class ComposioCatalogApp(BaseModel):
+    app: str
+    name: str
+    description: str
+    categories: list[str]
+    icon: str | None
+    connection: str      # managed | no_auth | custom_auth | unknown
+    agent_actions: str   # curated | generic | unavailable
+    curated_tools: list[ComposioCatalogTool]
+
+
+class ComposioCatalogCategory(BaseModel):
+    name: str
+    count: int
+
+
+class ComposioCatalogPage(BaseModel):
+    source: str          # composio | starter
+    complete: bool
+    stale: bool
+    error: str | None
+    total: int
+    next_cursor: str | None
+    categories: list[ComposioCatalogCategory]
+    apps: list[ComposioCatalogApp]

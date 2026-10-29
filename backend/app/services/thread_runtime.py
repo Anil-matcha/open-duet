@@ -345,6 +345,11 @@ class ThreadApprovalGate:
             timeout = app_settings.get("LOCAL_APPROVAL_TIMEOUT_SECONDS", live=True)
         self._deadlines[approval.id] = asyncio.get_running_loop().time() + timeout
         self._info[approval.id] = (tool, kind, summary)
+        if tool == "mcp__composio__app_run_action":
+            # Only a reviewed read can skip the card, and only after its first approved run (composio_actions.py).
+            from app.services import composio_actions
+            async with runtime.session() as db:
+                run.ctx.composio_first_use_hit = await composio_actions.first_use_hit(db, runtime.owner_id, run.agent_id, input)
         auto = tool_policy.automatic(tool, run.ctx.approval_mode or approval_modes.DEFAULT_MODE, run, input)
         if auto is not None:
             status, source = auto

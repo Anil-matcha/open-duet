@@ -14,6 +14,7 @@ export const en = {
   "shell.skip": "Skip to the conversation",
   "shell.openSidebar": "Open conversations",
   "shell.conversations": "Conversations",
+  "sidebar.apps": "Apps",
   "sidebar.agents": "Agents",
   "sidebar.manageAgents": "Manage agents",
   "sidebar.newAgent": "New agent",

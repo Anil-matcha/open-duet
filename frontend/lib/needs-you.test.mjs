@@ -36,7 +36,7 @@ test('rows drop what is not a row and each kind has one action', () => {
   const state = applyEvent(emptyTranscript(), ev(card(1, [row('a'), { nope: 1 }])));
   assert.equal(state.items[0].rows.length, 1);
   assert.deepEqual(rowAction(row('x', 'approval', 9)), { label: 'Review', href: '/chat?thread=9' });
-  assert.deepEqual(rowAction(row('x', 'signed_out')), { label: 'Open settings', href: '/settings/' });
+  assert.deepEqual(rowAction(row('x', 'signed_out')), { label: 'Open settings', href: '/settings/engines/' });
   assert.equal(rowAction(row('x', 'usage_limit')).href, '/chat?panel=usage');
 });
 

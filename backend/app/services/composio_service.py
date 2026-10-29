@@ -19,6 +19,7 @@ import uuid
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import composio_catalog, composio_generic, composio_tools
 from app.db.models.user_credential import UserCredential
 from app.db.transactions import begin_write
 from app.services import user_credential_service
@@ -27,13 +28,9 @@ from app.services.composio_client import Account, ComposioClient, ComposioError,
 PROVIDER = "integration:composio"
 _NOT_A_FILE = "-"
 
-# The apps Settings offers in this version. A slug outside this list is refused
-# even if Composio knows it; tool actions have a separate fixed allowlist below.
-SUPPORTED_APPS: tuple[tuple[str, str], ...] = (
-    ("github", "GitHub"),
-    ("gmail", "Gmail"),
-    ("googlecalendar", "Google Calendar"),
-)
+# The apps that have curated tools (app/composio_tools.py). Any other app Composio lists can be connected too
+# (composio_catalog.py) and reached through the generic tools (composio_generic.py).
+SUPPORTED_APPS: tuple[tuple[str, str], ...] = tuple((slug, composio_catalog.APP_INFO[slug]["name"]) for slug in composio_tools.apps())
 MAX_ACCOUNTS_PER_APP = 5
 
 _KEY = re.compile(r"^ak_[A-Za-z0-9_-]{8,200}$")
@@ -97,6 +94,7 @@ async def set_key(db: AsyncSession, owner_id: str, key: str, make_client) -> Non
         except ComposioError as exc:
             raise _user_error(exc, saving=True) from None
         await _save(db, owner_id, {"api_key": key, "user_id": user_id, "session_id": None})
+        composio_catalog.invalidate()  # first uses of reviewed reads are in the record and went with it
 
 
 async def remove_key(db: AsyncSession, owner_id: str) -> None:
@@ -108,6 +106,23 @@ async def remove_key(db: AsyncSession, owner_id: str) -> None:
             delete(UserCredential).where(UserCredential.user_id == owner_id, UserCredential.provider == PROVIDER)
         )
         await db.commit()
+        composio_catalog.invalidate()
+
+
+async def known_app(db: AsyncSession, owner_id: str, make_client, slug: str) -> bool:
+    """Whether Composio lists an app with this name, asked with the owner's key. False without a key; a failure to ask
+    is a UserError, never a guess."""
+    if not composio_generic.valid_app(slug) or composio_generic.blocked_app(slug):
+        return False
+    if slug in composio_tools.apps():
+        return True
+    record = await load(db, owner_id)
+    if record is None:
+        return False
+    try:
+        return await composio_catalog.is_known(make_client(record["api_key"]), slug)
+    except ComposioError as exc:
+        raise _user_error(exc) from None
 
 
 async def _needed(db: AsyncSession, owner_id: str) -> dict:
@@ -155,14 +170,17 @@ async def accounts(db: AsyncSession, owner_id: str, make_client) -> list[Account
 
 
 async def connect(db: AsyncSession, owner_id: str, make_client, toolkit: str, alias: str | None) -> Link:
-    if toolkit not in dict(SUPPORTED_APPS):
-        raise UserError(422, "unsupported_app", "That app is not available yet.")
+    if not composio_generic.valid_app(toolkit) or composio_generic.blocked_app(toolkit):
+        raise UserError(422, "unsupported_app", "That app is not available here.")
     if alias is not None and not valid_alias(alias):
         raise UserError(422, "invalid_alias", "Use up to 40 letters, numbers, spaces, dots, dashes or underscores.")
     async with lock:
         record = await _needed(db, owner_id)
         client = make_client(record["api_key"])
         try:
+            # An app is connectable only when Composio itself lists it (curated apps always are).
+            if toolkit not in composio_tools.apps() and not await composio_catalog.is_known(client, toolkit):
+                raise UserError(422, "unsupported_app", "Composio has no app with that name.")
             existing = [a for a in await client.accounts(record["user_id"], toolkit) if a.status != "FAILED"]
             if len(existing) >= MAX_ACCOUNTS_PER_APP:
                 raise UserError(409, "too_many_accounts", f"Disconnect an account first; {MAX_ACCOUNTS_PER_APP} is the most per app.")
@@ -317,6 +335,8 @@ async def disconnect(db: AsyncSession, owner_id: str, make_client, account_id: s
         if account_id not in mine:
             raise UserError(404, "account_not_found", "That account is not connected here.")
         await client.delete_account(account_id)
+        from app.services import composio_actions
+        await composio_actions.forget(db, owner_id, account_id=account_id)
     except ComposioError as exc:
         error = _user_error(exc)
         if error.code in {"composio_unavailable", "composio_rate_limited"}:

@@ -102,8 +102,8 @@ export const AGENT_APPS: { slug: string; label: string; read: string; write: str
   },
   {
     slug: "googlecalendar", label: "Google Calendar",
-    read: "List calendars and search event summaries in a date window of up to 31 days.",
-    write: null,
+    read: "List calendars, search events by words, and read event summaries in a date window.",
+    write: "Also add an event to a calendar. No guests are invited and nothing is emailed. You approve each event first.",
   },
 ];
 const APPS_ENGINES = new Set(["claude", "codex"]);
@@ -127,13 +127,45 @@ export function withApp(scopes: Scopes | null | undefined, slug: string, level: 
   return next;
 }
 
+// An app name as Composio writes it (lower case, letters, digits, - and _). It says nothing about the app existing:
+// the server asks Composio about any app that is new to an agent.
+const APP_SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
 // What to send when saving an agent: nothing for an engine that cannot use apps
-// (this also clears them if the engine was changed), else the known levels or null.
+// (this also clears them if the engine was changed), else the levels that make sense.
+// An app with curated tools can be changed only if it has a change level; any other app
+// has both levels (every one of its actions asks first).
 export function scopesToSend(scopes: Scopes | null | undefined, provider: string): Scopes | null {
   if (!supportsConnectedApps(provider)) return null;
   const known = Object.fromEntries(Object.entries(scopes ?? {}).filter(([slug, level]) => {
-    const app = AGENT_APPS.find((candidate) => candidate.slug === slug);
-    return Boolean(app && (level === "read" || (level === "write" && app.write)));
+    if (!APP_SLUG.test(slug) || (level !== "read" && level !== "write")) return false;
+    const curated = AGENT_APPS.find((candidate) => candidate.slug === slug);
+    return curated ? level === "read" || Boolean(curated.write) : true;
   }));
   return Object.keys(known).length ? known : null;
+}
+
+export type AgentAppOption = { slug: string; label: string; read: string; write: string | null; generic: boolean };
+
+export const GENERIC_READ = "Look up which actions the app has. Nothing runs and nothing changes.";
+export const GENERIC_WRITE = "Also run any action of the app. You approve every call first, and each card shows the call in full.";
+
+// "google_sheets" -> "Google sheets": a name for an app the page has no catalog entry for.
+export function appLabel(slug: string): string {
+  const words = slug.replace(/[-_]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : slug;
+}
+
+// The apps an agent can be given: the ones with curated tools, then every other app that has an account here or is
+// already allowed for the agent (so one that was disconnected stays visible and can be turned off).
+export function agentAppOptions(accounts: ComposioAccount[] | null | undefined, scopes: Scopes | null | undefined, labels: Record<string, string> = {}): AgentAppOption[] {
+  const curated: AgentAppOption[] = AGENT_APPS.map((app) => ({ ...app, generic: false }));
+  const known = new Set(curated.map((app) => app.slug));
+  const others = new Set<string>();
+  for (const account of accounts ?? []) if (APP_SLUG.test(account.toolkit) && !known.has(account.toolkit)) others.add(account.toolkit);
+  for (const slug of Object.keys(scopes ?? {})) if (APP_SLUG.test(slug) && !known.has(slug)) others.add(slug);
+  const generic: AgentAppOption[] = [...others].sort().map((slug) => ({
+    slug, label: labels[slug] ?? appLabel(slug), read: GENERIC_READ, write: GENERIC_WRITE, generic: true,
+  }));
+  return [...curated, ...generic];
 }

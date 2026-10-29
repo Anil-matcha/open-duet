@@ -1,12 +1,15 @@
 import { AuthGate } from "@/components/AuthGate";
-import { SettingsApp } from "@/components/SettingsApp";
+import { SettingsShell } from "@/components/settings/SettingsShell";
+import { GeneralSettings } from "@/components/settings/GeneralSettings";
 
 export const metadata = { title: "Settings · Open Duet" };
 
-export default function SettingsPage() {
+export default function Page() {
   return (
     <AuthGate>
-      <SettingsApp />
+      <SettingsShell>
+        <GeneralSettings />
+      </SettingsShell>
     </AuthGate>
   );
 }

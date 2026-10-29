@@ -8,6 +8,7 @@ import { SIGN_IN_URL } from "@/lib/paths";
 import { migrateLegacyIdentity, type SessionInfo } from "@/lib/session";
 import { DesktopAccountLogin, type DesktopAccountStatus } from "./DesktopAccountLogin";
 import { onboarding } from "@/lib/onboarding";
+import { isSetupPage } from "@/lib/settings-nav";
 
 type SessionContextValue = {
   // null when the server could not say (unreachable, or the desktop app's page
@@ -55,7 +56,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         try { storage = window.localStorage; } catch { /* storage blocked */ }
         const userId = storage ? await migrateLegacyIdentity(current, storage, auth.setIdentity) : current.user_id;
         if (!cancelled) setSession({ ...current, user_id: userId });
-        if (current.scopes.includes("admin") && !["/onboarding", "/settings"].some(page => pathname.replace(/\/$/, "").endsWith(page)) && !continueWithoutSetup) {
+        if (current.scopes.includes("admin") && !isSetupPage(pathname) && !continueWithoutSetup) {
           try {
             const progress = await onboarding.get();
             if (progress.status === "pending") { router.replace("/onboarding/"); return; }

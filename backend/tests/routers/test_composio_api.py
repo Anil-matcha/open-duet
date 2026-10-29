@@ -34,6 +34,11 @@ class FakeComposio:
         self.link_url = "https://connect.composio.dev/link/lk_fake"
         self.fail_next: dict[str, int] = {}
         self.deleted: list[str] = []
+        self.toolkits = {slug: {"slug": slug, "name": slug.title(), "type": "native", "no_auth": False, "is_local_toolkit": False,
+                                "deprecated": {"toolkitId": slug}, "composio_managed_auth_schemes": ["oauth2"],
+                                "meta": {"description": f"About {slug}.", "logo": "https://logos.composio.dev/api/x.png",
+                                         "categories": [{"id": "c", "name": "Communication"}], "tools_count": 3}}
+                         for slug in ("github", "gmail", "googlecalendar", "slack", "notion", "composio")}
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         key = request.headers.get("x-api-key")
@@ -66,6 +71,12 @@ class FakeComposio:
             return httpx.Response(201, json={
                 "link_token": "lk", "redirect_url": self.link_url, "connected_account_id": account["id"],
             })
+        if route == "GET /toolkits":
+            return httpx.Response(200, json={"items": list(self.toolkits.values()), "next_cursor": None, "current_page": 1,
+                                             "total_pages": 1, "total_items": len(self.toolkits)})
+        if route.startswith("GET /toolkits/"):
+            found = self.toolkits.get(route.rsplit("/", 1)[1])
+            return httpx.Response(200, json=found) if found else httpx.Response(404, json={"error": {"message": "no such app"}})
         if route == "GET /connected_accounts":
             wanted = request.url.params.get("toolkit_slugs")
             items = [a for a in self.accounts if not wanted or a["toolkit"]["slug"] == wanted]
@@ -317,3 +328,79 @@ async def test_changes_need_the_csrf_token(app, factory, composio, owner_id):
         assert (await api.put(f"{PATH}/key", json={"api_key": KEY})).status_code == 403
         assert (await api.delete(f"{PATH}/key")).status_code == 403
     assert composio.calls == []
+
+
+async def test_without_a_key_the_catalog_is_a_starter_list_and_never_calls_composio(admin, composio):
+    response = await admin.get(f"{PATH}/catalog")
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    body = response.json()
+    assert body["source"] == "starter" and body["complete"] is False and body["next_cursor"] is None
+    apps = {entry["app"]: entry for entry in body["apps"]}
+    assert {"github", "gmail", "googlecalendar", "slack", "notion"} <= set(apps)
+    assert any(tool["kind"] == "write" for tool in apps["github"]["curated_tools"])
+    assert [tool["name"] for tool in apps["googlecalendar"]["curated_tools"] if tool["kind"] == "write"] == ["googlecalendar_create_event"]
+    assert apps["slack"]["agent_actions"] == "generic" and apps["slack"]["curated_tools"] == []
+    assert composio.calls == []
+
+
+async def test_with_a_key_the_catalog_is_composios_and_search_and_paging_pass_through(admin, composio):
+    from app import composio_catalog
+    composio_catalog.invalidate()
+    await admin.put(f"{PATH}/key", json={"api_key": KEY})
+    body = (await admin.get(f"{PATH}/catalog")).json()
+    assert body["source"] == "composio" and body["complete"] is True and body["error"] is None
+    assert [a["app"] for a in body["apps"]] == ["github", "gmail", "googlecalendar", "slack", "notion", "composio"]
+    assert {a["app"]: a["agent_actions"] for a in body["apps"]}["composio"] == "unavailable"
+    assert [a["app"] for a in (await admin.get(f"{PATH}/catalog", params={"search": "notion"})).json()["apps"]] == ["notion"]
+    paged = (await admin.get(f"{PATH}/catalog", params={"limit": 2})).json()
+    assert len(paged["apps"]) == 2 and paged["next_cursor"] == "o2" and paged["total"] == 6
+    assert (await admin.get(f"{PATH}/catalog", params={"limit": 0})).status_code == 422
+    # The key never comes back, and the catalog is cached: this second page did not ask Composio again.
+    assert KEY not in (await admin.get(f"{PATH}/catalog")).text
+    assert len([c for c in composio.calls if c[0] == "GET /toolkits"]) == 1
+
+
+async def test_removing_the_key_drops_the_cached_catalog(admin, composio):
+    from app import composio_catalog
+    composio_catalog.invalidate()
+    await admin.put(f"{PATH}/key", json={"api_key": KEY})
+    await admin.get(f"{PATH}/catalog")
+    assert (await admin.delete(f"{PATH}/key")).status_code == 204
+    assert (await admin.get(f"{PATH}/catalog")).json()["source"] == "starter"
+
+
+async def test_a_catalog_failure_is_a_labelled_fallback_not_an_error_page(admin, composio):
+    from app import composio_catalog
+    composio_catalog.invalidate()
+    await admin.put(f"{PATH}/key", json={"api_key": KEY})
+    composio_catalog.invalidate()
+    composio.fail_next["GET /toolkits"] = 503
+    body = (await admin.get(f"{PATH}/catalog")).json()
+    assert body["source"] == "starter" and body["error"] == "unavailable" and body["apps"]
+
+
+async def test_any_app_composio_lists_can_be_connected(admin, composio):
+    await admin.put(f"{PATH}/key", json={"api_key": KEY})
+    link = await admin.post(f"{PATH}/connect", json={"toolkit": "slack", "alias": "team"})
+    assert link.status_code == 201, link.text
+    assert [(a["toolkit"], a["alias"]) for a in (await admin.get(f"{PATH}/accounts")).json()] == [("slack", "team")]
+
+
+@pytest.mark.parametrize("toolkit", ["made_up_app", "Slack", "../x", "a b", "", "x" * 65, "composio", "codeinterpreter"])
+async def test_an_app_composio_does_not_list_or_a_blocked_one_is_refused(admin, composio, toolkit):
+    await admin.put(f"{PATH}/key", json={"api_key": KEY})
+    response = await admin.post(f"{PATH}/connect", json={"toolkit": toolkit})
+    assert response.status_code == 422
+    assert composio.accounts == []
+
+
+async def test_connecting_an_app_does_not_give_any_agent_access(admin, composio):
+    await admin.put(f"{PATH}/key", json={"api_key": KEY})
+    await admin.post(f"{PATH}/connect", json={"toolkit": "notion"})
+    agents = (await admin.get("/api/v1/agents")).json()
+    assert all(not agent.get("connector_scopes") for agent in agents)
+
+
+async def test_the_catalog_is_owner_only(app, factory, composio, owner_id):
+    async with client(app) as anonymous:
+        assert (await anonymous.get(f"{PATH}/catalog")).status_code in (401, 403)

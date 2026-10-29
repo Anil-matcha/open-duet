@@ -150,3 +150,68 @@ async def test_delete_refuses_an_unsafe_id_before_any_request():
     with pytest.raises(ComposioError):
         await client.delete_account("../tool_router/session/s_1")
     assert calls == []
+
+
+# -- the catalog and tool calls ------------------------------------------------------------------------------------------
+
+def test_a_toolkit_is_reduced_to_display_fields_and_a_logo_off_composio_is_dropped():
+    from app.services.composio_client import _toolkit
+    item = {"slug": "Slack", "name": "Slack", "no_auth": False, "composio_managed_auth_schemes": ["oauth2"], "secret": TOKEN,
+            "meta": {"description": "d" * 400, "logo": "https://evil.example/l.png", "tools_count": 12,
+                     "categories": [{"id": "a", "name": "Communication"}, "Productivity", {"id": "x"}, {"name": " "}]}}
+    found = _toolkit(item)
+    assert (found.slug, found.logo, found.managed_auth, found.no_auth, found.tools_count) == ("slack", None, True, False, 12)
+    assert found.categories == ("Communication", "Productivity") and len(found.description) == 300 and TOKEN not in repr(found)
+    assert _toolkit({"slug": "../x"}) is None and _toolkit({"name": "x"}) is None and _toolkit("x") is None
+    assert _toolkit({"slug": "a", "meta": {"logo": "https://assets.composio.dev/l.png"}}).logo == "https://assets.composio.dev/l.png"
+
+
+def tool_json(slug="NOTION_CREATE_PAGE", toolkit="notion", **more):
+    return {"slug": slug, "name": "Create page", "description": "d", "toolkit": {"slug": toolkit}, "version": "v1", "tags": ["a", 3],
+            "input_parameters": {"type": "object"}, "is_deprecated": False, **more}
+
+
+async def test_tools_keep_only_those_of_the_asked_app_and_the_schema_only_when_it_is_small():
+    from app.services.composio_client import MAX_SCHEMA_BYTES
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.path.removeprefix("/api/v3.1"), dict(request.url.params)))
+        return httpx.Response(200, json={"items": [tool_json(), tool_json("SLACK_X", "slack"), tool_json("NOTION_BIG", input_parameters={"x": "y" * MAX_SCHEMA_BYTES}),
+                                                   {"slug": "bad slug", "toolkit": {"slug": "notion"}}], "next_cursor": "c2"})
+
+    page = await client_for(handler).tools("notion", "pages", None, 5)
+    assert seen == [("/tools", {"toolkit_slug": "notion", "limit": "5", "query": "pages"})]
+    assert [t.slug for t in page.items] == ["NOTION_CREATE_PAGE", "NOTION_BIG"] and page.next_cursor == "c2"
+    assert page.items[0].schema == {"type": "object"} and page.items[0].tags == ("a",) and page.items[1].schema is None
+
+
+async def test_one_tool_must_be_the_one_asked_for():
+    def handler(request):
+        slug = request.url.path.rsplit("/", 1)[1]
+        return httpx.Response(200, json=tool_json("OTHER_TOOL" if slug == "NOTION_WANTED" else slug))
+
+    client = client_for(handler)
+    assert (await client.tool("NOTION_CREATE_PAGE")).slug == "NOTION_CREATE_PAGE"
+    for bad in ("NOTION_WANTED", "lower_case", "A/B", "X" * 200):
+        with pytest.raises(ComposioError) as caught:
+            await client.tool(bad)
+        assert caught.value.kind == "not_found"
+
+
+async def test_a_toolkit_must_be_the_one_asked_for_and_a_missing_one_is_not_found():
+    def handler(request):
+        slug = request.url.path.rsplit("/", 1)[1]
+        return httpx.Response(404, json={"error": {"message": "x"}}) if slug == "gone" else httpx.Response(200, json={"slug": "other", "name": "O", "meta": {}})
+
+    client = client_for(handler)
+    for slug in ("gone", "wanted", "Bad Name", "../x"):
+        with pytest.raises(ComposioError) as caught:
+            await client.toolkit(slug)
+        assert caught.value.kind == "not_found"
+
+
+def test_the_client_identity_tells_projects_apart_and_does_not_contain_the_key():
+    a, b = ComposioClient("ak_ONE_abcdef123456"), ComposioClient("ak_TWO_abcdef123456")
+    assert a.identity() == ComposioClient("ak_ONE_abcdef123456").identity() != b.identity()
+    assert "ONE" not in a.identity() and a.identity() != ComposioClient("ak_ONE_abcdef123456", base_url="https://other.example/").identity()

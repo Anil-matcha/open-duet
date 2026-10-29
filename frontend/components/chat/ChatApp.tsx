@@ -423,7 +423,7 @@ export function ChatApp() {
 
   // A signed-out engine gets a button to its sign-in; there may be no terminal to use.
   const signInAction = selectedEngine && !selectedEngine.available && selectedEngine.signed_in === false
-    ? { label: `Sign in to ${selectedEngine.label}`, onClick: () => router.push("/settings/") }
+    ? { label: `Sign in to ${selectedEngine.label}`, onClick: () => router.push("/settings/engines/") }
     : undefined;
 
   const imagesAttached = attached.some((file) => file.type.startsWith("image/"));
@@ -732,7 +732,7 @@ export function ChatApp() {
           {gate.status.enabled
             ? (gate.status.reason ?? "unknown reason")
             : "Set LOCAL_EXECUTION_ENABLED=true in backend/.env on the machine running the backend, then restart it."}
-          <p className="mt-3"><Link href="/settings/" className="underline">Open Settings</Link> to configure an engine and check its status.</p>
+          <p className="mt-3"><Link href="/settings/engines/" className="underline">Open engine settings</Link> to configure an engine and check its status.</p>
         </Notice>
       </div>
     );

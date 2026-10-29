@@ -28,7 +28,13 @@ test("permission reads do not prompt; only fixed system panes can open", async (
 test("untrusted frame, other origin and wrong page cannot open permissions", async () => {
   const { handler, event } = setup();
   await assert.rejects(handler({ ...event, senderFrame: { url: event.senderFrame.url } }));
-  event.senderFrame.url = "https://other.example/settings/";
+  for (const page of ["/settings/", "/settings/engines/", "/apps/"]) {
+    event.senderFrame.url = `http://127.0.0.1:1234${page}`;
+    await assert.rejects(handler(event), undefined, page);
+  }
+  event.senderFrame.url = "http://127.0.0.1:1234/settings/account/";
+  assert.equal((await handler(event)).supported, true);
+  event.senderFrame.url = "https://other.example/settings/account/";
   await assert.rejects(handler(event));
   event.senderFrame.url = "http://127.0.0.1:1234/chat/";
   await assert.rejects(handler(event));

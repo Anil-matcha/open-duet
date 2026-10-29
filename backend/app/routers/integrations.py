@@ -8,12 +8,15 @@ write-only: nothing here returns it or echoes a request body.
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import principal_of
 from app.db.session import get_db
-from app.schemas.composio import ComposioAccount, ComposioApp, ComposioConnectRequest, ComposioLink, ComposioStatus
+from app import composio_catalog
+from app.schemas.composio import (
+    ComposioAccount, ComposioApp, ComposioCatalogPage, ComposioConnectRequest, ComposioLink, ComposioStatus,
+)
 from app.services import composio_service as service
 from app.services.composio_client import LINK_LIFETIME_SECONDS, ComposioClient
 from app.services.local_access_policy import require_local_access
@@ -55,6 +58,20 @@ async def status(response: Response, db: AsyncSession = Depends(get_db)):
         configured=await service.configured(db, LOCAL_OWNER_ID),
         apps=[ComposioApp(slug=slug, label=label) for slug, label in service.SUPPORTED_APPS],
     )
+
+
+@router.get("/catalog", response_model=ComposioCatalogPage)
+async def catalog(
+    response: Response, search: str = Query("", max_length=100), category: str | None = Query(None, max_length=40),
+    cursor: str | None = Query(None, max_length=20), limit: int = Query(composio_catalog.DEFAULT_LIMIT, ge=1, le=composio_catalog.MAX_LIMIT),
+    db: AsyncSession = Depends(get_db), make_client=Depends(get_client_factory),
+):
+    """One page of the apps the page lists. With a saved key it is Composio's own catalog (cached, per key); without one, or
+    when Composio cannot be reached and nothing is cached, a bundled starter list that says it is one."""
+    response.headers["Cache-Control"] = "no-store"
+    record = await service.load(db, LOCAL_OWNER_ID)
+    client = make_client(record["api_key"]) if record is not None else None
+    return await composio_catalog.page(client, search=search, category=category, cursor=cursor, limit=limit)
 
 
 @router.put("/key", response_model=ComposioStatus)

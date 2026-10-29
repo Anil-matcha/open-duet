@@ -1,5 +1,6 @@
 """Every automatic tool decision passes through the durable approval gate."""
 from app.computers import policy as computers
+from app import composio_generic
 from app.services import composio_policy
 from app.team import policy as teams
 
@@ -25,7 +26,16 @@ def automatic(tool, mode, run, arguments):
                 if mode == "plan":
                     return "denied", "plan_mode"
                 return "allowed", "routine_write_grant"
-        return composio_policy.automatic(tool, mode, run.ctx.composio_apps)
+        decision = composio_policy.automatic(tool, mode, run.ctx.composio_apps, arguments, getattr(run.ctx, "composio_first_use_hit", False))
+        if tool == composio_policy.PREFIX + composio_generic.RUN:
+            # A generic call decided without a card is remembered, so the bridge checks it again before it runs.
+            key, calls = composio_generic.call_key(arguments), getattr(run.ctx, "composio_auto_calls", None)
+            if calls is not None:
+                if decision is not None and decision[0] == "allowed":
+                    calls.add(key)
+                else:
+                    calls.discard(key)
+        return decision
     # Screen grants are turn scoped and are never persisted as command rules.
     if tool in computers.SCREEN_INPUT or tool in computers.SCREEN_READ:
         return computers.automatic(tool, mode, screen_granted=getattr(run, "screen_granted", False))
