@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { agentSummary, approvalModeLabel, type Agent } from '@/lib/agents';
 import { describeApiError } from '@/lib/api';
 import { useStyles, type Palette } from '@/lib/theme';

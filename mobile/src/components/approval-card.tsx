@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
+import { MONO } from '@/lib/fonts';
 import { approvalFields, previewValue } from '@/lib/approval-text';
 import type { TranscriptItem } from '@/lib/transcript';
 import { radius, useStyles, type Palette } from '@/lib/theme';
 
-const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
 type Approval = Extract<TranscriptItem, { kind: 'approval' }>;
 

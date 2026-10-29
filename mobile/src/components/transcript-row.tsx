@@ -1,5 +1,6 @@
-import { Image, type ImageSourcePropType, StyleSheet, Text, View } from 'react-native';
+import { Image, type ImageSourcePropType, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { Markdown } from '@/components/markdown';
 import type { Attachment } from '@/lib/attachments';
 import type { TranscriptItem } from '@/lib/transcript';

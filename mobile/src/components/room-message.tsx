@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { Markdown } from '@/components/markdown';
 import type { RoomItem } from '@/lib/rooms';
 import { radius, useStyles, type Palette } from '@/lib/theme';

@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { Text, TextInput } from '@/components/text';
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { highlightPieces, hitLabel, hitTarget, MIN_SEARCH_CHARS, type SearchHit } from '@/lib/search';
 import { relativeTime } from '@/lib/time';

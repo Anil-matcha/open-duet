@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Linking, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
+import { Text } from '@/components/text';
+import { MONO } from '@/lib/fonts';
 import { parseMarkdown, type Align, type Span } from '@/lib/markdown';
 import { radius, useStyles, type Palette } from '@/lib/theme';
 
-const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const HEADING_SIZE = [0, 22, 20, 18, 17, 16, 16];
 
 function Spans({ spans }: { spans: Span[] }) {

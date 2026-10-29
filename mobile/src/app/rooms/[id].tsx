@@ -1,7 +1,8 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useRef } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { ApprovalCard } from '@/components/approval-card';
 import { Composer } from '@/components/composer';
 import { KeyboardScreen } from '@/components/keyboard-screen';

@@ -32,7 +32,8 @@
           "cameraPermission": "Suparagent uses the camera only to scan the pairing QR code shown by your own server.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

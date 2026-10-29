@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { useAuth } from '@/lib/auth-context';
 import { serverLabel } from '@/lib/server-url';
 import { radius, useStyles, type Palette } from '@/lib/theme';

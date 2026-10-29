@@ -1,7 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { agentName, type Agent } from '@/lib/agents';
 import { describeApiError, type Thread } from '@/lib/api';
 import { relativeTime } from '@/lib/time';

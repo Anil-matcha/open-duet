@@ -1,8 +1,9 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { parsePairingLink } from '@/lib/pairing-link';
 import { radius, useStyles, type Palette } from '@/lib/theme';
 

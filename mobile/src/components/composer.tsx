@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text, TextInput } from '@/components/text';
 import { MAX_ATTACHMENTS, type Attachment } from '@/lib/attachments';
 import { radius, useStyles, useTheme, type Palette } from '@/lib/theme';
 
