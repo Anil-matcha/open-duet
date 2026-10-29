@@ -1,4 +1,5 @@
-import { Feather } from '@expo/vector-icons';
+// From the icon set's own path: the package root would bundle every icon font.
+import Feather from '@expo/vector-icons/Feather';
 import { StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';

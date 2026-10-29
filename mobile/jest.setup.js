@@ -3,9 +3,9 @@ jest.mock('react-native-keyboard-controller', () => require('react-native-keyboa
 
 // The icon library loads its font file on first use, which a test has no asset registry for. A plain View
 // carrying the icon's name stands in, so a test can still see which icon is drawn.
-jest.mock('@expo/vector-icons', () => {
+jest.mock('@expo/vector-icons/Feather', () => {
   const React = require('react');
   const { View } = require('react-native');
   const Feather = ({ name }) => React.createElement(View, { testID: `icon-${name}` });
-  return { Feather };
+  return { __esModule: true, default: Feather };
 });
