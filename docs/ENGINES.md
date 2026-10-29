@@ -50,7 +50,7 @@ Settings forms come from each adapter's `config_fields` and `setup` descriptors.
 Ready engines appear before engines that need setup, including in engine pickers.
 Connection commands for other engines are displayed for the person to run.
 Under the generic endpoint card, **Fill address from template** supplies
-an address for Ollama, LM Studio, Groq, Cerebras, Mistral or OpenAI. It supplies
+an address for Ollama, LM Studio, Groq, Cerebras, Mistral, Atlas Cloud or OpenAI. It supplies
 no key or model. These services have not been checked with real accounts.
 
 ### Google account models through Antigravity
