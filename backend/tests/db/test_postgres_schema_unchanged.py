@@ -41,11 +41,16 @@ def postgres_ddl(table_names: set[str]) -> str:
         statements.append(str(CreateTable(table).compile(dialect=dialect)).strip() + ";")
         for index in sorted(table.indexes, key=lambda i: i.name):
             statements.append(str(CreateIndex(index).compile(dialect=dialect)).strip() + ";")
-    return "\n\n".join(statements) + "\n"
+    return normalize_sql("\n\n".join(statements) + "\n")
+
+
+def normalize_sql(value: str) -> str:
+    # Generated DDL may carry trailing spaces; preserve every SQL token.
+    return re.sub(r"[ \t]+$", "", value.replace("\r\n", "\n"), flags=re.MULTILINE)
 
 
 def snapshot_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    return normalize_sql(path.read_text(encoding="utf-8"))
 
 
 def original_tables() -> set[str]:

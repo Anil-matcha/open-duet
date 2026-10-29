@@ -91,6 +91,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
       - uses: astral-sh/setup-uv@v5.4.2
+      - name: Install audio validation runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          ffprobe -version
       - run: uv sync --frozen
       - run: uv run pytest -q
 
@@ -195,6 +200,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
       - uses: astral-sh/setup-uv@v5.4.2
+      - name: Install audio validation runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          ffprobe -version
       - run: uv sync --frozen
       - run: uv run alembic upgrade head
       - run: uv run pytest -q

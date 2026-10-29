@@ -163,3 +163,9 @@ test('an interrupted turn says whether the engine had the message', () => {
   assert.match(interruptedText('shutdown', ''), /^The app was closed while the agent was working/);
   assert.ok(failureNextStep('engine_limited'));
 });
+
+test('audio transcript segments survive event replay for source review', () => {
+  const transcript = { text: 'Uncertain name.', segments: [{ id: 1, start: 0, end: 1, text: 'Uncertain name.' }] };
+  const state = applyEvent(emptyTranscript(), { thread_id: 1, seq: 1, type: 'turn.started', turn_id: 1, data: { prompt_text: 'Summarize.', attachments: [{ id: 'a'.repeat(32), name: 'recording.wav', mime: 'audio/wav', bytes: 100, kind: 'audio', transcript }] } });
+  assert.deepEqual(state.items[0].attachments[0].transcript, transcript);
+});

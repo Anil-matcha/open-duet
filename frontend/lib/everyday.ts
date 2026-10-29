@@ -99,10 +99,11 @@ export function attachmentProblem(file: { name: string; type: string; size: numb
   const isImage = IMAGE_TYPES.includes(file.type) || /\.(png|jpe?g|gif|webp)$/.test(lower);
   if (file.size === 0) return `${name} is empty.`;
   if (isImage) return file.size > IMAGE_MAX_BYTES ? `${name} is over the 10 MB image limit.` : null;
+  if (/\.(wav|mp3|m4a|ogg|flac|webm)$/.test(lower)) return file.size > 25 * 1024 * 1024 ? `${name} is over the 25 MB audio limit.` : null;
   if (TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
     return file.size > TEXT_MAX_BYTES ? `${name} is over the 1 MB text file limit.` : null;
   }
-  return `${name} can't be attached. Attach images (PNG, JPEG, GIF, WebP) or text files.`;
+  return `${name} can't be attached. Attach images (PNG, JPEG, GIF, WebP) or text files, or audio (WAV, MP3, M4A, OGG, FLAC, WebM; 25 MB, 20 minutes).`;
 }
 
 // The parent of a workspace path ("a/b/c" -> "a/b", "a" -> "").

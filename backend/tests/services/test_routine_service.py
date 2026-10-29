@@ -434,10 +434,12 @@ async def test_an_imported_routine_is_paused_and_has_no_webhook(sessions, owner,
     async with sessions() as db:
         await service.enable_webhook(db, owner, routine.id)
     document = service.export_document(routine)
+    document["quiet_reporting"] = True
     async with sessions() as db:
         imported = await service.import_document(db, owner, agent.id, document, now=clock())
     assert imported.paused and imported.next_run_at is None and imported.webhook_secret_hash is None
     assert imported.schedule_spec == {"expression": "* * * * *"}
+    assert imported.quiet_reporting is False
 
 
 @pytest.mark.parametrize("after, expected", [

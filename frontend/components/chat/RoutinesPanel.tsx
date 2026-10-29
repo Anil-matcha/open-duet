@@ -59,6 +59,7 @@ type Draft = {
   approvalMode: ApprovalMode;
   approvalWait: string;
   catchUp: string;
+  quietReporting: boolean;
   retryLimit: string;
   retryDelay: string;
   connectedAppGrants: ConnectedAppGrant[];
@@ -81,7 +82,7 @@ const ROUTINE_READ_TOOLS = [
   { app: "gmail", label: "Gmail", tools: [
     ["gmail_fetch_emails", "Search messages"], ["gmail_fetch_message", "Read a message"],
     ["gmail_fetch_thread", "Read a thread"], ["gmail_get_profile", "View account profile"],
-  ], writes: [["gmail_send_email", "Send one plain-text email to one recipient"]] },
+  ], writes: [["gmail_send_email", "Send one plain-text email to one recipient"], ["gmail_prepare_checked_reply", "Draft one reply to a checked message (requires message and profile reads from the same account; no other writes)"]] },
   { app: "googlecalendar", label: "Google Calendar", tools: [
     ["googlecalendar_list_calendars", "List calendars"], ["googlecalendar_list_events", "List events"],
   ], writes: [] },
@@ -91,7 +92,7 @@ function newDraft(agents: Agent[]): Draft {
   return {
     id: null, name: "", agentId: agents[0]?.id ?? null, prompt: "", schedule: emptySchedule(),
     runLimit: "30", approvalMode: "ask", approvalWait: "30", catchUp: "60",
-    retryLimit: "0", retryDelay: "5", connectedAppGrants: [],
+    quietReporting: false, retryLimit: "0", retryDelay: "5", connectedAppGrants: [],
   };
 }
 
@@ -101,6 +102,7 @@ function draftOf(routine: Routine): Draft {
     schedule: scheduleDraftOf(routine), runLimit: String(routine.run_limit_minutes),
     approvalMode: routine.approval_mode, approvalWait: String(routine.approval_timeout_minutes),
     catchUp: String(routine.catch_up_minutes), retryLimit: String(routine.retry_limit),
+    quietReporting: routine.quiet_reporting ?? false,
     retryDelay: String(routine.retry_delay_minutes),
     connectedAppGrants: routine.connected_app_grants ?? [],
   };
@@ -118,6 +120,7 @@ function inputOf(draft: Draft): RoutineInput {
     approval_mode: draft.approvalMode,
     approval_timeout_minutes: Number(draft.approvalWait),
     catch_up_minutes: Number(draft.catchUp),
+    quiet_reporting: draft.quietReporting,
     retry_limit: Number(draft.retryLimit),
     retry_delay_minutes: Number(draft.retryDelay),
     connected_app_grants: draft.connectedAppGrants,
@@ -254,9 +257,11 @@ function RunHistory({ routine, onClose, onOpen }: { routine: Routine; onClose: (
                   {selectedRunId === run.id ? "Hide app actions" : "App actions"}
                 </button>
               </div>
+              {run.outcome === "no_change" && <p className="mt-1 text-xs text-muted">No changes · checks retained in history</p>}
               {(run.error || run.result) && (
                 <p className={`mt-1 line-clamp-3 whitespace-pre-wrap text-xs ${run.error ? "text-danger" : "text-muted"}`}>{run.error || run.result}</p>
               )}
+              {run.error && run.result && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted">Partial report: {run.result}</p>}
               {selectedRunId === run.id && <RunAppActions routineId={routine.id} runId={run.id} />}
             </li>
           ))}
@@ -437,6 +442,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                   <label>Run limit (minutes)<input type="number" min={1} max={240} value={draft.runLimit} onChange={(e) => setDraft({ ...draft, runLimit: e.target.value })} className={input} /></label>
                   <label>Approval wait (minutes)<input type="number" min={1} max={1440} value={draft.approvalWait} onChange={(e) => setDraft({ ...draft, approvalWait: e.target.value })} className={input} /></label>
                   <label>May start late by (minutes)<input type="number" min={0} max={1440} value={draft.catchUp} onChange={(e) => setDraft({ ...draft, catchUp: e.target.value })} className={input} /></label>
+                  <label className="col-span-2 flex items-start gap-2"><input type="checkbox" checked={draft.quietReporting} onChange={(e) => setDraft({ ...draft, quietReporting: e.target.checked })} /><span>Quiet scheduled checks<span className="block text-xs text-muted">Skip completion alerts only for an explicitly verified no-change result. Reports, failures, questions and action receipts stay visible. Run now always reports.</span></span></label>
                   <label>Retries after a failure<input type="number" min={0} max={3} value={draft.retryLimit} onChange={(e) => setDraft({ ...draft, retryLimit: e.target.value })} className={input} /></label>
                   <label>Retry after (minutes)<input type="number" min={1} max={1440} value={draft.retryDelay} onChange={(e) => setDraft({ ...draft, retryDelay: e.target.value })} className={input} /></label>
                   <label>Approval mode

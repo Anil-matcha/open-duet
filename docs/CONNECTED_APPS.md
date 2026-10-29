@@ -199,7 +199,13 @@ In addition to existing read actions, the available write grants are:
 - Commit one text file on a `campaign/` branch (`github_commit_file`). The
   existing current-blob-SHA requirement for replacements remains in force.
 
-Other write tools, including reply drafts, are unavailable to routines. Imports
+A separate checked-message reply-draft grant is available only in a confined
+fresh Claude run with Read message and Read Gmail profile grants for the same
+account. It cannot be combined with send or repository-write grants. The
+server derives the sender, rechecks source headers and allows at most one draft
+attempt in the run. See [checked-message draft mode](ROUTINES.md#checked-message-draft-mode).
+The existing interactive draft tool still requires a person approval and is
+not itself preauthorized by a routine. Other write tools are unavailable. Imports
 and chat-created routines receive no grant; only the person-facing editor can
 assign one. Local shell commands such as `git commit` use command permissions,
 independently of these connected-app grants.

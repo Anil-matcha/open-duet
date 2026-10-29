@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals } from "@/lib/transcript";
@@ -172,6 +172,11 @@ export function ChatApp() {
   const [filesOpen, setFilesOpen] = useState(false);
   // Files chosen for the next message, and why one was refused.
   const [attached, setAttached] = useState<File[]>([]);
+  const audioAbort = useRef<AbortController | null>(null);
+  const [audioUrl, setAudioUrl] = useState("");
+  const [audioConsent, setAudioConsent] = useState(false);
+  const [audioCapability, setAudioCapability] = useState<{ provider_label: string; available: boolean; retention: string } | null>(null);
+  useEffect(() => { api.audioCapabilities().then(setAudioCapability).catch(() => setAudioCapability(null)); }, []);
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
   // Skills picked for the next message only, and the text a Save as skill opened the editor with.
   // Both are tied to the agent they were made for, so another agent starts clean.
@@ -431,6 +436,11 @@ export function ChatApp() {
   if (blockedReason === null && imagesRefused)
     blockedReason = `${selectedEngine?.label ?? "This engine"} can't read images. Remove the image to send.`;
 
+  const hasAudio = !!audioUrl.trim() || attached.some((file) => /\.(wav|mp3|m4a|ogg|flac|webm)$/i.test(file.name));
+  if (blockedReason === null && hasAudio && (!audioCapability?.available || !audioConsent)) blockedReason = !audioCapability?.available ? "Audio transcription is unavailable. Configure the transcription provider first." : "Consent to send audio to OpenAI before sending.";
+
+  if (blockedReason === null && audioUrl.trim() && attached.length >= MAX_ATTACHMENTS) blockedReason = `Attach at most ${MAX_ATTACHMENTS} files or audio links to one message.`;
+
   const addFiles = (files: File[]) => {
     const problems: string[] = [];
     const accepted = files.filter((file) => {
@@ -453,6 +463,8 @@ export function ChatApp() {
     if (!text) return;
     setSendError(null);
     setSending(true);
+    const processing = new AbortController();
+    audioAbort.current = processing;
     try {
       let id = threadId;
       if (id === null) {
@@ -461,16 +473,21 @@ export function ChatApp() {
         router.replace(`/chat?thread=${id}`);
       }
       const ids: string[] = [];
-      for (const file of attached) ids.push((await api.uploadAttachment(id, file)).id);
+      for (const file of attached) ids.push((await api.uploadAttachment(id, file, audioConsent ? "openai" : undefined, processing.signal)).id);
+      if (audioUrl.trim()) ids.push((await api.importAudioUrl(id, audioUrl.trim(), audioConsent ? "openai" : "", processing.signal)).id);
+      processing.signal.throwIfAborted();
       await api.sendTurn(id, message, ids, usedSkills);
       setDraft("");
       setChosenSkills(() => []);
       setAttached([]);
+      setAudioUrl("");
+      setAudioConsent(false);
       setAttachNotice(null);
     } catch (err) {
       setSendError(sendErrorText(err));
       if (err instanceof ApiError && err.code === "skill_unavailable") setSkillsTick((n) => n + 1);
     } finally {
+      audioAbort.current = null;
       setSending(false);
       setListTick((n) => n + 1);
     }
@@ -839,6 +856,17 @@ export function ChatApp() {
             </div>
           )}
 
+          <div className="mx-auto w-full max-w-3xl px-3 text-xs text-muted">
+            <details>
+              <summary className="cursor-pointer">Audio or podcast link (25 MB, 20 minutes)</summary>
+              <p>WAV, MP3, M4A, OGG, FLAC or WebM. Attach a file or paste a direct public audio URL. Pages requiring sign-in or payment cannot be transcribed.</p>
+              <input aria-label="Direct podcast audio URL" type="url" value={audioUrl} onChange={(event) => { setAudioUrl(event.target.value); setAudioConsent(false); }} placeholder="https://example.com/episode.mp3" disabled={sending} className="my-2 w-full rounded-field border border-line bg-inset p-2" />
+              <p>{audioCapability?.available ? audioCapability.retention : "Audio transcription is unavailable: configure the provider key, ffmpeg and ffprobe on the backend."}</p>
+              <label className="my-2 flex gap-2"><input type="checkbox" checked={audioConsent} onChange={(event) => setAudioConsent(event.target.checked)} disabled={sending || !audioCapability?.available} />I consent to send this audio to {audioCapability?.provider_label ?? "OpenAI"} for transcription.</label>
+              {sending && hasAudio && <button type="button" onClick={() => audioAbort.current?.abort()} className="my-2 underline">Cancel audio processing</button>}
+              <p>Machine transcripts may contain uncertain words or names. Review the transcript before requesting later actions.</p>
+            </details>
+          </div>
           <Composer
             focusRequested={focusComposer}
             onFocused={() => setFocusComposer(false)}

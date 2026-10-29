@@ -22,6 +22,19 @@ class ConnectedAppGrant(BaseModel):
         return value
 
 
+def validate_draft_grants(grants: list[ConnectedAppGrant]) -> None:
+    """A checked reply workflow has exactly one mailbox and no other writes."""
+    draft = "gmail_prepare_checked_reply"
+    if not any(g.tool == draft for g in grants):
+        return
+    from app.composio_tools import BY_NAME
+    tools = {g.tool for g in grants}
+    if (len({g.account_id for g in grants}) != 1
+            or not {"gmail_fetch_message", "gmail_get_profile"}.issubset(tools)
+            or any(g.tool != draft and (g.tool not in BY_NAME or BY_NAME[g.tool].app != "gmail" or BY_NAME[g.tool].kind != "read") for g in grants)):
+        raise ValueError("A checked reply requires Read a message and View account profile from one Gmail account, with no other writes or apps.")
+
+
 class RoutineCreateRequest(BaseModel):
     agent_id: int
     connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list, max_length=50)
@@ -35,6 +48,7 @@ class RoutineCreateRequest(BaseModel):
     approval_mode: ApprovalMode = "ask"
     approval_timeout_minutes: int = 30
     catch_up_minutes: int = 60
+    quiet_reporting: bool = False
     retry_limit: int = 0
     retry_delay_minutes: int = 5
 
@@ -51,6 +65,7 @@ class RoutineUpdateRequest(BaseModel):
     approval_mode: ApprovalMode | None = None
     approval_timeout_minutes: int | None = None
     catch_up_minutes: int | None = None
+    quiet_reporting: bool | None = None
     retry_limit: int | None = None
     retry_delay_minutes: int | None = None
 
@@ -88,6 +103,8 @@ class RoutineRunResponse(BaseModel):
     scheduled_for: datetime | None
     thread_id: int | None
     turn_id: int | None
+    outcome: str | None = None
+    outcome_details: dict | None = None
     result: str | None
     error: str | None
     waiting_since: datetime | None
@@ -117,6 +134,7 @@ class RoutineResponse(BaseModel):
     approval_mode: str
     approval_timeout_minutes: int
     catch_up_minutes: int
+    quiet_reporting: bool = False
     retry_limit: int = 0
     retry_delay_minutes: int = 5
     last_run_at: datetime | None

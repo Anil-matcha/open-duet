@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from app import composio_generic
 
 LIST_ACCOUNTS = "list_accounts"
-ROUTINE_WRITE_TOOLS = ("gmail_send_email", "github_create_branch", "github_commit_file")
+ROUTINE_WRITE_TOOLS = ("gmail_send_email", "github_create_branch", "github_commit_file", "gmail_prepare_checked_reply")
 LEVELS = ("read", "write")  # in order: write includes read
 MAX_RESULT_CHARS = 20_000
 MAX_ITEMS = 30
@@ -226,6 +226,12 @@ TOOLS: tuple[Tool, ...] = (
                ("thread_id", "recipient_email", "subject", "body"),
                fields=("id", "message.id", "message.threadId", "threadId", "recipient_email"),
                defaults=(("user_id", "me"), ("is_html", False))),
+    _app_write("gmail_prepare_checked_reply", "gmail", "GMAIL_CREATE_EMAIL_DRAFT",
+               "Prepare at most one draft for the exact message checked in this routine run. The server derives the recipient; this never sends email.",
+               {"message_id": MESSAGE_ID, "thread_id": MESSAGE_ID, "subject": TITLE, "body": BODY},
+               ("message_id", "thread_id", "subject", "body"),
+               fields=("id", "message.id", "message.threadId", "threadId"),
+               defaults=(("user_id", "me"), ("is_html", False))),
     _app_read("googlecalendar_list_calendars", "googlecalendar", "GOOGLECALENDAR_LIST_CALENDARS",
               "List calendars visible to the connected Google account. Use a returned calendar ID with the event-list tool.",
               {"max_results": _int(1, 30, "Calendars to return (most 30)."), "page_token": PAGE_TOKEN},
@@ -294,10 +300,12 @@ def generic_apps(levels: dict) -> tuple[list[str], list[str]]:
     return sorted(other), sorted(app for app in other if levels[app] == "write" or composio_generic.REVIEWED_READS)
 
 
-def mcp_tools(levels: dict) -> list[dict]:
+def mcp_tools(levels: dict, *, routine_tools: bool = False) -> list[dict]:
     """The tool list the shim shows: only what this agent may use, by app and level."""
     shown = [ACCOUNTS_TOOL]
     for tool in TOOLS:
+        if tool.name == "gmail_prepare_checked_reply" and not routine_tools:
+            continue
         if allows(levels.get(tool.app), tool.kind):
             note = " Read only." if tool.kind == "read" else ""
             shown.append({
@@ -572,6 +580,12 @@ def _file(data) -> tuple[object, int]:
 def project(tool: Tool, data: object) -> dict:
     """Composio's `data` reduced to the whitelisted fields, capped in size.
     An answer of an unexpected shape is an error, never passed through."""
+    if tool.special == "checked_message":
+        from dataclasses import replace
+        from app.services.routine_drafts import source_identity
+        result = project(replace(tool, special="message"), data)
+        result["_checked_source"] = source_identity(data)
+        return result
     if tool.special == "dispatched":  # GitHub answers 204 with no body; success is all there is to say
         return {"result": "done", "app": tool.app, "note": "The workflow run was requested. It starts shortly; this does not report its outcome."}
     if tool.special == "file":

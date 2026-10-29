@@ -34,7 +34,7 @@ def automatic(tool, mode, team, arguments):
     if not team.configuration_allowed and name in ('create_agent', 'create_room', 'propose_team_setup', 'propose_bot_deletion',
                                                   'propose_profile', 'propose_model', 'create_routine', 'manage_routine', 'skill_manage', 'close_thread'):
         return 'denied', 'admin_scope_required'
-    if name in ('list_agents', 'list_rooms', 'list_team_setup', 'list_threads', 'job_status', 'list_management_capabilities', 'list_routines', 'preview_schedule', 'skills_list'):
+    if name in ('list_agents', 'list_rooms', 'list_team_setup', 'list_threads', 'job_status', 'list_management_capabilities', 'list_routines', 'preview_schedule', 'skills_list', 'routine_report_outcome'):
         return 'allowed', 'team_read'
     if name in ('ask_agent', 'delegate'):
         if not team.delegation_enabled:

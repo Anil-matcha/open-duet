@@ -22,7 +22,7 @@ from app import composio_tools
 class Server:
     def __init__(self, mailbox, levels, exact_tools=None):
         self.mailbox = Path(mailbox)
-        self.tools = composio_tools.mcp_tools(levels)
+        self.tools = composio_tools.mcp_tools(levels, routine_tools=exact_tools is not None)
         if exact_tools is not None:
             self.tools = [t for t in self.tools if t["name"] in exact_tools]
         self.names = {tool["name"] for tool in self.tools}

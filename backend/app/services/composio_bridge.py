@@ -187,6 +187,8 @@ class ComposioBridge:
                 return await composio_service.connected_names(db, rt.owner_id, self.client_factory, set(allowed))
         if name in composio_generic.GENERIC_TOOLS:
             return await self.execute_generic(name, args, allowed)
+        if name == "gmail_prepare_checked_reply" and not getattr(run.ctx, "draft_only", False):
+            return {"error": "This tool requires a confined draft-only routine.", "code": "not_allowed"}
         tool = composio_tools.BY_NAME.get(name)
         if tool is None or not composio_tools.allows(allowed.get(tool.app), tool.kind):
             return {"error": "This agent is not allowed to do that with that app.", "code": "not_allowed"}
@@ -228,7 +230,43 @@ class ComposioBridge:
                      and (not write or (name in composio_tools.ROUTINE_WRITE_TOOLS and run.ctx.approval_mode != "plan")))
         if not permitted or account is not None:
             return {"error": "Routine access was not granted, has been revoked, or the run is ineligible.", "code": "not_allowed"}
+        from app.services import routine_drafts
+        from dataclasses import replace
+        draft_mode = routine_drafts.TOOL in grants
+        if draft_mode and (not routine_drafts.valid_grants(grants)
+                           or not getattr(run.ctx, "draft_only", False)):
+            return {"error": "Draft-only confinement is unavailable.", "code": "not_allowed"}
+        if name == routine_drafts.TOOL:
+            checked = getattr(run, "checked_reply_sources", {}).get((bound, sent["message_id"]))
+            if not checked or checked["thread_id"] != sent["thread_id"]:
+                return {"error": "Read this exact message in this run before drafting.", "code": "not_allowed"}
+            source_tool = replace(composio_tools.BY_NAME["gmail_fetch_message"], special="checked_message")
+            fresh = await composio_service.run_tool(db, rt.owner_id, self.client_factory, source_tool,
+                {"message_id": sent["message_id"], "user_id": "me", "format": "full"}, None, account_id=bound)
+            if fresh.get("_checked_source") != checked:
+                return {"error": "The source message changed or cannot be verified. No draft was created.", "code": "not_allowed"}
+            profile = await composio_service.run_tool(db, rt.owner_id, self.client_factory,
+                composio_tools.BY_NAME["gmail_get_profile"], {"user_id": "me"}, None, account_id=bound)
+            own = profile.get("result", {}).get("emailAddress") if isinstance(profile.get("result"), dict) else None
+            if not isinstance(own, str) or own.lower() == checked["sender"]:
+                return {"error": "The sender is unavailable or is the connected account.", "code": "not_allowed"}
+            # Refresh grants after network reads: revocation must block dispatch.
+            await db.refresh(routine)
+            await db.refresh(rr)
+            current = {g["tool"]: g["account_id"] for g in routine.connected_app_grants}
+            allowed = await self.allowed_now()
+            if (current != grants or routine.owner_id != rt.owner_id or routine.agent_id != run.agent_id
+                    or rr.state not in ("running", "needs_input") or rr.thread_id != run.thread_id
+                    or rr.routine_id != routine.id or rr.trigger not in ("schedule", "manual")
+                    or {g["tool"]: g["account_id"] for g in rr.connected_app_grants} != grants
+                    or not composio_tools.allows(allowed.get("gmail"), "write")
+                    or run.ctx.aborted or not settings.ROUTINE_CONNECTED_APPS_ENABLED):
+                return {"error": "Draft access was revoked or stopped.", "code": "not_allowed"}
+            sent = {key: value for key, value in sent.items() if key != "message_id"}
+            sent["recipient_email"] = checked["sender"]
         request_key = hashlib.sha256(json.dumps({"tool": name, "arguments": sent}, sort_keys=True, separators=(",", ":")).encode()).hexdigest() if write else None
+        if name == routine_drafts.TOOL:
+            request_key = "checked-reply-draft-budget"
         receipt = RoutineAppAction(run_id=rr.id, tool=name, account_id=bound,
                                    request_key=request_key, status="reserved")
         await begin_write(db)
@@ -241,7 +279,13 @@ class ComposioBridge:
             return {"error": "This exact write was already attempted in this run. Check the external app and action history; do not repeat it.", "code": "already_attempted"}
         # Save the primary key before provider helpers commit or expire objects.
         receipt_id = receipt.id
-        result = await composio_service.run_tool(db, rt.owner_id, self.client_factory, tool, sent, None, account_id=bound)
+        dispatch_tool = replace(tool, special="checked_message") if draft_mode and name == "gmail_fetch_message" else tool
+        result = await composio_service.run_tool(db, rt.owner_id, self.client_factory, dispatch_tool, sent, None, account_id=bound)
+        checked_source = result.pop("_checked_source", None)
+        if checked_source and checked_source["message_id"] == sent.get("message_id"):
+            if not hasattr(run, "checked_reply_sources"):
+                run.checked_reply_sources = {}
+            run.checked_reply_sources[(bound, checked_source["message_id"])] = checked_source
         code = result.get("code")
         if code == "outcome_unknown":
             status = "outcome_unknown"
@@ -254,6 +298,6 @@ class ComposioBridge:
         receipt.status, receipt.code = status, code
         # Persist bounded projected write results (IDs/commit references), never
         # the input email body, file content or full read responses.
-        receipt.result = result if write and not result.get("error") else None
+        receipt.result = (result if write else {"coverage_complete": not bool(result.get("truncated") or result.get("next_page_token"))}) if not result.get("error") else None
         await db.commit()
         return result

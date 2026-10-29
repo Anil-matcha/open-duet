@@ -62,6 +62,7 @@ class Routine(Base):
     retry_delay_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=5, server_default="5"
     )
+    quiet_reporting: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
     connected_app_grants: Mapped[list] = mapped_column(JSONValue, nullable=False, default=list, server_default="[]")
     # SHA-256 hex of the webhook secret; null means the webhook is off. The
     # secret itself is never stored.
@@ -113,6 +114,8 @@ class RoutineRun(Base):
     # conversation keeps the run history.
     thread_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     turn_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String, nullable=True)
+    outcome_details: Mapped[dict | None] = mapped_column(JSONValue, nullable=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # While needs_input: since when. waited_seconds totals earlier waits, which

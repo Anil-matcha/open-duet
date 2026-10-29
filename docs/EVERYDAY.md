@@ -158,3 +158,43 @@ failed with its reason.
   OpenAI-compatible engines.
 - Editing or deleting workspace files from the browser.
 - Budgets, alerts or price tables for engines that do not report cost.
+
+
+## Audio and direct podcast media
+
+Attach supported WAV, MP3, M4A, OGG, FLAC or WebM audio, or choose Audio URL for a
+direct public media URL. The server advertises availability only when
+`AUDIO_TRANSCRIPTION_API_KEY`, ffmpeg and ffprobe are available. It limits audio
+to 25 MB and 20 minutes, validates its media format, and asks for explicit OpenAI
+processing consent before uploading. Inaccessible pages and unsupported media
+return errors instead of fabricated transcripts. The fetcher blocks non-public
+addresses and validates every redirect, pins resolved addresses, and bounds
+bytes, redirects and time.
+
+The conversation stores original media and the returned transcript. The default
+`AUDIO_TRANSCRIPTION_MODEL=gpt-transcribe` returns text without timestamps; the
+UI labels timing unavailable instead of inventing it. An explicitly configured
+legacy `whisper-1` route can return timed segments, but is supported only until
+2027-02-26 according to the [OpenAI transcription guide](https://developers.openai.com/api/docs/guides/speech-to-text). Both remain until the conversation is deleted; temporary validation
+files are cleaned after processing. OpenAI's retention policies also apply to
+remote transcription. Cancel audio processing stops pending processing and
+avoids storing partial output. Review the visible transcript before relying on
+names, quotations or a summary; quality and timestamps still need live-provider
+qualification. Transcript review turns have tools denied; request later actions
+in a separate person-authored turn. Source playback and summary quality still
+need installed-app checks. A configured server feature does not establish that
+packaged desktop builds contain the required media executables.
+
+## Provider sources in Today
+
+With the lead agent's read access and connected accounts, Today shows bounded
+inbox records from the last seven days and primary-calendar events for the
+local day. Each source keeps IDs, links and timestamps; cancelled and all-day
+events are labeled and overlapping timed events show conflicts. The snapshot
+is capped at 30 records per provider and labels continuation/truncation as
+partial coverage. Multiple accounts without an unambiguous selection are
+unavailable rather than guessed. Source failures stay distinct from a quiet
+inbox/calendar. A five-minute cache shows when providers were checked and is
+invalidated for changed grants, owner, lead, timezone or day. These records
+perform no external writes and do not themselves trigger attention alerts.
+Live accounts and installed apps remain unqualified.

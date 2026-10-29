@@ -21,6 +21,24 @@
   timed event (change, approved each time). A created event has no guests and no
   video meeting, so it emails nobody. Checked with unit tests against
   Composio's published parameters; not run against a live calendar yet.
+- Add opt-in quiet routine results with durable outcomes and visible incomplete
+  source checks. Quieting requires explicit outcome reporting and complete
+  connected-app read receipts; empty output alone stays visible. Not run:
+  real-provider and packaged-app qualification.
+- Add confined routine reply drafts for one message read in that run, with a
+  server-derived recipient and one durable draft attempt per run. Available
+  only on the supported Claude route after routine-app safety enablement;
+  other write grants cannot be combined with this mode. Not run: live Gmail,
+  Linux safety and packaged-app qualification.
+- Add bounded audio uploads and direct audio URL import with explicit OpenAI
+  transcription consent, transcript segments and source playback. Transcript
+  review turns cannot use tools. Requires configured transcription credentials
+  and ffmpeg/ffprobe. Not run: real transcription, summary quality and packaged
+  media dependency qualification.
+- Add read-only Gmail and primary-calendar source records to Today, with links,
+  check timestamps, partial coverage and unavailable-source labels. Not run:
+  live-account and installed-app qualification.
+
 - Add off-by-default routine grants for exact app reads, Gmail email sending,
   GitHub branch creation and file commits, bound to connected accounts. Includes
   run snapshots, revocation checks, durable write reservations and action history.

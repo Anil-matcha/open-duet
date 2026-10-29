@@ -6,6 +6,10 @@ from app.team import policy as teams
 
 
 def automatic(tool, mode, run, arguments):
+    if getattr(run.ctx, "media_review_only", False):
+        return "denied", "media_review_only"
+    if getattr(run.ctx, "draft_only", False) and not tool.startswith(composio_policy.PREFIX):
+        return "denied", "draft_only_run"
     if tool.startswith('mcp__memory__'):
         # Read-only search of the agent's own history (memory_bridge.py).
         return ('allowed', 'memory_read') if tool in ('mcp__memory__session_search', 'mcp__memory__session_read') else ('denied', 'unknown_memory_tool')

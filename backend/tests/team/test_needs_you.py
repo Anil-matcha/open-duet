@@ -425,3 +425,178 @@ async def test_failed_card_publication_rolls_back_new_conversation(sessions, rt,
     async with sessions() as db:
         assert not list(await db.scalars(select(Thread).where(Thread.owner_id == owner)))
         assert await db.get(NeedsYouState, owner) is None
+
+
+@pytest.fixture
+async def provider_fixture(sessions, owner, lead, monkeypatch):
+    """Real connector service/client/projection with synthetic HTTP only."""
+    import httpx
+    import json
+    from app.services import composio_service
+    from app.services.composio_client import ComposioClient
+    calls, answers = [], {"gmail": {"messages": []}, "googlecalendar": {"items": []}}
+    async def record(db, scoped_owner):
+        assert scoped_owner == owner
+        return {"api_key": "ak_synthetic123", "user_id": "today_user", "session_id": "session_today"}
+    monkeypatch.setattr(composio_service, "load", record)
+    def handler(request):
+        if request.method == "GET":
+            assert request.url.params["user_ids"] == "today_user"
+            app = request.url.params["toolkit_slugs"]
+            return httpx.Response(200, json={"items": [{"id": "account_" + app,
+                "user_id": "today_user", "toolkit": {"slug": app}, "status": "ACTIVE"}]})
+        body = json.loads(request.content)
+        calls.append(body)
+        assert request.url.path.endswith("/execute")
+        assert body["tool_slug"] in {"GMAIL_FETCH_EMAILS", "GOOGLECALENDAR_EVENTS_LIST"}
+        app = "gmail" if body["tool_slug"] == "GMAIL_FETCH_EMAILS" else "googlecalendar"
+        assert body["account"] == "account_" + app
+        if answers[app] == "failure":
+            return httpx.Response(503, json={"error": {"message": "ak_synthetic123 secret"}})
+        return httpx.Response(200, json={"result_type": "completed", "data": answers[app]})
+    async with sessions() as db:
+        agent = await db.get(Agent, lead.id)
+        agent.connector_scopes = {"gmail": "read", "googlecalendar": "read"}
+        await db.commit()
+    return lambda key: ComposioClient(key, transport=httpx.MockTransport(handler)), answers, calls
+
+
+async def test_provider_brief_sources_conflicts_cancellations_and_no_writes(sessions, rt, owner, lead, provider_fixture):
+    factory, answers, calls = provider_fixture
+    answers["gmail"] = {"messages": [{"id": "mail1", "threadId": "thread1", "subject": "Review deadline",
+        "internalDate": "1792832400000", "sender": "sender@example.test"}], "nextPageToken": "more"}
+    def event(id, start, end, **extra):
+        return {"id": id, "summary": id, "start": {"dateTime": start}, "end": {"dateTime": end},
+            "updated": "2026-10-24T08:00:00Z", "htmlLink": "https://calendar.google.com/calendar/event?eid=" + id, **extra}
+    answers["googlecalendar"] = {"items": [
+        event("meeting1", "2026-10-24T10:00:00Z", "2026-10-24T11:00:00Z"),
+        event("meeting2", "2026-10-24T10:30:00Z", "2026-10-24T12:00:00Z"),
+        event("cancelled", "2026-10-24T10:00:00Z", "2026-10-24T11:00:00Z", status="cancelled"),
+        {"id": "all-day", "summary": "Holiday", "start": {"date": "2026-10-24"}, "end": {"date": "2026-10-25"}}]}
+    async def empty():
+        return []
+    ny = needs_you.NeedsYou(rt, Clock(), engines=empty, issues=empty, provider_client=factory)
+    card = await ny.read()
+    assert card["sources"] == {"local": "available", "gmail": "partial", "calendar": "available"}
+    rows = {i["source_id"]: i for i in card["items"]}
+    assert rows["mail1"]["source_url"] == "https://mail.google.com/mail/#all/thread1"
+    assert rows["mail1"]["source_timestamp"] == "1792832400000"
+    assert rows["mail1"]["source_record"]["threadId"] == "thread1"
+    assert all(rows[k]["detail"].startswith("Conflict") for k in ("meeting1", "meeting2"))
+    assert rows["cancelled"]["title"].startswith("Cancelled") and "Conflict" not in rows["cancelled"]["detail"]
+    assert rows["all-day"]["detail"] == "All day: 2026-10-24" and rows["all-day"]["at"] is None
+    assert len(calls) == 2 and calls[1]["arguments"]["showDeleted"] is True
+    assert await ny.render(create=True)
+    async with sessions() as db:
+        assert not list(await db.scalars(select(Notification).where(Notification.owner_id == owner)))
+
+
+async def test_provider_quiet_failure_grant_revocation_and_owner_isolation(sessions, owner, lead, provider_fixture):
+    factory, answers, calls = provider_fixture
+    async with sessions() as db:
+        async def collect(scoped_owner=owner):
+            return await needs_you.collect_providers(db, scoped_owner, lead.id, now=T0,
+                zone=needs_you.zone_of("UTC"), make_client=factory)
+        items, sources = await collect()
+        assert items == [] and sources["gmail"] == sources["calendar"] == "quiet"
+        answers["gmail"] = "failure"
+        _, sources = await collect()
+        assert sources["gmail"] == "failed" and sources["calendar"] == "quiet"
+        agent = await db.get(Agent, lead.id)
+        agent.connector_scopes = {}
+        await db.commit()
+        before = len(calls)
+        _, sources = await collect()
+        assert sources["gmail"] == sources["calendar"] == "unavailable" and len(calls) == before
+        _, sources = await collect(owner + "other")
+        assert sources["gmail"] == sources["calendar"] == "unavailable" and len(calls) == before
+
+
+async def test_provider_day_uses_local_dst_midnights(sessions, owner, lead, provider_fixture):
+    factory, answers, calls = provider_fixture
+    async with sessions() as db:
+        await needs_you.collect_providers(db, owner, lead.id, now=datetime(2026, 11, 1, 12, tzinfo=UTC),
+            zone=needs_you.zone_of("America/New_York"), make_client=factory)
+    args = calls[1]["arguments"]
+    assert args["timeMin"] == "2026-11-01T00:00:00-04:00"
+    assert args["timeMax"] == "2026-11-02T00:00:00-05:00"
+
+
+async def test_provider_cache_throttles_refresh_preserves_failure_and_invalidates_grants(sessions, rt, owner, lead, provider_fixture):
+    factory, answers, calls = provider_fixture
+    async def empty():
+        return []
+    clock = Clock()
+    ny = needs_you.NeedsYou(rt, clock, engines=empty, issues=empty, provider_client=factory)
+    first = await ny.read()
+    clock.advance(minutes=1)
+    second = await ny.read()
+    assert len(calls) == 2 and first["provider_checked_at"] == second["provider_checked_at"]
+    assert needs_you.card_hash(first) == needs_you.card_hash(second)
+    clock.advance(minutes=4)
+    answers["gmail"] = "failure"
+    failed = await ny.read()
+    assert len(calls) == 4 and failed["sources"]["gmail"] == "failed"
+    assert failed["provider_checked_at"] != first["provider_checked_at"]
+    clock.advance(minutes=1)
+    assert (await ny.read())["sources"]["gmail"] == "failed" and len(calls) == 4
+    async with sessions() as db:
+        agent = await db.get(Agent, lead.id)
+        agent.connector_scopes = {"googlecalendar": "read"}
+        await db.commit()
+    revoked = await ny.read()
+    assert revoked["sources"]["gmail"] == "unavailable" and len(calls) == 5
+
+
+def test_provider_timestamps_and_links_do_not_invent_missing_values():
+    assert needs_you._provider_time("2026-10-24T10:00:00") is None
+    assert needs_you._provider_time("invalid") is None
+    assert needs_you._provider_time("1792832400000").tzinfo == UTC
+    for value in ("https://calendar.google.com:bad/event", "https://evil.test/event", "javascript:alert(1)"):
+        assert needs_you._source_link(value) is None
+
+
+@pytest.mark.parametrize('problem', ['failure', 'missing_account', 'missing_configuration'])
+async def test_granted_unknown_provider_creates_visible_card_without_attention_alert(sessions, rt, owner, lead, provider_fixture, monkeypatch, problem):
+    from app.services import composio_service
+    from app.services.composio_client import ComposioClient
+    import httpx
+    factory, answers, calls = provider_fixture
+    if problem == 'failure':
+        answers['gmail'] = 'failure'
+    elif problem == 'missing_configuration':
+        async def no_config(*args):
+            return None
+        monkeypatch.setattr(composio_service, 'load', no_config)
+    else:
+        # A valid owner configuration with no connected accounts.
+        factory = lambda key: ComposioClient(key, transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={'items': []})))
+    async def empty():
+        return []
+    ny = needs_you.NeedsYou(rt, Clock(), engines=empty, issues=empty, provider_client=factory)
+    opened = await ny.render(create=True)
+    assert opened and opened['agent_id'] == lead.id
+    cards = await events(sessions, opened['thread_id'])
+    assert len(cards) == 1 and cards[0].data['items'] == []
+    card = cards[0].data
+    assert card['sources']['gmail'] == ('failed' if problem == 'failure' else 'unavailable')
+    assert 'unknown' in card['empty_text'] and card['empty_text'] != needs_you.EMPTY_TEXT
+    # Repeated failure remains visible without another card or alert.
+    assert await ny.render(create=False) == opened
+    assert len(await events(sessions, opened['thread_id'])) == 1
+    async with sessions() as db:
+        assert not list(await db.scalars(select(Notification).where(Notification.owner_id == owner)))
+
+
+async def test_successfully_checked_empty_providers_do_not_create_a_finding(sessions, rt, owner, lead, provider_fixture):
+    factory, answers, calls = provider_fixture
+    async def empty():
+        return []
+    ny = needs_you.NeedsYou(rt, Clock(), engines=empty, issues=empty, provider_client=factory)
+    assert await ny.render(create=True) is None
+    card = await ny.read()
+    assert card['sources']['gmail'] == card['sources']['calendar'] == 'quiet'
+    async with sessions() as db:
+        assert await db.get(NeedsYouState, owner) is None
+        assert not list(await db.scalars(select(Notification).where(Notification.owner_id == owner)))

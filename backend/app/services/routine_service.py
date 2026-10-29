@@ -26,7 +26,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models.agent import Agent
 from app.db.models.approval import Approval
-from app.db.models.routine import ACTIVE_RUN_STATES, Routine, RoutineRun, WebhookReceipt
+from app.db.models.routine import ACTIVE_RUN_STATES, Routine, RoutineRun, RoutineAppAction, WebhookReceipt
 from app.db.models.turn import Turn
 from app.db.models.thread import Thread
 from app.db.models.work_item import WorkItemRun
@@ -66,7 +66,7 @@ LIMITS = {
 EDITABLE = {
     "agent_id", "name", "prompt", "schedule_kind", "schedule_spec", "timezone",
     "run_limit_minutes", "approval_mode", "approval_timeout_minutes", "catch_up_minutes",
-    "retry_limit", "retry_delay_minutes",
+    "retry_limit", "retry_delay_minutes", "quiet_reporting",
 }
 
 RETRY_REPLACED = "Skipped: a newer scheduled run of this routine replaced this retry."
@@ -152,6 +152,71 @@ def compose_prompt(
     return "\n\n".join(parts)
 
 
+async def report_outcome(db, owner_id: str, active_run, outcome: str, reason: str | None = None) -> dict:
+    """An explicit agent request; settlement independently checks durable evidence.
+
+    Text, provider results and source-supplied markers never enter this path.
+    Only the active turn's existing, authenticated tool bridge may call it.
+    """
+    if outcome not in ("no_change", "source_failed") or (outcome == "source_failed" and not reason):
+        raise InvalidRoutine("Choose no_change or source_failed with a reason.")
+    await begin_write(db)
+    run_id = getattr(active_run, "routine_run_id", None)
+    run = await db.get(RoutineRun, run_id, with_for_update=True) if run_id else None
+    turn = await db.get(Turn, active_run.turn_id)
+    routine = await db.get(Routine, run.routine_id) if run else None
+    if (not run or not routine or routine.owner_id != owner_id
+            or routine.agent_id != active_run.agent_id or run.thread_id != active_run.thread_id
+            or run.turn_id != active_run.turn_id or run.state not in ("running", "needs_input")
+            or not turn or turn.thread_id != run.thread_id or turn.status != "running" or turn.owner_token != active_run.owner_token):
+        raise InvalidRoutine("This tool is available only inside its active routine run.")
+    previous = run.outcome_details or {}
+    # A failure declaration cannot be replaced by a later silence request.
+    if previous.get("requested") != "source_failed":
+        run.outcome_details = {"requested": outcome, "reason": _clip(reason, ERROR_CHARS)}
+    await db.commit()
+    return {"recorded": True, "requested": run.outcome_details["requested"],
+            "note": "This is an outcome request, not verification. Keep useful reports, questions and receipts visible. For no_change, end without final text only after every required source succeeded."}
+
+
+async def _verified_no_change(db, run, actions) -> tuple[bool, list[dict]]:
+    from app import composio_tools
+    from app.db.models.event import Event
+
+    checked = [{"action_id": a.id, "tool": a.tool, "account_id": a.account_id,
+                "status": a.status, "recorded_at": a.created_at.isoformat(),
+                "coverage_complete": (a.result or {}).get("coverage_complete") is True} for a in actions]
+    if (run.outcome_details or {}).get("requested") != "no_change" or (run.result or "").strip():
+        return False, checked
+    grants = {(g["tool"], g["account_id"]) for g in run.connected_app_grants}
+    # Every granted source must have been checked. Unknown/local sources cannot
+    # be certified by a model's claim, an empty answer, or an empty grants list.
+    if not grants or any(name not in composio_tools.BY_NAME or composio_tools.BY_NAME[name].kind != "read" for name, _ in grants):
+        return False, checked
+    if not actions or any(a.status != "completed" or (a.result or {}).get("coverage_complete") is not True
+                          or (a.tool, a.account_id) not in grants for a in actions):
+        return False, checked
+    if not grants.issubset({(a.tool, a.account_id) for a in actions}):
+        return False, checked
+    if await db.scalar(select(Approval.id).where(Approval.turn_id == run.turn_id, Approval.status == "pending").limit(1)):
+        return False, checked
+    events = list((await db.scalars(select(Event).where(Event.turn_id == run.turn_id))).all())
+    allowed_tools = {"mcp__composio__" + name for name, _ in grants} | {"mcp__team__routine_report_outcome"}
+    for event in events:
+        data = event.data or {}
+        if event.type == "tool.started" and data.get("name") not in allowed_tools:
+            return False, checked
+        if event.type == "approval.requested" and data.get("tool") not in allowed_tools:
+            return False, checked
+        if event.type == "tool.completed" and data.get("ok") is False:
+            return False, checked
+        if event.type == "assistant.message" and (data.get("text", "").strip() or data.get("attachments") or data.get("imageGeneration")):
+            return False, checked
+        if any(word in event.type for word in ("question", "attachment", "image", "receipt", "escalation", "delegation")):
+            return False, checked
+    return True, checked
+
+
 # --- definitions -----------------------------------------------------------------------------
 
 
@@ -159,6 +224,12 @@ def _bounded(field: str, value) -> int:
     low, high = LIMITS[field]
     if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:
         raise InvalidRoutine(f"{field} must be a whole number from {low} to {high}", "invalid_limit")
+    return value
+
+
+def _quiet_setting(value) -> bool:
+    if type(value) is not bool:
+        raise InvalidRoutine("Quiet reporting must be on or off.")
     return value
 
 
@@ -224,6 +295,7 @@ async def create_routine(
             "approval_timeout_minutes", data.get("approval_timeout_minutes", 30)
         ),
         catch_up_minutes=_bounded("catch_up_minutes", data.get("catch_up_minutes", 60)),
+        quiet_reporting=_quiet_setting(data.get("quiet_reporting", False)),
         retry_limit=_bounded("retry_limit", data.get("retry_limit", 0)),
         retry_delay_minutes=_bounded("retry_delay_minutes", data.get("retry_delay_minutes", 5)),
     )
@@ -282,6 +354,8 @@ async def update_routine(
     for field in LIMITS:
         if field in changes:
             setattr(routine, field, _bounded(field, changes[field]))
+    if "quiet_reporting" in changes:
+        routine.quiet_reporting = _quiet_setting(changes["quiet_reporting"])
     schedule_fields = {"schedule_kind", "schedule_spec", "timezone"} & changes.keys()
     if schedule_fields:
         if "schedule_kind" in changes:
@@ -440,6 +514,8 @@ async def import_document(
     data = {k: document.get(k) for k in EDITABLE if k in document}
     data["agent_id"] = agent_id
     data["paused"] = True
+    # Imported task content cannot opt its owner into silent completion.
+    data["quiet_reporting"] = False
     if data.get("schedule_kind") == "once":
         # An imported one-off may be in the past; it would never run anyway.
         data["schedule_kind"], data["schedule_spec"] = "manual", {}
@@ -1004,14 +1080,18 @@ class RoutineScheduler:
             return
         mode = effective_approval_mode(routine.approval_mode, agent.approval_mode)
         title = f"{routine.name} · {_local(run.scheduled_for or now, routine.timezone)}"[:120]
+        prompt_text = (run.prompt or routine.prompt) + (
+            "\n\nQuiet reporting is enabled. If the routine_report_outcome tool is available, use it to request no_change only after every required connected-app source was checked successfully. End without final text only when there is nothing useful to report. Report unavailable sources with source_failed and preserve useful partial reports, questions and action receipts. Empty output alone is never a verified check."
+            if routine.quiet_reporting else ""
+        )
         try:
             thread = await rt.create_thread(agent_id=agent.id, title=title)
-            await self._set(run.id, thread_id=thread.id, connected_app_grants=(
+            await self._set(run.id, thread_id=thread.id, prompt=prompt_text, connected_app_grants=(
                 routine.connected_app_grants if run.trigger in ("schedule", "manual") else []
             ))
             turn = await rt.send_turn(
                 thread.id,
-                run.prompt or routine.prompt,
+                prompt_text,
                 approval_mode=mode,
                 approval_timeout=float(routine.approval_timeout_minutes * MINUTE_SECONDS),
                 team_origin="outside" if run.trigger == "webhook" else "routine",
@@ -1147,8 +1227,26 @@ class RoutineScheduler:
         run.result = _clip(turn.result if turn is not None else None, RESULT_CHARS)
         if status == "succeeded":
             run.state, run.error = "completed", None
+            details = run.outcome_details or {}
+            actions = list((await db.scalars(select(RoutineAppAction).where(RoutineAppAction.run_id == run.id))).all())
+            quiet, checked = await _verified_no_change(db, run, actions)
+            run.outcome_details = {**details, "checked_sources": checked, "checked_at": now.isoformat()}
+            failed_checks = any(a.status != "completed" or (a.result or {}).get("coverage_complete") is False for a in actions)
+            if details.get("requested") == "source_failed" or failed_checks:
+                run.state, run.outcome = "failed", "source_failed"
+                run.error = details.get("reason") or "A required connected-app check failed or returned incomplete coverage. See the action history for missing coverage."
+                return [self._notify(db, routine, run, "routine_failed", f"Routine “{routine.name}” has incomplete coverage",
+                                     run.error + ("\n\nPartial report: " + run.result if run.result else ""))]
+            run.outcome = "no_change" if quiet else ("report" if run.result else "unknown")
+            if not quiet and not run.result:
+                run.result = "No verified outcome was reported. Open the conversation and action history to review source coverage."
+            if quiet:
+                run.result = "No changes found in the verified connected-app checks."
+                if routine.quiet_reporting and run.trigger == "schedule":
+                    return []
             return [self._notify(db, routine, run, "routine_completed",
                                  f"Routine “{routine.name}” finished", run.result or "(no reply)")]
+        run.outcome = "failed" if status != "interrupted" else "interrupted"
         if status == "interrupted":
             run.state, run.error = "interrupted", INTERRUPTED_MESSAGE
             return [self._notify(db, routine, run, "routine_interrupted",

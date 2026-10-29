@@ -1,28 +1,32 @@
 """The "Needs you" card: one server-written card a day in the lead's chat that
 lists what only the person can fix.
 
-Everything is computed from local data on demand: approvals waiting on the
+Local attention is computed on demand: approvals waiting on the
 person, routines whose latest run failed or was missed, engines that are signed
-out or limited, and faults that keep repeating (Sentinel). An item leaves when
+out or limited, and faults that keep repeating (Sentinel). A bounded read-only provider snapshot
+adds inbox messages and today’s primary-calendar events when the lead has access.
+An attention item leaves when
 something later proves it fixed (the approval is decided, the routine ran
 again, the engine is signed in or reset), never because time passed.
 
 The card is an ordinary event (`card.needs_you`) in the lead's conversation.
 Events are append-only, so "edited in place" means a newer event with the same
 `card_id`; the client shows only the latest one. It is written only when its
-content changed, only when something needs the person (never an empty card on a
-fresh day), and never while the conversation has a turn running.
+content changed, when something needs the person or a granted source could not
+be checked, and never while the conversation has a turn running.
 """
+import asyncio
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import exists, func, or_, select
 
-from app.db.models import (AgentJob, Approval, NeedsYouState, Routine, RoutineRun,
+from app.db.models import (Agent, AgentJob, Approval, NeedsYouState, Routine, RoutineRun,
                            Team, Thread, Turn, WorkColumn, WorkItem, WorkItemRun)
 from app.db.transactions import begin_write
 from app.services import notification_feed, sentinel
@@ -49,6 +53,8 @@ KIND_ORDER = {
     "due": 6,
     "repeated_failure": 7,
     "routine_completed": 8,
+    "calendar_event": 9,
+    "gmail_message": 10,
 }
 _BAD_RUN_STATES = frozenset({"failed", "missed", "interrupted"})
 _SETTLED_RUN_STATES = frozenset({"completed", "failed", "missed", "interrupted"})
@@ -65,12 +71,20 @@ class Item:
     routine_id: int | None = None
     work_item_id: int | None = None
     source: str | None = None
+    source_id: str | None = None
+    source_url: str | None = None
+    source_timestamp: str | None = None
+    source_record: dict | None = None
 
     def public(self) -> dict:
+        at = _provider_time(self.source_timestamp) if self.kind in {"gmail_message", "calendar_event"} else self.at
+        dated = self.kind not in {"signed_out", "out_of_credit", "usage_limit"} or self.thread_id
         return {"kind": self.kind, "key": self.key, "title": self.title,
                 "detail": self.detail, "thread_id": self.thread_id,
-                "at": _aware(self.at).isoformat() if self.kind not in {"signed_out", "out_of_credit", "usage_limit"} or self.thread_id else None,
+                "at": _aware(at).isoformat() if at is not None and dated else None,
                 "routine_id": self.routine_id, "work_item_id": self.work_item_id,
+                "source_id": self.source_id, "source_url": self.source_url,
+                "source_timestamp": self.source_timestamp, "source_record": self.source_record,
                 "source": self.source or ("Routine runs" if self.kind.startswith("routine") else
                     "Approvals" if self.kind == "approval" else "Health scan" if self.kind == "repeated_failure" else "Engine status")}
 
@@ -109,7 +123,7 @@ def local_day(now: datetime, zone: ZoneInfo) -> str:
 
 
 def _clip(text: str | None, limit: int) -> str:
-    text = " ".join((text or "").split())
+    text = " ".join((text if isinstance(text, str) else "").split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
@@ -263,7 +277,120 @@ async def collect_local(db, owner_id: str, *, now: datetime, zone: ZoneInfo,
     return items
 
 
-def build_card(items: list[Item], *, day: str, now: datetime, zone: ZoneInfo) -> dict:
+# Provider content is displayed as source data only: no model, actions or writes.
+# A bounded snapshot is deliberately labelled partial when more records exist.
+async def collect_providers(db, owner_id: str, lead_id: int | None, *, now: datetime,
+                            zone: ZoneInfo, make_client=None) -> tuple[list[Item], dict]:
+    from app import composio_tools
+    from app.services import composio_service
+    from app.services.composio_client import ComposioClient
+
+    make_client = make_client or ComposioClient
+    sources = {"local": "available", "calendar": "unavailable", "gmail": "unavailable"}
+    items: list[Item] = []
+    midnight = _aware(now).astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Construct local midnights separately so DST days use their actual length.
+    end = midnight + timedelta(days=1)
+    requests = (("gmail", "gmail", "gmail_fetch_emails", {"query": "in:inbox newer_than:7d", "max_results": 30}),
+                ("calendar", "googlecalendar", "googlecalendar_list_events", {
+                    "timeMin": midnight.isoformat(), "timeMax": end.isoformat(), "maxResults": 30}))
+    for source, app, name, arguments in requests:
+        # Freshly check the lead, owner and grants before each provider call.
+        agent = await db.scalar(select(Agent).where(Agent.id == lead_id, Agent.owner_id == owner_id,
+            Agent.archived_at.is_(None)).execution_options(populate_existing=True)) if lead_id else None
+        scopes = agent.connector_scopes if agent and isinstance(agent.connector_scopes, dict) else {}
+        if agent is None or not composio_tools.allows(scopes.get(app), "read"):
+            continue
+        tool = composio_tools.BY_NAME[name]
+        if source == "calendar":
+            tool = replace(tool, defaults=tuple((key, True if key == "showDeleted" else value) for key, value in tool.defaults))
+        assert tool.kind == "read"
+        sent, alias = composio_tools.clean_arguments(tool, arguments)
+        try:
+            async with asyncio.timeout(15):
+                result = await composio_service.run_tool(db, owner_id, make_client, tool, sent, alias)
+        except Exception:
+            # Never expose provider error text, request details or credentials.
+            sources[source] = "failed"
+            continue
+        if result.get("error") or not isinstance(result.get("result"), list):
+            sources[source] = "unavailable" if result.get("code") in {
+                "not_configured", "not_connected", "account_required", "unknown_account"} else "failed"
+            continue
+        rows = result["result"][:30]
+        sources[source] = "partial" if result.get("next_page_token") or result.get("truncated") else "available"
+        seen = set()
+        timed = []
+        if not rows and sources[source] == "available":
+            sources[source] = "quiet"
+        for row in rows:
+            if not isinstance(row, dict):
+                sources[source] = "partial"
+                continue
+            source_id = row.get("messageId") or row.get("id") if source == "gmail" else row.get("id")
+            if not isinstance(source_id, str) or not source_id or source_id in seen:
+                sources[source] = "partial"
+                continue
+            seen.add(source_id)
+            stamp = row.get("messageTimestamp") or row.get("internalDate") if source == "gmail" else row.get("updated")
+            at = _provider_time(stamp)
+            if source == "gmail":
+                title = _clip(row.get("subject"), 120) or "Inbox message"
+                detail = _clip(row.get("sender") or row.get("from"), 160) or None
+                # The source ID remains available if the browser has another account open.
+                thread_ref = row.get("threadId") if isinstance(row.get("threadId"), str) else source_id
+                url = "https://mail.google.com/mail/#all/" + quote(thread_ref, safe="")
+            else:
+                title = _clip(row.get("summary"), 120) or "Calendar event"
+                cancelled = row.get("status") == "cancelled"
+                start, finish = _provider_time(row.get("start_dateTime")), _provider_time(row.get("end_dateTime"))
+                all_day = row.get("start_date")
+                detail = (f"All day: {all_day}" if all_day else
+                    f"{start.astimezone(zone):%H:%M}–{finish.astimezone(zone):%H:%M} ({zone.key})" if start and finish else "Time unavailable")
+                if cancelled:
+                    title = "Cancelled: " + title
+                elif start and finish and finish > start:
+                    timed.append((source_id, start, finish))
+                url = row.get("htmlLink")
+                url = _source_link(url)
+            items.append(Item("gmail_message" if source == "gmail" else "calendar_event",
+                f"{source}:{source_id}", title, detail, None, at or now,
+                source="Gmail inbox (last 7 days)" if source == "gmail" else "Primary calendar",
+                source_id=source_id, source_url=url, source_timestamp=str(stamp) if stamp is not None else None,
+                source_record={key: row.get(key) for key in (
+                    ("id", "messageId", "threadId", "messageTimestamp", "internalDate") if source == "gmail" else
+                    ("id", "status", "start_dateTime", "start_date", "end_dateTime", "end_date", "updated", "recurringEventId"))}))
+        conflicts = {a[0] for a in timed for b in timed if a[0] != b[0] and a[1] < b[2] and b[1] < a[2]}
+        if conflicts:
+            items = [replace(i, detail="Conflict · " + (i.detail or "")) if i.kind == "calendar_event" and i.source_id in conflicts else i for i in items]
+    items.sort(key=lambda item: (KIND_ORDER[item.kind], -item.at.timestamp(), item.key))
+    return items, sources
+
+
+def _source_link(value) -> str | None:
+    try:
+        parts = urlsplit(value) if isinstance(value, str) else None
+        if parts and parts.scheme == "https" and parts.hostname in {"calendar.google.com", "www.google.com"} and not parts.username and not parts.password and parts.port in (None, 443):
+            return value
+    except ValueError:
+        pass
+    return None
+
+
+def _provider_time(value) -> datetime | None:
+    try:
+        if isinstance(value, (int, float)) or isinstance(value, str) and value.isdigit():
+            number = float(value)
+            return datetime.fromtimestamp(number / 1000 if number > 100_000_000_000 else number, UTC)
+        if isinstance(value, str):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else None
+    except (ValueError, OverflowError, OSError):
+        pass
+    return None
+
+
+def build_card(items: list[Item], *, day: str, now: datetime, zone: ZoneInfo, sources: dict | None = None, provider_checked_at: datetime | None = None, provider_unknown: bool = False) -> dict:
     local = _aware(now).astimezone(zone)
     shown = items[:CARD_ROWS]
     return {
@@ -273,17 +400,18 @@ def build_card(items: list[Item], *, day: str, now: datetime, zone: ZoneInfo) ->
         "subtitle": f"{local:%A}, {local.day} {local:%B}",
         "time_zone": zone.key,
         "checked_at": _aware(now).isoformat(),
-        "sources": {"local": "available", "calendar": "unavailable", "gmail": "unavailable"},
+        "provider_checked_at": _aware(provider_checked_at).isoformat() if provider_checked_at else None,
+        "sources": sources or {"local": "available", "calendar": "unavailable", "gmail": "unavailable"},
         "items": [i.public() for i in shown],
         "more": max(0, len(items) - len(shown)),
-        "empty_text": EMPTY_TEXT,
+        "empty_text": "No local items need you. Connected app data is unknown." if provider_unknown else EMPTY_TEXT,
     }
 
 
 def card_hash(card: dict) -> str:
     # A periodic check alone is not new content. Persist its timestamp when a
     # changed card is written, so the transcript says when it was last built.
-    content = {key: value for key, value in card.items() if key not in {"checked_at", "revision"}}
+    content = {key: value for key, value in card.items() if key not in {"checked_at", "provider_checked_at", "revision"}}
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 
@@ -295,9 +423,11 @@ class NeedsYou:
     injected so tests need no engine; by default they come from the runtime and
     from Sentinel."""
 
-    def __init__(self, runtime, clock=utcnow, *, engines=None, issues=None) -> None:
+    def __init__(self, runtime, clock=utcnow, *, engines=None, issues=None, provider_client=None) -> None:
         self.runtime = runtime
         self.clock = clock
+        self._provider_client = provider_client
+        self._provider_cache = None
         self._engines = engines
         self._issues = issues
         self._dirty = False
@@ -333,6 +463,24 @@ class NeedsYou:
             NeedsYouState.owner_id == self.owner_id).with_for_update()
             .execution_options(populate_existing=True))
 
+    async def _providers(self, db, lead_id, now, zone):
+        # Always re-read authorization before using a snapshot. Changing owner,
+        # lead, grants, zone or local day invalidates it immediately.
+        agent = await db.scalar(select(Agent).where(Agent.id == lead_id, Agent.owner_id == self.owner_id,
+            Agent.archived_at.is_(None)).execution_options(populate_existing=True)) if lead_id else None
+        scopes = agent.connector_scopes if agent and isinstance(agent.connector_scopes, dict) else {}
+        key = (self.owner_id, lead_id, json.dumps(scopes, sort_keys=True), zone.key, local_day(now, zone))
+        def unknown(sources):
+            return any(scopes.get(app) in {"read", "write"} and sources[source] in {"failed", "unavailable", "partial"}
+                       for source, app in (("gmail", "gmail"), ("calendar", "googlecalendar")))
+        cached = self._provider_cache
+        if cached and cached[0] == key and timedelta(0) <= now - cached[1] < timedelta(minutes=5):
+            return cached[2], cached[3], cached[1], unknown(cached[3])
+        items, sources = await collect_providers(db, self.owner_id, lead_id, now=now,
+            zone=zone, make_client=self._provider_client)
+        self._provider_cache = (key, now, items, sources)
+        return items, sources, now, unknown(sources)
+
     async def read(self) -> dict:
         """The card as it would be written now, with no side effects."""
         now = self.clock()
@@ -342,7 +490,10 @@ class NeedsYou:
             items = await collect(db, self.owner_id, now=now, engines=await self._engine_entries(),
                                   issues=await self._issue_entries(now))
             items = await collect_local(db, self.owner_id, now=now, zone=zone, attention=items)
-        return build_card(items, day=local_day(now, zone), now=now, zone=zone)
+            team = await db.scalar(select(Team).where(Team.owner_id == self.owner_id))
+            provider_items, sources, provider_checked, provider_unknown = await self._providers(db, team.lead_agent_id if team else None, now, zone)
+        items.extend(provider_items)
+        return build_card(items, day=local_day(now, zone), now=now, zone=zone, sources=sources, provider_checked_at=provider_checked, provider_unknown=provider_unknown)
 
     async def presence(self, time_zone: str) -> dict:
         """The person opened or used the app. Records the zone and the time;
@@ -395,7 +546,7 @@ class NeedsYou:
     async def render(self, *, create: bool) -> dict | None:
         """Write or refresh today's card. Returns `{agent_id, thread_id}` when
         the card has something worth opening, else None. `create` says the
-        person just arrived; without it a new card starts only for an item."""
+        person just arrived; a new card needs an item or unknown granted-source data."""
         if self._rendering:
             self._dirty = True
             return None
@@ -419,11 +570,14 @@ class NeedsYou:
             items = await collect(db, self.owner_id, now=now, engines=await self._engine_entries(),
                                   issues=await self._issue_entries(now))
             items = await collect_local(db, self.owner_id, now=now, zone=zone, attention=items)
-        card = build_card(items, day=day, now=now, zone=zone)
+            provider_items, sources, provider_checked, provider_unknown = await self._providers(db, lead_id, now, zone)
+        items.extend(provider_items)
+        card = build_card(items, day=day, now=now, zone=zone, sources=sources, provider_checked_at=provider_checked, provider_unknown=provider_unknown)
         has_card = state is not None and state.card_day == day and state.card_thread_id is not None
-        if not has_card and not items:
-            # Never posted empty. `create` makes no difference: with nothing
-            # to say there is nothing to open.
+        visible = bool(items) or provider_unknown
+        if not has_card and not visible:
+            # Quiet sources do not create a finding. A granted source that
+            # could not be checked must remain visible even with no rows.
             return None
         digest = card_hash(card)
         async with self.runtime.session() as db:
@@ -445,20 +599,20 @@ class NeedsYou:
                 return None
             if state.card_day == day and state.card_thread_id == thread_id and state.card_hash == digest:
                 await db.rollback()
-                return {"agent_id": lead_id, "thread_id": thread_id} if items else None
+                return {"agent_id": lead_id, "thread_id": thread_id} if visible else None
             card["revision"] = (state.card_revision + 1) if state.card_day == day else 1
             await store._add_event(db, thread_id, CARD_EVENT, card, None)
             seen = set(state.notified or [])
-            fresh = [i for i in items if i.key not in seen and i.kind != "routine_completed"]
+            fresh = [i for i in items if i.key not in seen and i.kind not in {"routine_completed", "calendar_event", "gmail_message"}]
             if fresh:
-                kinds = sum(i.kind != "routine_completed" for i in items)
+                kinds = sum(i.kind not in {"routine_completed", "calendar_event", "gmail_message"} for i in items)
                 notification_feed.add(
                     db, owner_id=self.owner_id, kind="needs_you",
                     title=f"{kinds} thing{'s' if kinds != 1 else ''} need{'' if kinds != 1 else 's'} you",
-                    body="\n".join(i.title for i in items if i.kind != "routine_completed")[:1000], thread_id=thread_id)
+                    body="\n".join(i.title for i in items if i.kind not in {"routine_completed", "calendar_event", "gmail_message"})[:1000], thread_id=thread_id)
             state.notified = ([*state.notified, *(i.key for i in fresh)])[-NOTIFIED_KEPT:]
             state.card_day, state.card_thread_id, state.card_hash = day, thread_id, digest
             state.card_revision = card["revision"]
             await db.commit()
         self.runtime.hub.notify(thread_id)
-        return {"agent_id": lead_id, "thread_id": thread_id} if items else None
+        return {"agent_id": lead_id, "thread_id": thread_id} if visible else None

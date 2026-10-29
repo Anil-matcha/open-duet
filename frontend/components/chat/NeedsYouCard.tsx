@@ -2,6 +2,13 @@ import Link from "next/link";
 import { rowAction, summary } from "@/lib/needs-you";
 import type { TranscriptItem } from "@/lib/transcript";
 
+const SOURCE_STATUS: Record<string, string> = {
+  available: "checked", quiet: "checked; no matching records",
+  partial: "partial snapshot; more records or unreadable items may exist",
+  failed: "check failed; contents unknown",
+  unavailable: "unavailable; check the lead’s app access and connected account",
+};
+
 // The day's "Needs you" card, written by the server in the lead's chat. A newer
 // revision replaces the older one (the transcript keeps only the latest).
 export function NeedsYouCard({ item }: { item: Extract<TranscriptItem, { kind: "needs_you" }> }) {
@@ -39,7 +46,10 @@ export function NeedsYouCard({ item }: { item: Extract<TranscriptItem, { kind: "
         </>
       )}
       {item.checkedAt && <p className="text-xs text-muted">Updated <time dateTime={item.checkedAt}>{new Date(item.checkedAt).toLocaleString(undefined, { timeZone: item.timeZone || "UTC" })}</time>{item.timeZone && ` (${item.timeZone})`}</p>}
-      {(item.sources?.calendar === "unavailable" || item.sources?.gmail === "unavailable") && <p className="text-xs text-muted">Calendar and Gmail are unavailable. This brief uses local records.</p>}
+      {item.providerCheckedAt && <p className="text-xs text-muted">Apps last checked <time dateTime={item.providerCheckedAt}>{new Date(item.providerCheckedAt).toLocaleString(undefined, { timeZone: item.timeZone || "UTC" })}</time> · Refreshes at most every 5 minutes.</p>}
+      {(["calendar", "gmail"] as const).map((source) => item.sources?.[source] && <p key={source} className="text-xs text-muted">
+        {source === "gmail" ? "Gmail inbox (last 7 days)" : "Primary calendar (today)"}: {SOURCE_STATUS[item.sources[source]] || "unknown"}.
+      </p>)}
     </section>
   );
 }

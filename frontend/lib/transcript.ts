@@ -13,11 +13,11 @@ export type ApprovalStatus = "pending" | "allowed" | "denied" | "expired" | "can
 export type TurnEndStatus = "completed" | "failed" | "cancelled" | "interrupted";
 
 // A file attached to a message: metadata only, the bytes are fetched by id.
-export type AttachmentRef = { id: string; name: string; mime: string; bytes: number; kind: string };
+export type AttachmentRef = { id: string; name: string; mime: string; bytes: number; kind: string; transcript?: { text: string; segments: { id: number; start: number; end: number; text: string }[] } | null };
 
 export type TeamJobItem = { kind: "team_job"; key: string; turnId: number | null; jobId: number; agentId: number; threadId: number | null; mode: string; brief: string; status: string; result: string; outcome: string };
 
-export type NeedsYouItem = { kind: "needs_you"; key: string; turnId: number | null; cardId: string; revision: number; title: string; subtitle: string; emptyText: string; more: number; checkedAt?: string; timeZone?: string; sources?: Record<string, string>; rows: NeedsYouRow[] };
+export type NeedsYouItem = { kind: "needs_you"; key: string; turnId: number | null; cardId: string; revision: number; title: string; subtitle: string; emptyText: string; more: number; checkedAt?: string; providerCheckedAt?: string; timeZone?: string; sources?: Record<string, string>; rows: NeedsYouRow[] };
 
 export type TranscriptItem =
   | TeamJobItem
@@ -121,6 +121,10 @@ function attachmentRefs(value: unknown): AttachmentRef[] {
       mime: text(a.mime),
       bytes: typeof a.bytes === "number" ? a.bytes : 0,
       kind: text(a.kind),
+      ...(text(a.kind) === "audio" && typeof record(a.transcript).text === "string" ? { transcript: {
+        text: text(record(a.transcript).text),
+        segments: Array.isArray(record(a.transcript).segments) ? (record(a.transcript).segments as unknown[]).map(record).filter((segment) => typeof segment.id === "number" && typeof segment.start === "number" && Number.isFinite(segment.start) && typeof segment.end === "number" && Number.isFinite(segment.end) && typeof segment.text === "string").map((segment) => ({ id: segment.id as number, start: segment.start as number, end: segment.end as number, text: segment.text as string })) : [],
+      } } : {}),
     }));
 }
 
@@ -421,12 +425,13 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
       if (previous && previous.revision >= revision) return base;
       const rows = data.items.flatMap((row: unknown): NeedsYouRow[] => {
         const r = row as Partial<NeedsYouRow>;
-        return typeof r?.key === "string" && typeof r.kind === "string" ? [{ kind: r.kind, key: r.key, title: text(r.title), detail: typeof r.detail === "string" ? r.detail : null, thread_id: typeof r.thread_id === "number" ? r.thread_id : null, at: typeof r.at === "string" ? r.at : null, source: typeof r.source === "string" ? r.source : undefined, routine_id: typeof r.routine_id === "number" ? r.routine_id : null, work_item_id: typeof r.work_item_id === "number" ? r.work_item_id : null }] : [];
+        return typeof r?.key === "string" && typeof r.kind === "string" ? [{ kind: r.kind, key: r.key, title: text(r.title), detail: typeof r.detail === "string" ? r.detail : null, thread_id: typeof r.thread_id === "number" ? r.thread_id : null, at: typeof r.at === "string" ? r.at : null, source: typeof r.source === "string" ? r.source : undefined, source_id: typeof r.source_id === "string" ? r.source_id : null, source_url: typeof r.source_url === "string" ? r.source_url : null, source_timestamp: typeof r.source_timestamp === "string" ? r.source_timestamp : null, source_record: r.source_record && typeof r.source_record === "object" ? r.source_record : null, routine_id: typeof r.routine_id === "number" ? r.routine_id : null, work_item_id: typeof r.work_item_id === "number" ? r.work_item_id : null }] : [];
       });
       const item: NeedsYouItem = {
         kind: "needs_you", key: previous?.key ?? key, turnId: null, cardId: data.card_id, revision,
         title: text(data.title) || "Needs you", subtitle: text(data.subtitle), emptyText: text(data.empty_text) || "Nothing needs you right now.",
         more: typeof data.more === "number" ? data.more : 0, rows,
+        providerCheckedAt: typeof data.provider_checked_at === "string" ? data.provider_checked_at : undefined,
         checkedAt: typeof data.checked_at === "string" ? data.checked_at : undefined,
         timeZone: typeof data.time_zone === "string" ? data.time_zone : undefined,
         sources: data.sources && typeof data.sources === "object" ? data.sources as Record<string, string> : undefined,

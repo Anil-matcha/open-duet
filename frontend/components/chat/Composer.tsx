@@ -207,7 +207,7 @@ export function Composer({
                   hidden
                   aria-hidden
                   tabIndex={-1}
-                  accept="image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
+                  accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
                   onChange={(e) => {
                     onAddFiles(Array.from(e.target.files ?? []));
                     e.target.value = "";
@@ -218,7 +218,7 @@ export function Composer({
                   onClick={() => picker.current?.click()}
                   disabled={sending}
                   aria-label="Attach files"
-                  title="Attach images or text files (or paste, or drop them here)"
+                  title="Attach images, text or audio files (or paste, or drop them here)"
                   className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-11"
                 >
                   <Paperclip size={18} aria-hidden="true" />

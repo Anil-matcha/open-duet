@@ -230,7 +230,7 @@ class ClaudeAdapter:
             )
         # A computer is the agent's sandbox: its turns always have tools, and
         # they are the computer's tools only.
-        host_tools = app_settings.get("LOCAL_TOOLS_ENABLED") or ctx.computer is not None or ctx.team_launch is not None
+        host_tools = not getattr(ctx, "draft_only", False) and (app_settings.get("LOCAL_TOOLS_ENABLED") or ctx.computer is not None or ctx.team_launch is not None)
         # The memory search is an MCP tool asked about like any other: the turn
         # then runs with approvals, but with the host's own tools off unless
         # they were on already.

@@ -243,3 +243,54 @@ async def test_another_owners_thread_takes_no_uploads(api, sessions, tmp_path):
         async with sessions() as db:
             await db.execute(delete(Thread).where(Thread.id == theirs.id))
             await db.commit()
+
+
+async def test_audio_consent_upload_and_grounded_turn(api, owner, sessions, monkeypatch):
+    from tests.services.test_audio_ingestion import wav
+    from app.services import audio_ingestion
+    thread_id = (await new_thread(sessions, owner)).id
+    path = f'/api/v1/threads/{thread_id}/attachments'
+    refused = await api.post(path, files={'file': ('sample.wav', wav(), 'audio/wav')})
+    assert refused.status_code == 422
+    assert refused.json()['detail']['error_code'] == 'audio_consent_required'
+    called = []
+    async def transcription(name, data, consent):
+        assert consent == 'openai'
+        called.append(name)
+        return {'text': 'Maybe Alice.', 'segments': [{'id': 1, 'start': 0.0, 'end': 1.0, 'text': 'Maybe Alice.'}], 'provider': 'openai', 'complete': True, 'duration_seconds': 1.0}
+    monkeypatch.setattr(audio_ingestion, 'transcribe', transcription)
+    response = await api.post(path, files={'file': ('sample.wav', wav(), 'audio/wav')}, data={'consent_provider': 'openai'})
+    assert response.status_code == 201, response.text
+    saved = response.json()
+    assert saved['kind'] == 'audio' and saved['transcript']['segments'][0]['text'] == 'Maybe Alice.'
+    assert called == ['sample.wav']
+    original = await api.get(path + '/' + saved['id'])
+    assert original.content == wav()
+    assert original.headers['content-type'] == 'audio/wav'
+
+
+@pytest.mark.parametrize('via_url', [False, True])
+async def test_audio_deleted_thread_is_rechecked_before_save(api, owner, sessions, monkeypatch, via_url):
+    from fastapi import HTTPException
+    from tests.services.test_audio_ingestion import wav
+    from app.services import audio_ingestion
+    from app.routers import attachments as attachment_routes
+    thread_id = (await new_thread(sessions, owner)).id
+    checks = []
+    async def thread_check(rt, target):
+        checks.append(target)
+        if len(checks) > 1:
+            raise HTTPException(404, 'Conversation was deleted.')
+    async def transcription(*args):
+        return {'text': 'A source transcript.', 'segments': [], 'provider': 'openai', 'model': 'gpt-transcribe', 'complete': True, 'duration_seconds': 1.0}
+    monkeypatch.setattr(attachment_routes, '_thread_or_404', thread_check)
+    monkeypatch.setattr(audio_ingestion, 'transcribe', transcription)
+    if via_url:
+        monkeypatch.setattr(audio_ingestion, 'require_consent', lambda provider: None)
+        monkeypatch.setattr(audio_ingestion, 'fetch_url', lambda *args: ('sample.wav', wav()))
+        response = await api.post(f'/api/v1/threads/{thread_id}/attachments/audio-url', json={'url': 'https://example.test/sample.wav', 'consent_provider': 'openai'})
+    else:
+        response = await api.post(f'/api/v1/threads/{thread_id}/attachments', files={'file': ('sample.wav', wav(), 'audio/wav')}, data={'consent_provider': 'openai'})
+    assert response.status_code == 404
+    assert checks == [thread_id, thread_id]
+    assert not attachments.thread_dir(thread_id).exists()

@@ -164,6 +164,9 @@ class TurnContext:
     # ask | accept_edits | plan (approval_modes.py); None means ask. Set by the
     # runtime from the thread's agent; an adapter maps it onto its own provider.
     approval_mode: str | None = None
+    # Confined turns cannot act through alternate tools.
+    draft_only: bool = False
+    media_review_only: bool = False
     # Extra instructions from the thread's named agent, for the provider's
     # system prompt (appended, never replacing it), or None. Read fresh each turn.
     instructions: str | None = None

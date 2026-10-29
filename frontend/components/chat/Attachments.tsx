@@ -54,7 +54,11 @@ export function MessageAttachments({ threadId, items }: { threadId: number | nul
         item.kind === "image" && threadId !== null ? (
           <Thumbnail key={item.id} threadId={threadId} item={item} />
         ) : (
-          <FileChip key={item.id} item={item} />
+          item.kind === "audio" && item.transcript ? <details key={item.id} className="max-w-lg rounded-field border border-line p-2 text-xs">
+            <summary className="cursor-pointer">{item.name} — machine transcript</summary>
+            <p>Words and names may be uncertain. No speaker identity is inferred.</p>
+            {item.transcript.segments.length ? item.transcript.segments.map((segment) => <p key={segment.id} id={`audio-${item.id}-${segment.id}`}><span className="font-medium">{segment.start.toFixed(1)}–{segment.end.toFixed(1)}s:</span> {segment.text}</p>) : <p>{item.transcript.text}</p>}
+          </details> : <FileChip key={item.id} item={item} />
         )
       )}
     </div>

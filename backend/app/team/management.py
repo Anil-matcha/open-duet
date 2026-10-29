@@ -10,7 +10,7 @@ from app.services import agent_memory, agent_skills, routine_schedule, routine_s
 from app.services.workspaces import require_workspace
 from app.team import fence, policy, service, setup, routine_changes
 
-READS = ('list_management_capabilities', 'list_routines', 'preview_schedule', 'skills_list')
+READS = ('routine_report_outcome', 'list_management_capabilities', 'list_routines', 'preview_schedule', 'skills_list')
 WRITES = ('propose_profile', 'propose_model', 'create_routine', 'manage_routine', 'skill_manage')
 TOOLS = READS + WRITES
 ROUTINE_FIELDS = {'name', 'prompt', 'schedule_kind', 'schedule_spec', 'timezone'}
@@ -72,6 +72,10 @@ async def call(rt, run, name, args):
 
 
 async def _call(rt, run, name, args):
+    if name == 'routine_report_outcome':
+        strict(args, {'outcome', 'reason'})
+        async with rt.session() as db:
+            return await routine_service.report_outcome(db, rt.owner_id, run, args.get('outcome'), args.get('reason'))
     writing = name in WRITES
     if writing and (run.ctx.approval_mode == 'plan' or run.ctx.team.origin in policy.UNATTENDED):
         raise service.TeamError('forbidden', 'Configuration changes are unavailable for this turn.')

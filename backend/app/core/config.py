@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Folder for files attached to messages. Empty means ~/.open-dots/attachments.
     # The desktop app uses its data folder.
     ATTACHMENTS_DIR: str = ""
+    # Optional audio transcription, loaded from backend/.env like other providers.
+    AUDIO_TRANSCRIPTION_API_KEY: str = Field(default="", repr=False)
+    AUDIO_TRANSCRIPTION_MODEL: str = "gpt-transcribe"
     # Folder where the backend records the engine processes it starts, so the
     # next start can end any a hard kill left running (docs/RELIABILITY.md).
     # Empty means an `engine-processes` folder next to the SQLite file (by

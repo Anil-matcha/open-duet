@@ -820,6 +820,8 @@ export type RoutineRun = {
   scheduled_for: string | null;
   thread_id: number | null;
   turn_id: number | null;
+  outcome?: "no_change" | "report" | "unknown" | "source_failed" | "failed" | "interrupted" | null;
+  outcome_details?: Record<string, unknown> | null;
   result: string | null;
   error: string | null;
   waiting_since: string | null;
@@ -858,6 +860,7 @@ export type Routine = {
   approval_mode: ApprovalMode;
   approval_timeout_minutes: number;
   catch_up_minutes: number;
+  quiet_reporting?: boolean;
   retry_limit: number;
   retry_delay_minutes: number;
   last_run_at: string | null;
@@ -881,6 +884,7 @@ export type RoutineInput = {
   approval_mode: ApprovalMode;
   approval_timeout_minutes: number;
   catch_up_minutes: number;
+  quiet_reporting?: boolean;
   retry_limit: number;
   retry_delay_minutes: number;
   connected_app_grants: ConnectedAppGrant[];
@@ -1379,11 +1383,14 @@ export const api = {
   // --- Everyday features (docs/EVERYDAY.md) ---
   searchConversations: (query: string, filter: SearchFilter = {}) =>
     request<SearchResponse>(`/search${searchQuery(query, filter)}`),
-  uploadAttachment: (threadId: number, file: File) => {
+  uploadAttachment: (threadId: number, file: File, consentProvider?: string, signal?: AbortSignal) => {
     const form = new FormData();
     form.append("file", file, file.name);
-    return requestForm<UploadedAttachment>(`/threads/${threadId}/attachments`, form);
+    if (consentProvider) form.append("consent_provider", consentProvider);
+    return requestForm<UploadedAttachment>(`/threads/${threadId}/attachments`, form, signal);
   },
+  audioCapabilities: () => request<{ provider: string; provider_label: string; available: boolean; retention: string }>("/threads/audio/capabilities"),
+  importAudioUrl: (threadId: number, url: string, consentProvider: string, signal?: AbortSignal) => request<UploadedAttachment>(`/threads/${threadId}/attachments/audio-url`, { method: "POST", signal, body: JSON.stringify({ url, consent_provider: consentProvider }) }),
   // Object URLs for bytes behind the session (an <img> cannot send the CSRF or
   // launch headers some setups need). The caller revokes them.
   attachmentBlobUrl: (threadId: number, attachmentId: string) =>
@@ -1431,7 +1438,7 @@ export type SearchHit = {
 
 export type SearchResponse = { query: string; hits: SearchHit[] };
 
-export type UploadedAttachment = { id: string; name: string; mime: string; bytes: number; kind: "image" | "text" };
+export type UploadedAttachment = { id: string; name: string; mime: string; bytes: number; kind: "image" | "text" | "audio" };
 
 export type FileEntry = {
   name: string;
@@ -1506,10 +1513,11 @@ async function errorFrom(res: Response): Promise<ApiError> {
 }
 
 // A multipart POST: the browser sets the Content-Type with its boundary.
-async function requestForm<T>(path: string, body: FormData): Promise<T> {
+async function requestForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     body,
+    signal,
     credentials: "include",
     headers: authHeaders("POST"),
   });

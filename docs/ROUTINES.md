@@ -262,4 +262,36 @@ are reserved before dispatch and the same exact request cannot be replayed in
 that run. Run history shows receipts and uncertain outcomes. A new manual or
 scheduled run can perform the work again: check the app before rerunning after
 an uncertain result. External changes are not covered by file Undo. Other writes,
-including Gmail drafts, remain unavailable. See [Connected apps](CONNECTED_APPS.md#routine-specific-app-access).
+remain unavailable except for the separate confined draft mode below. See [Connected apps](CONNECTED_APPS.md#routine-specific-app-access).
+
+
+## Quiet results
+
+The editor's quiet reporting setting is off by default. A scheduled run may
+suppress its completion notification only after an explicit no-change request
+and successful, complete receipts for every configured read action/account.
+Empty output, failed or truncated reads, questions, approvals, writes and useful
+reports cannot silently count as no change. Manual runs remain visible, and
+history retains the outcome and checked-source receipt references. Reporting a
+source failure keeps partial output visible. The explicit outcome tool currently
+uses the team tool bridge; engines without that bridge retain visible unknown
+outcomes. This checks read coverage, not semantic accuracy of the agent's answer.
+
+## Checked-message draft mode
+
+Select Prepare checked reply draft with Read message and Read Gmail profile for
+the same account. Combine it only with compatible Gmail reads, never send or
+repository writes. The agent must have Gmail write scope. Execution uses a fresh
+Claude conversation with built-in host tools, memory, skills, team tools and
+fallback disabled. Unsupported engines refuse this mode; the routine-app safety
+setting still defaults off.
+
+The routine reads the exact message, then supplies message ID, thread ID,
+subject and plain-text body. The server rechecks authoritative Gmail headers,
+derives the single From address, refuses ambiguous/different Reply-To or self
+addresses, and verifies current grants before dispatch. Missing provider header
+shapes fail closed. The one draft attempt is reserved durably before dispatch;
+changed body text, concurrent requests, restart or an unknown response cannot
+obtain another attempt in the same run. Check Gmail before starting a new run
+after uncertainty. A draft is never a send, and a live Gmail run is still needed
+to qualify provider response shapes and the approval experience.
