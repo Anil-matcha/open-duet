@@ -40,6 +40,8 @@ def kill_group(proc: asyncio.subprocess.Process) -> None:
     started. Never raises."""
     try:
         if sys.platform == "win32":
+            import subprocess
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
             proc.kill()
         else:
             os.killpg(proc.pid, signal.SIGKILL)
