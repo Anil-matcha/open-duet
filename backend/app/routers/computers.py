@@ -8,14 +8,17 @@ Errors a client acts on carry a machine-readable code:
 `{"detail": {"error_code": "...", "message": "..."}}`.
 """
 
+import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
-from app.computers import docker_cli
+from app.computers import docker_cli, grants, screen, mcp_server
 from app.computers.provider import ComputerError, Health, Status
 from app.computers.service import ComputerNotFound, ComputerService
 from app.db.models import Agent, Computer
+from app.desktop import computer_capabilities
 from app.schemas.computer import (
     ComputerCreateRequest,
     ComputerDeleteResponse,
@@ -41,6 +44,24 @@ _STATUS = {
     "docker_failed": 502,
     "unknown_provider": 422,
     "invalid_computer": 422,
+    "boat_key_missing": 409,
+    "boat_key_unavailable": 503,
+    "boat_auth_failed": 401,
+    "boat_timeout": 503,
+    "boat_unavailable": 503,
+    "boat_invalid_url": 422,
+    "boat_provisioning": 503,
+    "boat_stopping": 503,
+    "boat_computer_missing": 404,
+    "boat_computer_unavailable": 409,
+    "boat_plan_restricted": 403,
+    "boat_rate_limited": 429,
+    "boat_setup_failed": 502,
+    "boat_create_failed": 502,
+    "boat_invalid_response": 502,
+    "boat_command_timeout": 504,
+    "boat_screen_failed": 502,
+    "desktop_not_ready": 503,
 }
 
 
@@ -101,7 +122,7 @@ def respond(
         problem=status.problem if status else None,
         last_error=computer.last_error,
         workspace_path=computer.workspace_path,
-        guest_workspace=docker_cli.GUEST_WORKSPACE,
+        guest_workspace=getattr(service.provider(computer.provider), "guest_workspace", docker_cli.GUEST_WORKSPACE),
         container_id=computer.container_id,
         busy=service.busy(computer.id),
         screen_busy=computer.kind == "desktop" and service.screen_busy(computer.id),
@@ -208,9 +229,10 @@ async def create_agent_computer(
         )
     service = _service(rt)
     settings = payload.model_dump(exclude={"start", "image"}, exclude_none=True)
+    provider = settings.get("provider", "docker")
     try:
         computer, created = await service.create_for_agent(
-            agent, workspace=agent_workspace(agent), image=payload.image, **settings
+            agent, workspace=agent_workspace(agent) if provider == "docker" else None, image=payload.image, **settings
         )
         if not created:
             response.status_code = 200
@@ -282,7 +304,7 @@ async def recreate_computer(computer_id: int, rt: ThreadRuntime = Depends(get_ru
     computer = await _computer_or_404(service, computer_id)
     async with rt.session() as db:
         agent = await agent_store.get_agent(db, computer.agent_id)
-    workspace = agent_workspace(agent) if agent is not None else None
+    workspace = agent_workspace(agent) if agent is not None and computer.provider == "docker" else None
     return await _lifecycle(rt, computer_id, lambda s: s.recreate(computer_id, workspace=workspace))
 
 
@@ -309,4 +331,69 @@ async def computer_screenshot(computer_id: int, rt: ThreadRuntime = Depends(get_
         data = await service.screenshot(computer)
     except ComputerError as exc:
         raise _refused(exc) from None
-    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
+    media_type = "image/png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg"
+    return Response(content=data, media_type=media_type, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/computers/{computer_id}/boat-desktop-url")
+async def boat_desktop_url(computer_id: int, request: Request, rt: ThreadRuntime = Depends(get_runtime)):
+    """Return a provider viewing URL only while the person holds the local
+    desktop control lease. Never store or log the secret-bearing URL."""
+    payload = await request.json()
+    lease_id = payload.get("lease_id") if isinstance(payload, dict) else None
+    if not isinstance(lease_id, str) or not rt.computers.control.owns(computer_id, lease_id):
+        raise HTTPException(status_code=409, detail={"error_code": "lease_lost", "message": "Take control first."})
+    computer = await _computer_or_404(rt.computers, computer_id)
+    if computer.provider != "boat" or computer.kind != "desktop":
+        raise HTTPException(status_code=409, detail={"error_code": "not_a_cloud_desktop"})
+    try:
+        url = await rt.computers._call(rt.computers.provider("boat").desktop_url, rt.computers.spec(computer))
+    except ComputerError as exc:
+        raise _refused(exc) from None
+    return JSONResponse({"url": url}, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+@router.post("/computers/{computer_id}/provider-tool")
+async def provider_tool(computer_id: int, request: Request, rt: ThreadRuntime = Depends(get_runtime)):
+    """Narrow local bridge for a cloud MCP child. A matching computer-turn
+    capability and one-use approval permit are both required."""
+    token = request.headers.get("x-open-dots-computer-capability", "")
+    turn_id = computer_capabilities.allows(computer_id, token)
+    grants_dir = computer_capabilities.grants_for(computer_id, token)
+    if turn_id is None or grants_dir is None:
+        raise HTTPException(status_code=401, detail={"error_code": "computer_capability_required"})
+    if turn_id not in rt.computers._leases.get(computer_id, set()):
+        raise HTTPException(status_code=401, detail={"error_code": "computer_turn_ended"})
+    try:
+        computer = await _computer_or_404(rt.computers, computer_id)
+    except HTTPException:
+        raise
+    if computer.provider != "boat":
+        raise HTTPException(status_code=404, detail={"error_code": "computer_not_found"})
+    raw = await request.body()
+    if len(raw) > 2_100_000:
+        raise HTTPException(status_code=413, detail={"error_code": "computer_tool_too_large"})
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_computer_tool"}) from None
+    if not isinstance(payload, dict) or set(payload) != {"name", "arguments"}:
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_computer_tool"})
+    name, arguments = payload.get("name"), payload.get("arguments")
+    allowed = name in mcp_server._TOOL_NAMES or (computer.kind == "desktop" and name in screen.DEFINITIONS)
+    if not allowed or not isinstance(arguments, dict):
+        raise HTTPException(status_code=400, detail={"error_code": "invalid_computer_tool"})
+    problem = screen.validate(name, arguments) if name in screen.DEFINITIONS else mcp_server._argument_problem(name, arguments)
+    if problem:
+        raise HTTPException(status_code=422, detail={"error_code": "invalid_computer_tool", "message": problem})
+    if not grants.consume(grants_dir, name, arguments):
+        raise HTTPException(status_code=403, detail={"error_code": "computer_tool_not_approved"})
+    try:
+        result = await rt.computers._call(
+            rt.computers.provider("boat").tool, rt.computers.spec(computer), name, arguments
+        )
+    except ComputerError as exc:
+        raise _refused(exc) from None
+    if not isinstance(result, dict) or not isinstance(result.get("content"), list):
+        raise HTTPException(status_code=502, detail={"error_code": "invalid_computer_tool_response"})
+    return result

@@ -1,5 +1,5 @@
 """Erase the local app data of a desktop profile (agents, conversations, memory,
-routines, settings and the workspace files).
+routines, settings, workspace files and encrypted provider credentials).
 
 Only the account reset and account deletion paths call this; signing out never
 does. The app's own sign-in rows (`auth_*`) are kept so the local window stays
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.db.models  # noqa: F401  (registers every table)
 from app.db.base import Base
 from app.db.transactions import begin_write
-from app.desktop import profile
+from app.desktop import boat_credentials, profile
 
 KEPT_TABLES = frozenset({"auth_owner", "auth_session", "auth_pairing_code"})
 
@@ -48,12 +48,15 @@ def _clear_directory(path: Path) -> None:
 
 
 def wipe_files() -> None:
-    """Remove workspace files and database backups; the folders themselves stay."""
+    """Remove workspace files, backups and saved provider keys; folders stay."""
     current = profile.current()
     if current is None:
         raise RuntimeError("Desktop profile is not active.")
     _clear_directory(current.data_dir / profile.WORKSPACE_DIR_NAME)
     _clear_directory(current.backup_dir)
+    boat_credentials.BoatCredentials(
+        data_dir=current.data_dir, encryption_key=current.encryption_key
+    ).delete()
 
 
 async def wipe_local_data(db: AsyncSession) -> None:

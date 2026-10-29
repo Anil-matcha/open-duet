@@ -58,7 +58,7 @@ class InvalidSpec(ValueError):
 
 @dataclass(frozen=True)
 class Spec:
-    """Everything a computer's container is created from."""
+    """Everything a provider needs to manage one agent computer."""
 
     computer_id: int
     instance: str
@@ -72,6 +72,11 @@ class Spec:
     user: str | None = None
     kind: str = "shell"
     shm_mb: int = 0
+    # Cloud providers use these profile settings instead of Docker mounts.
+    container_id: str | None = None
+    idle_minutes: int = 30
+    provider_generation: str = "legacy"
+    provider_delete_id: str | None = None
 
     @property
     def name(self) -> str:

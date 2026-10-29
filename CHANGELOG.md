@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add a Desktop-only Local/Cloud computer choice. Cloud uses a Boat API key
+  encrypted in the local Desktop profile; the local backend sends it only to
+  Boat's API over HTTPS, not to the agent or cloud computer. The cloud machine
+  has internet access, separate storage, a one-hour archive TTL and an
+  asynchronous deletion lifecycle. The frontend production build passed;
+  backend behavior tests, live-provider and packaged-app qualification remain
+  open.
+
 ## 0.6.0 - 2026-10-29
 
 ### Added

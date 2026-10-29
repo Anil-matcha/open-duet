@@ -2,11 +2,17 @@
 
 An agent can have its own computer: an isolated machine where its turns run
 their commands and file edits instead of on the machine running Open Duet.
-Docker computers can be a shell or an isolated Linux desktop with screen
-tools, live viewing and takeover. The macOS desktop app also offers a separate,
-explicitly enabled [native desktop preview](NATIVE-DESKTOP.md) that acts on this
-Mac's apps. Docker stays the isolated default. Remote SSH computers remain
-unimplemented.
+Local Docker computers can be a shell or an isolated Linux desktop with screen
+tools, live viewing and takeover. In the Desktop app, a person can also choose
+a Boat cloud computer. Cloud computers have internet access, use a separate
+  provider account and may incur charges; their files are not synced with the
+  local workspace. The Boat API key is encrypted in the local Desktop profile
+  and sent by its backend to Boat's API over HTTPS for authentication. It is
+  never sent to the agent or cloud computer. Cloud
+computers auto-archive one hour after creation or resume, and can be resumed by
+a later turn when auto-start is enabled. The macOS desktop app also offers a
+separate, explicitly enabled [native desktop preview](NATIVE-DESKTOP.md) that
+acts on this Mac's apps. Remote SSH computers remain unimplemented.
 
 Desktop computers also expose structured `browser_*` tools for their own
 Chromium browser. See [the image setup](../desktop-image/README.md) and
@@ -46,7 +52,7 @@ One table, `computer` (migration `4b7e1d9c2a58`), at most one row per agent:
 | Column | Meaning |
 |---|---|
 | `agent_id` | The agent (unique). No foreign key, like `thread.agent_id`: a row outlives its agent until its machine is removed. |
-| `provider` | `docker` for isolated agent computers. The native macOS desktop preview is a separate, opt-in app path; SSH computers are not implemented. |
+| `provider` | `docker` for a local isolated computer or `boat` for a Desktop cloud computer. The native macOS desktop preview is a separate, opt-in app path; SSH computers are not implemented. |
 | `image`, `image_id` | The image reference (a digest pins it) and the content id it resolved to when the machine was made. |
 | `cpu_millis`, `memory_mb`, `pids_limit` | Limits. CPU is stored in thousandths so the column is an integer on every database. |
 | `network` | `none` (no network at all, the default) or `default` (Docker's bridge: internet out, nothing in). |
@@ -54,12 +60,12 @@ One table, `computer` (migration `4b7e1d9c2a58`), at most one row per agent:
 | `auto_start` | A turn may start a stopped computer, or make a missing one from an image that is already here. Default on. |
 | `state` | `missing`, `creating`, `running`, `stopped`, `error`, `deleting`: the last state the app saw. |
 | `workspace_path` | The folder mounted at `/workspace` when the machine was made. |
-| `container_id`, `last_error`, `last_used_at` | What the provider last reported. |
+| `container_id`, `last_error`, `last_used_at` | What the provider last reported. `provider_generation` gives each newly created provider resource its own idempotency identity. `provider_delete_id` tracks an accepted cloud deletion until Boat reports completion. |
 
 On SQLite the id is `AUTOINCREMENT`: the container name is derived from it and
 must never be handed to a different computer.
 
-The machine's own name is `open-dots-computer-<installation>-<id>`, where
+The local Docker machine's own name is `open-dots-computer-<installation>-<id>`, where
 `<installation>` is the start of a random id kept in `computers/instance-id`
 in the data folder, so two installations sharing one Docker never touch each
 other's machines.
@@ -236,13 +242,26 @@ Agents carry `computer_id` and a `computer` summary; conversations carry the
 ## The page
 
 The Agents panel has a **Computer** button per agent: give it a computer
-(choosing no network or internet), then see its state, image (and whether it is
+(choosing Local or Cloud in Desktop, and no network or internet for Local), then see its state, image (and whether it is
 pinned), limits, mounted folder, idle stop and the last command with its
 output; download the image, start, stop, recreate, change limits, network,
 image and auto start, or remove it. A conversation whose agent has a computer
 shows a **Computer** chip in the header that opens the same view. Cards and
 tool steps of computer calls carry a "computer" badge. Against a backend
 without computers the button explains that and nothing else changes.
+
+The Cloud option is available only in the local Desktop profile. Its key is
+write-only from the UI and remains encrypted on this device. The local backend
+sends it to Boat's API over HTTPS for authentication; the key is not included in
+agent turns or sent to the cloud computer. Commands and files go to the cloud
+computer. Screenshots can be returned to the selected engine when the agent
+requests them. No local workspace is mounted into or synced with the cloud
+machine. The live desktop view uses a secret provider URL. Open Dots clears it
+from the view when control is handed back, but Boat does not expose a URL
+revocation endpoint. Remove all cloud computers before resetting or deleting
+the Desktop profile. Boat deletion is accepted asynchronously; Open Dots keeps
+the local computer record and blocks profile reset until Boat reports deletion
+complete. The resources may incur charges until removed or archived.
 
 ## Testing
 
@@ -277,3 +296,9 @@ without computers the button explains that and nothing else changes.
   MCP server, which another provider adapter could mount the same way once it
   can switch off its own host tools (Codex does: see [ENGINES.md](ENGINES.md#codex)).
   The native Mac desktop stays Claude-only.
+- Boat cloud computers in the local Desktop app are source-only until the
+  provider lifecycle, migrations, agent approval path, Desktop package and a
+  real Boat account are qualified. The cloud option is not exposed by the
+  hosted web backend. Deletion operations are polled until provider completion.
+  The frontend production build passed, but no backend behavior test, live Boat
+  check, or packaged-app check was run for this implementation.
