@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { parseMarkdown, type Align, type Span } from '@/lib/markdown';
@@ -40,6 +40,8 @@ function Table({ header, rows, align }: { header: Span[][]; rows: Span[][][]; al
   const styles = useStyles(createStyles);
   const { fontScale } = useWindowDimensions();
   const widths = columnWidths(header, rows, fontScale);
+  // The scroll view is given the table's own height: left to itself it can come out taller than its rows.
+  const [height, setHeight] = useState<number | null>(null);
   const line = (cells: Span[][], head: boolean) =>
     cells.map((spans, column) => (
       <View key={column} style={[styles.cell, head && styles.headCell, { width: widths[column] }]}>
@@ -49,8 +51,8 @@ function Table({ header, rows, align }: { header: Span[][]; rows: Span[][][]; al
       </View>
     ));
   return (
-    <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
-      <View style={styles.table}>
+    <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={[styles.scroll, height !== null && { height }]}>
+      <View style={styles.table} onLayout={(event) => setHeight(Math.ceil(event.nativeEvent.layout.height))}>
         <View style={styles.row}>{line(header, true)}</View>
         {rows.map((row, index) => (
           <View key={index} style={styles.row}>
@@ -132,7 +134,8 @@ const createStyles = (p: Palette) =>
     list: { gap: 4 },
     item: { flexDirection: 'row', gap: 6 },
     itemText: { flex: 1 },
-    table: { borderTopWidth: StyleSheet.hairlineWidth, borderLeftWidth: StyleSheet.hairlineWidth, borderColor: p.border },
+    scroll: { flexGrow: 0 },
+    table: { alignSelf: 'flex-start', borderTopWidth: StyleSheet.hairlineWidth, borderLeftWidth: StyleSheet.hairlineWidth, borderColor: p.border },
     row: { flexDirection: 'row' },
     cell: { padding: 6, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: p.border },
     headCell: { backgroundColor: p.surfaceStrong },
