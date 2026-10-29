@@ -21,6 +21,11 @@ or keep files next to the database.
   query under 2 characters returns nothing.
 - **Filters.** `agent_id`, `since` / `until` (ISO dates, inclusive),
   `include_archived` (off by default), `limit` (1 to 100, default 40).
+- **Paging.** `offset` (0 to 500) skips that many hits. The response carries
+  `has_more` and, while it is true, `next_offset` to ask for next; a page can
+  come back empty after a full last one. A conversation with any message hit
+  never also shows its title as a hit, so pages come from one stable order.
+  Hits beyond 500 are not reachable; narrow the query or the dates.
 - **Result.** Newest first. Each hit names its conversation (id, title, agent,
   archived), where it matched (`title`, `user` or `assistant`, with the event
   `seq` and turn), when, and a snippet of about 160 characters around the

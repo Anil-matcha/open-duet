@@ -9,7 +9,7 @@ SQLite, ->> on PostgreSQL). No FTS index.
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Event, Thread
@@ -95,9 +95,42 @@ async def search(
     include_delegated: bool = False,
     limit: int = 40,
 ) -> list[SearchHit]:
+    hits, _ = await search_page(
+        db,
+        owner_id,
+        query,
+        agent_id=agent_id,
+        since=since,
+        until=until,
+        include_archived=include_archived,
+        include_delegated=include_delegated,
+        limit=limit,
+    )
+    return hits
+
+
+async def search_page(
+    db: AsyncSession,
+    owner_id: str,
+    query: str,
+    *,
+    agent_id: int | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    include_archived: bool = False,
+    include_delegated: bool = False,
+    limit: int = 40,
+    offset: int = 0,
+) -> tuple[list[SearchHit], bool]:
+    """One page of `search` (newest first) and whether more hits may follow.
+    Each source is read down to `offset + limit + 1` rows and merged, so a
+    page is the same slice of one stable order however deep it is. A title hit
+    is left out whenever the conversation has any message hit, so that order
+    never depends on how far down the messages were read."""
     terms = query_terms(query)
     if len(query.strip()) < MIN_QUERY_CHARS or not terms:
-        return []
+        return [], False
+    fetch = offset + limit + 1
 
     def scoped(statement, at_column):
         statement = statement.where(Thread.owner_id == owner_id, Thread.kind != "room_member")
@@ -113,13 +146,31 @@ async def search(
             statement = statement.where(at_column <= until)
         return statement
 
-    titles = scoped(
-        select(Thread).where(Thread.title.is_not(None), _like_all(Thread.title, terms)),
-        Thread.updated_at,
-    ).order_by(Thread.updated_at.desc(), Thread.id.desc()).limit(limit)
-
     message_text = func.coalesce(
         Event.data["text"].as_string(), Event.data["prompt_text"].as_string()
+    )
+    message_hit = (
+        select(Event.id)
+        .where(
+            Event.thread_id == Thread.id,
+            Event.type.in_(tuple(MESSAGE_TYPES)),
+            _like_all(message_text, terms),
+        )
+        .correlate(Thread)
+    )
+    if since is not None:
+        message_hit = message_hit.where(Event.created_at >= since)
+    if until is not None:
+        message_hit = message_hit.where(Event.created_at <= until)
+    titles = (
+        scoped(
+            select(Thread).where(
+                Thread.title.is_not(None), _like_all(Thread.title, terms), ~exists(message_hit)
+            ),
+            Thread.updated_at,
+        )
+        .order_by(Thread.updated_at.desc(), Thread.id.desc())
+        .limit(fetch)
     )
     messages = (
         scoped(
@@ -129,12 +180,13 @@ async def search(
             Event.created_at,
         )
         .order_by(Event.created_at.desc(), Event.id.desc())
-        .limit(limit)
+        .limit(fetch)
     )
 
     hits: list[SearchHit] = []
     titled = list((await db.execute(titles)).scalars())
-    for event, thread, body in (await db.execute(messages)).all():
+    message_rows = (await db.execute(messages)).all()
+    for event, thread, body in message_rows:
         body = body or ""
         # LIKE matched the database's lower(); confirm in Python so a hit is
         # never shown without the words in it.
@@ -155,12 +207,9 @@ async def search(
                 turn_id=event.turn_id,
             )
         )
-    matched_threads = {hit.thread_id for hit in hits}
     for thread in titled:
         # A title is usually the first message cut short: a conversation with a
-        # message hit is shown by that hit alone.
-        if thread.id in matched_threads:
-            continue
+        # message hit is shown by that hit alone (the query above leaves it out).
         snippet, spans = make_snippet(thread.title or "", terms)
         hits.append(
             SearchHit(
@@ -175,7 +224,11 @@ async def search(
             )
         )
     hits.sort(key=lambda hit: hit.at, reverse=True)
-    return hits[:limit]
+    # A source that filled its read may hold more than it returned, so a full
+    # last page can still be followed by one.
+    cut = len(message_rows) >= fetch or len(titled) >= fetch
+    more = len(hits) > offset + limit or (cut and len(hits) >= offset + limit)
+    return hits[offset : offset + limit], more
 
 
 async def search_any(

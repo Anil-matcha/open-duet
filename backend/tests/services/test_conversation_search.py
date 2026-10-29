@@ -158,3 +158,69 @@ async def test_route_refuses_a_remote_client(rt, monkeypatch):
     transport = httpx.ASGITransport(app, client=("203.0.113.9", 50000))
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as remote:
         assert (await remote.get("/api/v1/search", params={"q": "x"})).status_code == 403
+
+
+async def page_of(sessions, owner, query, offset, limit, **kwargs):
+    async with sessions() as db:
+        return await conversation_search.search_page(db, owner, query, limit=limit, offset=offset, **kwargs)
+
+
+async def test_pages_follow_one_order_without_gaps_or_repeats(sessions, owner, tmp_path):
+    made = [await thread_with(sessions, owner, tmp_path, user=f"zebra note {n}") for n in range(7)]
+    everything = await find(sessions, owner, "zebra", limit=100)
+    assert [h.thread_id for h in everything] == [t.id for t in reversed(made)]
+
+    seen, offset, flags = [], 0, []
+    while True:
+        hits, more = await page_of(sessions, owner, "zebra", offset, 3)
+        seen += [(h.thread_id, h.seq) for h in hits]
+        flags.append(more)
+        if not more:
+            break
+        offset += len(hits)
+    assert flags == [True, True, False]
+    assert seen == [(h.thread_id, h.seq) for h in everything]
+
+
+async def test_an_exact_last_page_does_not_claim_more(sessions, owner, tmp_path):
+    for n in range(4):
+        await thread_with(sessions, owner, tmp_path, user=f"koala {n}")
+    hits, more = await page_of(sessions, owner, "koala", 0, 4)
+    assert len(hits) == 4 and more is False
+    hits, more = await page_of(sessions, owner, "koala", 4, 4)
+    assert hits == [] and more is False
+
+
+async def test_a_title_hit_never_depends_on_how_deep_the_page_reads(sessions, owner, tmp_path):
+    # The first conversation has a title and message hit; the title must stay out of every page.
+    first = await thread_with(sessions, owner, tmp_path, title="Heron plans", user="heron schedule")
+    for n in range(5):
+        await thread_with(sessions, owner, tmp_path, user=f"heron later {n}")
+    titled = await thread_with(sessions, owner, tmp_path, title="Heron only in the title", user="unrelated words")
+    everything = await find(sessions, owner, "heron", limit=100)
+    assert (titled.id, "title") in {(h.thread_id, h.kind) for h in everything}
+    assert [h.kind for h in everything if h.thread_id == first.id] == ["user"]
+    for size in (1, 2, 3):
+        collected, offset = [], 0
+        while True:
+            hits, more = await page_of(sessions, owner, "heron", offset, size)
+            collected += [(h.thread_id, h.kind, h.seq) for h in hits]
+            if not more:
+                break
+            offset += len(hits)
+        assert collected == [(h.thread_id, h.kind, h.seq) for h in everything], size
+
+
+async def test_route_pages_with_offset(api, rt, sessions, tmp_path):
+    for n in range(5):
+        await thread_with(sessions, rt.owner_id, tmp_path, user=f"quartz item {n}")
+    async with api:
+        first = (await api.get("/api/v1/search", params={"q": "quartz", "limit": 2})).json()
+        assert len(first["hits"]) == 2 and first["has_more"] is True and first["next_offset"] == 2
+        second = (await api.get("/api/v1/search", params={"q": "quartz", "limit": 2, "offset": first["next_offset"]})).json()
+        last = (await api.get("/api/v1/search", params={"q": "quartz", "limit": 2, "offset": second["next_offset"]})).json()
+        assert len(last["hits"]) == 1 and last["has_more"] is False and last["next_offset"] is None
+        ids = [h["seq"] for page in (first, second, last) for h in page["hits"]]
+        assert len(ids) == len(set((h["thread_id"], h["seq"]) for page in (first, second, last) for h in page["hits"])) == 5
+        assert (await api.get("/api/v1/search", params={"q": "quartz", "offset": 501})).status_code == 422
+        assert (await api.get("/api/v1/search", params={"q": "quartz", "offset": -1})).status_code == 422

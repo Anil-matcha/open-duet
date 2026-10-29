@@ -10,6 +10,8 @@ from app.services import conversation_search
 from app.services.local_access_policy import require_local_access
 from app.services.thread_runtime import ThreadRuntime
 
+MAX_OFFSET = 500
+
 router = APIRouter(prefix="/search", tags=["Search"], dependencies=[Depends(require_local_access)])
 
 
@@ -32,6 +34,10 @@ class SearchHitResponse(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     hits: list[SearchHitResponse]
+    # More hits may follow: ask again with `offset=next_offset`. A page can come
+    # back empty when the earlier one was the last.
+    has_more: bool = False
+    next_offset: int | None = None
 
 
 def _day(value: str | None, end: bool) -> datetime | None:
@@ -56,13 +62,15 @@ async def search(
     include_archived: bool = False,
     include_delegated: bool = False,
     limit: int = Query(40, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=MAX_OFFSET),
     rt: ThreadRuntime = Depends(get_runtime),
 ):
     """Conversations whose title or messages contain every word of `q`, newest
-    first, with a highlighted snippet. Under 2 characters returns no hits."""
+    first, with a highlighted snippet. Under 2 characters returns no hits. Page
+    through them with `offset` (at most 500 hits deep) while `has_more` is true."""
     start, end = _day(since, False), _day(until, True)
     async with rt.session() as db:
-        hits = await conversation_search.search(
+        hits, more = await conversation_search.search_page(
             db,
             rt.owner_id,
             q,
@@ -72,5 +80,13 @@ async def search(
             include_archived=include_archived,
             include_delegated=include_delegated,
             limit=limit,
+            offset=offset,
         )
-    return SearchResponse(query=q, hits=[SearchHitResponse(**vars(hit)) for hit in hits])
+    following = offset + len(hits)
+    more = more and following <= MAX_OFFSET
+    return SearchResponse(
+        query=q,
+        hits=[SearchHitResponse(**vars(hit)) for hit in hits],
+        has_more=more,
+        next_offset=following if more else None,
+    )
