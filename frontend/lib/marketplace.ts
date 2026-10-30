@@ -1,0 +1,30 @@
+export type MarketplaceSection = "tested" | "community";
+export type MarketplaceListing = {
+  slug: string;
+  name: string;
+  version: string;
+  summary: string;
+  publisher: string;
+  source_repo: string;
+  endpoint: string;
+  auth_mode: "none" | "bearer_token";
+  privacy_url: string;
+  terms_url: string;
+  license: string;
+  setup_instructions: string;
+  test_instructions: string;
+  manifest_digest: string;
+  evidence?: { version: string; tested_on: string; evidence_url: string };
+};
+export type MarketplaceCatalog = { tested: MarketplaceListing[]; community: MarketplaceListing[] };
+export type MarketplaceConnection = {
+  id: string;
+  slug: string;
+  section: MarketplaceSection;
+  name: string;
+  manifest: MarketplaceListing;
+  manifest_digest: string;
+  credential_configured: boolean;
+};
+export type MarketplaceTool = { name: string; description: string; input_schema: Record<string, unknown>; schema_digest: string };
+export type MarketplaceAgent = { id: number; name: string };

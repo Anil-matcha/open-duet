@@ -4,6 +4,10 @@
 
 ### Added
 
+- Add a remote MCP Marketplace with Community and Tested by Open Dots sections,
+  GitHub PR catalog validation, separately stored bearer credentials, exact
+  per-agent tool grants and one-time call approvals. The source implementation
+  is present; automated, live-service and packaged-app qualification remain.
 - Add a Desktop-only Local/Cloud computer choice. Cloud uses a Boat API key
   encrypted in the local Desktop profile; the local backend sends it only to
   Boat's API over HTTPS, not to the agent or cloud computer. The cloud machine

@@ -1,6 +1,7 @@
 import type { SkillDoc, SkillPreview, SkillSave, SkillSummary, SkillLearnPreview, SkillLearnSource } from "./skills";
 import type { TemplateCatalog, TemplateSkill } from "./templates";
 import type { ComposioAccount, ComposioApp, ComposioLink } from "./connected-apps";
+import type { MarketplaceCatalog, MarketplaceConnection, MarketplaceSection, MarketplaceTool } from "./marketplace";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -948,6 +949,29 @@ export const api = {
   connectComposioApp: (toolkit: string, alias?: string) =>
     request<ComposioLink>("/integrations/composio/connect", { method: "POST", body: JSON.stringify(alias ? { toolkit, alias } : { toolkit }) }),
   disconnectComposioAccount: (id: string) => request<void>(`/integrations/composio/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  // Community MCP marketplace. Credentials are sent only to the signed-in backend.
+  getMarketplaceCatalog: () => request<MarketplaceCatalog>("/integrations/marketplace"),
+  listMarketplaceConnections: () => request<MarketplaceConnection[]>("/integrations/marketplace/connections"),
+  installMarketplaceListing: (section: MarketplaceSection, slug: string, manifestDigest: string) =>
+    request<MarketplaceConnection>(`/integrations/marketplace/${section}/${encodeURIComponent(slug)}/install`, {
+      method: "POST", body: JSON.stringify({ manifest_digest: manifestDigest }),
+    }),
+  disconnectMarketplaceListing: (connectionId: string) =>
+    request<void>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" }),
+  discoverMarketplaceTools: (connectionId: string) =>
+    request<MarketplaceTool[]>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/tools`),
+  saveMarketplaceCredential: (connectionId: string, credential: string) =>
+    request<MarketplaceConnection>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/credential`, {
+      method: "PUT", body: JSON.stringify({ credential }),
+    }),
+  removeMarketplaceCredential: (connectionId: string) =>
+    request<void>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/credential`, { method: "DELETE" }),
+  getMarketplaceAgentGrants: (connectionId: string, agentId: number) =>
+    request<{ tool_names: string[] }>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/agents/${agentId}/grants`),
+  saveMarketplaceAgentGrants: (connectionId: string, agentId: number, tools: { name: string; schema_digest: string }[]) =>
+    request<{ tool_names: string[] }>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/agents/${agentId}/grants`, {
+      method: "PUT", body: JSON.stringify({ tools }),
+    }),
   getDesktopSettings: () => request<DesktopSettings>("/settings"),
   saveDesktopSetting: (key: string, value: unknown, expectedVersion: number) =>
     request<ApplicationSetting>(`/settings/${encodeURIComponent(key)}`, {

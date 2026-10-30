@@ -33,6 +33,7 @@ from app.db.transactions import begin_write
 from app.services import side_jobs
 from app.services.memory_bridge import MemoryBridge
 from app.services.composio_bridge import ComposioBridge, accounts_for, apps_for
+from app.services.community_mcp_bridge import CommunityMcpBridge
 from app.services.memory_capture import MemoryCapture, Turn as MemoryTurn
 from app.services import thread_store as store
 from app.services import local_claude_runner
@@ -361,7 +362,7 @@ class ThreadApprovalGate:
             runtime.hub.notify(run.thread_id)
             return ApprovalHandle(approval_id=approval.id, request_id=request_id, tool=tool)
         # A change to a connected app (mcp__composio__) is only ever allowed on its own card, never by a saved rule.
-        rule = None if tool.startswith(("mcp__team__", "mcp__composio__")) or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
+        rule = None if tool.startswith(("mcp__team__", "mcp__composio__", "mcp__community__")) or tool in SCREEN_INPUT else await self._saved_rule(tool, input)
         held = None
         if rule is not None:
             # A command on the safety floor, or one that could not be read, is
@@ -1103,6 +1104,7 @@ class ThreadRuntime:
         team_bridge = None
         memory_bridge = None
         composio_bridge = None
+        community_bridge = None
         try:
             try:
                 # An agent with a computer runs its tools there or not at all:
@@ -1139,6 +1141,14 @@ class ThreadRuntime:
                     run.ctx.composio_launch, run.ctx.composio_apps = composio_bridge.launch, composio_apps
                     run.ctx.composio_exact_tools = list(run.routine_grants) if run.routine_grants is not None else None
                     composio_bridge.start()
+                community_snapshot = await CommunityMcpBridge.for_turn(self, run, adapter)
+                if community_snapshot:
+                    community_bridge = CommunityMcpBridge(self, run, community_snapshot)
+                    run.ctx.community_launch = community_bridge.launch
+                    run.ctx.community_tools = community_bridge.aliases_allowed
+                    run.ctx.community_prompt_note = community_bridge.prompt_note
+                    run.ctx.community_bridge = community_bridge
+                    community_bridge.start()
                 # Watched from here: starting a computer can take a while, and
                 # is not the engine doing nothing.
                 run.touch()
@@ -1175,6 +1185,8 @@ class ThreadRuntime:
                 await memory_bridge.close()
             if composio_bridge is not None:
                 await composio_bridge.close()
+            if community_bridge is not None:
+                await community_bridge.close()
             await self.computers.release_turn(binding, run.turn_id)
         if run.stop_requested and outcome.status != "succeeded":
             # Killed on request. A turn that finished on its own just before the
@@ -1316,6 +1328,9 @@ class ThreadRuntime:
             computer=old.computer,
             browser=old.browser,
             team=old.team, team_launch=old.team_launch, memory_launch=old.memory_launch,
+            community_launch=old.community_launch, community_tools=list(old.community_tools),
+            community_prompt_note=old.community_prompt_note,
+            community_bridge=old.community_bridge,
             engine_config=config,
             draft_only=old.draft_only,
             media_review_only=old.media_review_only,

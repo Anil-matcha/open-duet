@@ -1,0 +1,40 @@
+name: Marketplace listing validation
+
+on:
+  pull_request:
+    paths:
+      - 'marketplace/**'
+      - 'scripts/validate-marketplace.py'
+      - 'scripts/update-marketplace-index.py'
+      - '.github/workflows/marketplace.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate MCP marketplace catalog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Require maintainer association for tested-section changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+        run: |
+          if git diff --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- 'marketplace/plugins/tested/**' | grep -q .; then
+            case "$AUTHOR_ASSOCIATION" in
+              OWNER|MEMBER|COLLABORATOR) ;;
+              *) echo "Only repository maintainers can change the Tested by Open Dots section."; exit 1 ;;
+            esac
+          fi
+      - name: Validate catalog, schema, fixtures, and changed listings
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mapfile -t manifests < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- 'marketplace/plugins/community/*.json' 'marketplace/plugins/tested/*.json')
+          python3 scripts/validate-marketplace.py --changed "${manifests[@]}"
