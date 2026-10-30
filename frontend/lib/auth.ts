@@ -28,7 +28,7 @@ export const auth = {
     });
     return remember(result.session);
   },
-  createPairingCode: (scope: "admin" | "chat", label: string) =>
+  createPairingCode: (scope: "admin" | "chat" | "files", label: string) =>
     request<PairingCode>("/auth/pairing-codes", { method: "POST", body: JSON.stringify({ scope, label }) }),
   devices: () => request<Device[]>("/auth/devices"),
   revokeDevice: (id: number) => request<void>(`/auth/devices/${id}`, { method: "DELETE" }),

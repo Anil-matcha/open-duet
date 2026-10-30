@@ -1,6 +1,8 @@
 """Browse and download a conversation's workspace files (F08, docs/EVERYDAY.md).
 
-Admin scope only (app/auth/policy.py does not list these routes for `chat`).
+Reading needs the `files` scope (app/auth/policy.py FILES_ROUTES), which a
+pairing code grants on request; a chat-only device does not have it. The folder
+zip stays admin-only.
 """
 
 import os

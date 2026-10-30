@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     setter = commands.add_parser("set-passphrase", help="set or replace the owner passphrase")
     setter.add_argument("--stdin", action="store_true", help="read the passphrase from standard input")
     pairing = commands.add_parser("pairing-code", help="open a one-time pairing code")
-    pairing.add_argument("--scope", choices=("admin", "chat"), default="admin")
+    pairing.add_argument("--scope", choices=("admin", "chat", "files"), default="admin")
     pairing.add_argument("--label", default="")
     commands.add_parser("devices", help="list signed-in browsers and paired devices")
     revoke = commands.add_parser("revoke", help="revoke a browser session or device")

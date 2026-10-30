@@ -21,7 +21,7 @@ export type PairingCode = {
   id: number;
   code: string;
   display_code: string;
-  scope: "admin" | "chat";
+  scope: "admin" | "chat" | "files";
   label: string;
   expires_at: string;
 };

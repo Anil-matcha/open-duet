@@ -83,7 +83,8 @@ pinned workspace (for an agent's conversation, the agent's workspace).
 `GET .../files/zip?path=` downloads a folder, or the whole workspace when
 `path` is empty, as a zip (at most 2000 files and 200 MB in total before
 compression; over either is 413 `too_large`).
-Admin scope only: a paired chat-only device cannot browse files.
+Needs the `files` scope (or admin): a paired chat-only device cannot browse files. The
+zip stays admin-only.
 
 Confinement, checked on every request:
 
@@ -116,7 +117,7 @@ Confinement, checked on every request:
   as soon as building it fails; a file that grows past the cap while it is
   being zipped stops the download with 413. Each request stages up to about
   200 MB in the system temporary folder and requests are not limited in
-  number; the route is admin-only.
+  number; the route is admin-only (the `files` scope does not reach it).
 
 UI: a Files panel for the open conversation: folders, sizes, a text or image
 preview, a download link, and **Download zip** for the folder being shown.
