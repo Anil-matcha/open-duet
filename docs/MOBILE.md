@@ -12,8 +12,13 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 
 ## What it does
 
-- **Pair** with your server by scanning a QR code or typing the server address and
-  a pairing code.
+- **Pair** with your server by scanning a QR code (the main way) or typing the server
+  address and a pairing code. The screen lists the three steps. As you type the address the
+  app asks the server's public status route, before any code is sent, whether it found a
+  server, cannot reach it, was refused, got something that is not a Suparagent server, or
+  reached one with no owner account yet; Connect stays available either way. After pairing the
+  list says once which server this is and what the phone can and cannot do, until you dismiss
+  it. A list that cannot load has a Try again button.
 - **Conversations.** List your conversations, start a new one, open one to read its
   history. If you have agents, **New conversation** first asks which to use: the
   server's default (Claude), or one of your agents, each shown with how it asks
@@ -26,6 +31,10 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   Markdown (headings, lists, tables, bold, italic, code, quotes, links). A wide table
   scrolls sideways so no column is cut off. There is no HTML, and only `http` and
   `https` links can be tapped; they open in your browser.
+- **Chat look.** A conversation's header shows the agent's picture, the title and the agent's
+  name. Your messages are a neutral bubble and the agent's answers are plain text, as on the web.
+  A round button appears over the corner while you are scrolled up from the newest message and
+  takes you back to it. Every tappable control is at least 44 points.
 - **Look.** The colors, corner radii, typeface (Geist and Geist Mono) and agent colors are the web
   app's, in the light and dark looks. An agent is shown as a circle with its first letter on its own
   color, as on the web; a plain chat gets a chat glyph. A test reads the web stylesheet and fails when a
