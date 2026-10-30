@@ -32,7 +32,7 @@ from app.db.models import Room
 from app.db.transactions import begin_write
 from app.services import side_jobs
 from app.services.memory_bridge import MemoryBridge
-from app.services.composio_bridge import ComposioBridge, apps_for
+from app.services.composio_bridge import ComposioBridge, accounts_for, apps_for
 from app.services.memory_capture import MemoryCapture, Turn as MemoryTurn
 from app.services import thread_store as store
 from app.services import local_claude_runner
@@ -921,6 +921,9 @@ class ThreadRuntime:
                 agent = await db.get(Agent, run.agent_id)
                 turn = await db.get(Turn, run.turn_id)
                 apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None and agent.owner_id == self.owner_id else {}
+                account_scopes = accounts_for(agent.connector_account_scopes) if apps else {}
+                apps = {app: level for app, level in apps.items() if account_scopes.get(app)}
+                run.ctx.composio_account_scopes = {app: ids for app, ids in account_scopes.items() if app in apps}
                 if not apps:
                     return {}
                 if turn is not None and turn.origin not in (None, "person"):
@@ -940,6 +943,7 @@ class ThreadRuntime:
                         if g.get("tool") in composio_tools.BY_NAME
                         and (composio_tools.BY_NAME[g["tool"]].kind == "read" or g["tool"] in composio_tools.ROUTINE_WRITE_TOOLS)
                         and composio_tools.allows(apps.get(composio_tools.BY_NAME[g["tool"]].app), composio_tools.BY_NAME[g["tool"]].kind)
+                        and g.get("account_id") in account_scopes.get(composio_tools.BY_NAME[g["tool"]].app, [])
                     }
                     apps = {app: ("write" if any(composio_tools.BY_NAME[t].app == app and composio_tools.BY_NAME[t].kind == "write" for t in run.routine_grants) else "read")
                             for app in {composio_tools.BY_NAME[t].app for t in run.routine_grants}}
@@ -1191,7 +1195,8 @@ class ThreadRuntime:
                     memory_bridge.start()
                 composio_apps = await self._composio_apps(run, adapter)
                 if composio_apps:
-                    composio_bridge = ComposioBridge(self, run, composio_apps)
+                    composio_bridge = ComposioBridge(self, run, composio_apps,
+                                                      account_scopes=getattr(run.ctx, "composio_account_scopes", {}))
                     run.ctx.composio_launch, run.ctx.composio_apps = composio_bridge.launch, composio_apps
                     run.ctx.composio_exact_tools = list(run.routine_grants) if run.routine_grants is not None else None
                     composio_bridge.start()

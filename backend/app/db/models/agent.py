@@ -91,6 +91,11 @@ class Agent(Base):
     # Connected apps (Composio) this agent may read: {app: "read"}. Null or empty
     # means none. Checked again on every call (services/composio_bridge.py).
     connector_scopes: Mapped[dict | None] = mapped_column(JSONValue, nullable=True)
+    # Exact connected accounts an agent may use, keyed by toolkit and stored as
+    # Composio account IDs. Empty means no connected account is authorized.
+    connector_account_scopes: Mapped[dict] = mapped_column(
+        JSONValue, nullable=False, default=dict, server_default=text("'{}'")
+    )
     # Pinned agents list first.
     pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=expression.false()

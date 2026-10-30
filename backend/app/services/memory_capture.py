@@ -865,6 +865,10 @@ class MemoryCapture:
             topics=memory_topics.topic_index(agent_id),
             day=day,
         )
+        # Apply the same secret boundary to the agent's own engine as to an
+        # explicitly selected helper. Conversation text can contain secrets
+        # even when the existing notebook has already been redacted.
+        text, _ = redact_secrets(text)
         try:
             answer = await asyncio.wait_for(
                 text_source.generate(text, timeout=CALL_TIMEOUT_SECONDS), timeout=CALL_TIMEOUT_SECONDS + 10,

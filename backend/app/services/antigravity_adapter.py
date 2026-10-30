@@ -3,6 +3,7 @@
 import asyncio
 import http.client
 import json
+import os
 import re
 import shlex
 import shutil
@@ -57,10 +58,10 @@ def profile_env(directory: Path, binary_dir: Path):
         if upper.startswith(("GOOGLE_", "GEMINI_", "GCLOUD_", "CLOUDSDK_", "AGY_", "ANTIGRAVITY_")) or upper in {"BROWSER", "ELECTRON_RUN_AS_NODE"}:
             env.pop(name)
     helper = f"import sys;sys.stderr.write({BROWSER_MARKER!r}+sys.argv[-1]+'\\n')"
-    if any(c in sys.executable for c in ("\n", "\r", "%s", ":")):
+    if any(c in sys.executable for c in ("\n", "\r", "%s", os.pathsep)):
         raise InvalidConfig("The Python runtime path cannot safely launch Google sign-in.")
     env.update(GEMINI_HOME=str(directory), AGY_ACP_FORCE_FILE_STORAGE="1",
-               ANTIGRAVITY_HARNESS_PATH=str(binary_dir / "localharness_external"),
+               ANTIGRAVITY_HARNESS_PATH=str(binary_dir / runtime.harness_binary()),
                BROWSER=shlex.join([sys.executable, "-c", helper, "--", "%s"]), PYTHONUNBUFFERED="1")
     return env
 
@@ -170,7 +171,7 @@ class AntigravityAdapter(AcpAdapter):
         return {"model": (config or {}).get("model"), "connected": authenticated(config or {})}
 
     def program(self, config):
-        return [str(runtime.runtime_dir() / "agy_acp_server.par")] if runtime.installed() else None
+        return [str(runtime.runtime_dir() / runtime.server_binary())] if runtime.installed() else None
 
     def mode_args(self, ctx, config):
         return ["--uid="] if sys.platform == "linux" else []
@@ -251,7 +252,7 @@ class AntigravityAdapter(AcpAdapter):
         directory = profile_dir(config)
         binary = binary_dir or runtime.runtime_dir()
         env = profile_env(directory, binary)
-        rpc = await StdioRpc.spawn([str(binary / "agy_acp_server.par"), *self.mode_args(None, {})],
+        rpc = await StdioRpc.spawn([str(binary / runtime.server_binary()), *self.mode_args(None, {})],
                                    cwd=str(directory), env=env, max_bytes=2_000_000, diagnostic=self._diagnostic)
         try:
             initialized = await rpc.request("initialize", _initialize_params(), timeout=STARTUP_SECONDS)
@@ -287,20 +288,22 @@ class AntigravityAdapter(AcpAdapter):
             await rpc.close(grace_seconds=self.exit_grace_seconds)
 
     async def validate_runtime(self, binary):
-        with tempfile.TemporaryDirectory(prefix=".verify-", dir=runtime.data_root()) as temporary:
+        with tempfile.TemporaryDirectory(prefix=".verify-", dir=runtime.data_root(), ignore_cleanup_errors=True) as temporary:
             # The validator must never authenticate or touch a connected profile.
-            rpc = await StdioRpc.spawn([str(binary / "agy_acp_server.par"), *self.mode_args(None, {})],
+            rpc = await StdioRpc.spawn([str(binary / runtime.server_binary()), *self.mode_args(None, {})],
                 cwd=temporary, env=profile_env(Path(temporary), binary), max_bytes=2_000_000, diagnostic=lambda line: None)
             try:
                 initialized = await rpc.request("initialize", _initialize_params(), timeout=STARTUP_SECONDS)
                 self.validate_initialize(initialized)
             finally:
                 await rpc.close(grace_seconds=self.exit_grace_seconds)
+                if sys.platform == "win32":
+                    await asyncio.sleep(0.5)
 
     def start_operation(self, kind, work):
         if self.lock.locked() or (self.task and not self.task.done()):
             raise InvalidConfig("Antigravity is busy. Stop the conversation or wait for setup to finish.")
-        self.operation = {"id": uuid4().hex, "kind": kind, "phase": "running", "authorization_url": None, "error": None}
+        self.operation = {"id": uuid4().hex, "kind": kind, "phase": "running", "authorization_url": None, "error": None, "progress": None, "detail": None}
         self.auth_request = None
         async def run():
             async with self.lock:

@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 Network = Literal["none", "default"]
+ComputerProviderKey = Literal["docker", "boat"]
 
 
 class ComputerSettings(BaseModel):
@@ -23,6 +24,7 @@ class ComputerSettings(BaseModel):
 
 
 class ComputerCreateRequest(ComputerSettings):
+    provider: ComputerProviderKey = "docker"
     kind: Literal["shell", "desktop"] = "shell"
     # Also make and start the machine now (needs the image on this computer).
     start: bool = False

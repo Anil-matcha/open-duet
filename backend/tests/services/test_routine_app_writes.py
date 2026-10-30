@@ -36,7 +36,8 @@ async def write_world(sessions, owner, monkeypatch):
     ]
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=owner, name="Routine publisher")
-        await agent_store.update_agent(db, agent.id, connector_scopes={"gmail": "write", "github": "write"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"gmail": "write", "github": "write"},
+                                       connector_account_scopes={"gmail": ["ca_mail"], "github": ["ca_1"]})
         await composio_service._save(db, owner, {"api_key": KEY, "user_id": "u1", "session_id": "sess_1"})
         routine = Routine(owner_id=owner, agent_id=agent.id, name="Publisher", prompt="Publish",
                           schedule_kind="manual", schedule_spec={}, timezone="UTC", paused=False,
@@ -53,7 +54,8 @@ async def write_world(sessions, owner, monkeypatch):
         await db.refresh(rr)
     runtime = SimpleNamespace(session=sessions, owner_id=owner)
     run = SimpleNamespace(
-        ctx=SimpleNamespace(aborted=False, computer=None, approval_mode="ask", composio_apps={"github": "write", "gmail": "write"}),
+        ctx=SimpleNamespace(aborted=False, computer=None, approval_mode="ask", composio_apps={"github": "write", "gmail": "write"},
+                            composio_account_scopes={"github": ["ca_1"], "gmail": ["ca_mail"]}),
         routine_grants={grant["tool"]: grant["account_id"] for grant in grants}, routine_id=routine.id,
         routine_run_id=rr.id, thread_id=rr.thread_id, agent_id=agent.id, turn_id=997,
         owner_token="routine-write-owner",
@@ -63,7 +65,8 @@ async def write_world(sessions, owner, monkeypatch):
         return True
 
     monkeypatch.setattr("app.team.bridge.consume_allowed_approval", approved)
-    bridge = composio_bridge.ComposioBridge(runtime, run, {"github": "write", "gmail": "write"})
+    bridge = composio_bridge.ComposioBridge(runtime, run, {"github": "write", "gmail": "write"},
+        account_scopes={"github": ["ca_1"], "gmail": ["ca_mail"]})
     yield runtime, run, routine, rr, agent, fake, bridge
     await bridge.close()
     async with sessions() as db:
@@ -102,7 +105,8 @@ async def test_writes_need_both_agent_write_scope_and_an_exact_routine_grant(wri
         "allowed", "routine_write_grant"
     )
     async with sessions() as db:
-        await agent_store.update_agent(db, agent.id, connector_scopes={"gmail": "read", "github": "write"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"gmail": "read", "github": "write"},
+                                       connector_account_scopes={"gmail": ["ca_mail"], "github": ["ca_1"]})
     result = await bridge.execute("gmail_send_email", SEND)
     assert result["code"] == "not_allowed" and fake.executes == []
     rows = await action_rows(sessions, rr.id)

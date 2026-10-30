@@ -32,7 +32,7 @@ AGENT_FIELDS = (
     "id", "name", "title", "description", "instructions", "provider", "model",
     "fallback_provider", "fallback_model", "workspace_path", "approval_mode",
     "memory_enabled", "recall_enabled", "memory_upkeep", "compaction_summary",
-    "use_helper", "connector_scopes", "pinned", "team_id", "delegation_enabled",
+    "use_helper", "connector_scopes", "connector_account_scopes", "pinned", "team_id", "delegation_enabled",
     "created_by_agent_id", "archived_at", "created_at", "updated_at",
 )
 THREAD_FIELDS = (

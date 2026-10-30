@@ -33,9 +33,9 @@ class Presence(BaseModel):
 
 
 @router.get("")
-async def read_card(service: needs_you.NeedsYou = Depends(get_service)):
+async def read_card(refresh: bool = False, service: needs_you.NeedsYou = Depends(get_service)):
     """What needs the person now, as the card would show it."""
-    return await service.read()
+    return await service.read(refresh=refresh)
 
 
 @router.post("/presence")

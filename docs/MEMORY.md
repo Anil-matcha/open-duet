@@ -124,7 +124,12 @@ its other conversations.
   title, aliases and body (not their expired or superseded entries, and never `archive.md`); conversation passages are messages (yours and the
   agent's) in this agent's other, non-archived conversations, found with the
   same portable query as conversation search (OR instead of AND; works the same
-  on SQLite and PostgreSQL, wildcards literal).
+  on SQLite and PostgreSQL, wildcards literal). When the message matches both
+  a topic note and its name, title or aliases, that topic can add a small local
+  candidate bridge to conversation search. Bridge words do not count as extra
+  query matches, and a bridge-only result ranks after passages matching the
+  message itself. This expansion makes no model call and sends no additional
+  text to a provider.
 - **Ranking and limits.** Up to **4 notes** (by words shared, then most
   recently changed; about 600 characters each, starting at the first matching
   line) and **4 conversation passages** (by words shared, then newest; at most
@@ -622,8 +627,9 @@ adds `agent.memory_upkeep`, `a5c3e8b1d7f2` adds `agent.compaction_summary` and
 - Noticed facts come from one conversation at a time, one call each; several quiet conversations are not batched into one call.
 - Rooms are read for facts only with **Learn from group chats** on, and only a member agent's own turns.
 - Past-conversation search is a tool on Claude, Codex and ACP agents; an OpenAI-compatible endpoint has the brief and recall (it has no tool-call loop).
-- Recall ranks by shared words only (no stemming, no embeddings), so a
-  question worded differently from the note can miss it.
+- Recall remains lexical (no stemming or embeddings). Saved topic aliases can
+  bridge related conversations when the current message matches that topic, but
+  arbitrary paraphrases with no shared word or saved alias can still miss.
 - Proposals are found when the queue is looked at, not pushed.
 
 ## Explicit private remember requests (2026-10-25)

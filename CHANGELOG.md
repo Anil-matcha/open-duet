@@ -1,9 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add a Desktop-only Local/Cloud computer choice. Cloud uses a Boat API key
+  encrypted in the local Desktop profile; the local backend sends it only to
+  Boat's API over HTTPS, not to the agent or cloud computer. The cloud machine
+  has internet access, separate storage, a one-hour archive TTL and an
+  asynchronous deletion lifecycle. The frontend production build passed;
+  backend behavior tests, live-provider and packaged-app qualification remain
+  open.
+
+### Fixed
+
+- Fix Today / Needs You refresh failing while serializing Sentinel issue rows.
+- Show readable, privacy-safe summaries for structured health-scan errors instead
+  of placeholder punctuation.
+- Redact secret-like text from background memory capture prompts before they
+  reach the agent's own engine, and use directly matched topic aliases as a
+  bounded, on-device bridge when retrieving related conversation passages.
+
+- Recover cloud-computer removal when Boat has already deleted the sandbox or
+  no longer retains its deletion-operation record, instead of leaving the
+  agent blocked in `deleting`. Cloud desktop screenshots now transfer through
+  Boat's file API and try the available X display/capture tools rather than
+  sending base64 image data through command output.
+
 ## 0.6.0 - 2026-10-29
 
 ### Added
 
+- Let each Claude or Codex agent use only the specific connected accounts its
+  owner selects for each app. The backend validates account IDs against active
+  connections and checks the agent's current grant on every call, including
+  generic actions, routines and Today reads. Existing agents start with no
+  account access until their owner selects it.
 - Add an Apps page (sidebar → Apps) that lists Composio's own catalog of apps,
   with search, categories, a Connected section, what agents can do with each app,
   connecting and disconnecting, and the Composio key. Without a key it shows a

@@ -86,6 +86,55 @@ async def test_the_write_level_is_accepted_and_can_be_lowered(api):  # noqa: F81
     assert down.json()["connector_scopes"] == {"github": "read"}
 
 
+async def test_an_agent_can_be_bound_to_one_exact_active_account(api, monkeypatch):  # noqa: F811
+    from types import SimpleNamespace
+    from app.services import composio_service
+
+    async def connected_accounts(*_args):
+        return [
+            SimpleNamespace(id="ca_gmail_a", toolkit="gmail", status="ACTIVE"),
+            SimpleNamespace(id="ca_gmail_b", toolkit="gmail", status="ACTIVE"),
+            SimpleNamespace(id="ca_github", toolkit="github", status="ACTIVE"),
+        ]
+
+    monkeypatch.setattr(composio_service, "accounts", connected_accounts)
+    agent = await new_agent(api)
+    url = f"/api/v1/agents/{agent['id']}"
+    saved = await api.patch(url, json={
+        "connector_scopes": {"gmail": "read"},
+        "connector_account_scopes": {"gmail": ["ca_gmail_a"]},
+    })
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["connector_account_scopes"] == {"gmail": ["ca_gmail_a"]}
+
+    rejected = await api.patch(url, json={"connector_account_scopes": {"gmail": ["ca_gmail_b"]}})
+    assert rejected.status_code == 200 and rejected.json()["connector_account_scopes"] == {"gmail": ["ca_gmail_b"]}
+
+
+@pytest.mark.parametrize("app_scopes,account_scopes", [
+    ({"gmail": "read"}, {"gmail": ["not-an-id"]}),
+    ({"gmail": "read"}, {"gmail": ["ca_github"]}),
+    ({"github": "read"}, {"gmail": ["ca_gmail_a"]}),
+    ({"gmail": "read"}, {"gmail": ["ca_gmail_a", "ca_gmail_a"]}),
+])
+async def test_invalid_or_ungranted_account_ids_are_refused(api, monkeypatch, app_scopes, account_scopes):  # noqa: F811
+    from types import SimpleNamespace
+    from app.services import composio_service
+
+    async def connected_accounts(*_args):
+        return [SimpleNamespace(id="ca_gmail_a", toolkit="gmail", status="ACTIVE"),
+                SimpleNamespace(id="ca_github", toolkit="github", status="ACTIVE")]
+
+    monkeypatch.setattr(composio_service, "accounts", connected_accounts)
+    agent = await new_agent(api)
+    response = await api.patch(f"/api/v1/agents/{agent['id']}", json={
+        "connector_scopes": app_scopes,
+        "connector_account_scopes": account_scopes,
+    })
+    assert response.status_code == 422 and code_of(response) == "invalid_connector_account_scopes"
+    assert response.json().get("connector_account_scopes", {}) == {}
+
+
 # -- apps without curated tools -----------------------------------------------------------------------------------
 
 @pytest.fixture

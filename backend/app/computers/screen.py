@@ -173,6 +173,14 @@ class Screen:
             if name == "wait":
                 time.sleep(args["seconds"])
                 return _text(f"Waited {args['seconds']} seconds.")
+            if getattr(s, "provider", "docker") == "boat":
+                result = s._provider_tool(name, args)
+                if name == "screenshot" and not result.get("isError"):
+                    self.observed_epoch = epoch
+                    self.needs_observation = False
+                elif name in INPUT_NAMES and result.get("isError"):
+                    self.needs_observation = True
+                return result
             if name == "screenshot":
                 time.sleep(max(0, .25-(time.monotonic()-self.last_capture)))
                 self.last_capture = time.monotonic()

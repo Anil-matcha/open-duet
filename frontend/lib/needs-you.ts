@@ -14,6 +14,20 @@ export type NeedsYouRow = {
   work_item_id?: number | null;
 };
 
+export type NeedsYouSnapshot = {
+  card_id: string;
+  day: string;
+  title: string;
+  subtitle: string;
+  time_zone: string;
+  checked_at: string;
+  provider_checked_at: string | null;
+  sources: Record<string, string>;
+  items: NeedsYouRow[];
+  more: number;
+  empty_text: string;
+};
+
 // What the one action on a row says. Every kind has exactly one next step.
 const ACTIONS: Record<NeedsYouRow["kind"], string> = {
   signed_out: "Open settings",

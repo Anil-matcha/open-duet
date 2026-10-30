@@ -228,7 +228,7 @@ async def test_an_invented_revision_never_runs(rt, sessions, cli, composio):  # 
 async def test_taking_the_app_away_while_the_card_waits_cancels_the_call(rt, sessions, cli, composio, owner):  # noqa: F811
     async def revoke(agent):
         async with sessions() as db:
-            await agent_store.update_agent(db, agent.id, connector_scopes=None)
+            await agent_store.update_agent(db, agent.id, connector_scopes=None, connector_account_scopes={})
 
     out = await run_and_allow(rt, sessions, cli, composio, run_args(composio), before_allow=revoke)
     assert out[0][0]["code"] == "not_allowed" and composio.executes == []
@@ -237,7 +237,8 @@ async def test_taking_the_app_away_while_the_card_waits_cancels_the_call(rt, ses
 async def test_lowering_the_level_while_the_card_waits_cancels_the_call(rt, sessions, cli, composio):  # noqa: F811
     async def lower(agent):
         async with sessions() as db:
-            await agent_store.update_agent(db, agent.id, connector_scopes={"notion": "read"})
+            await agent_store.update_agent(db, agent.id, connector_scopes={"notion": "read"},
+                                           connector_account_scopes={"notion": ["ca_n"]})
 
     out = await run_and_allow(rt, sessions, cli, composio, run_args(composio), before_allow=lower)
     assert out[0][0]["code"] == "not_allowed" and composio.executes == []
@@ -293,6 +294,8 @@ async def test_arguments_that_do_not_fit_the_schema_are_never_sent(rt, sessions,
 async def test_a_second_account_must_be_named_and_the_name_is_part_of_the_card(rt, sessions, cli, composio):  # noqa: F811
     composio.accounts.append({"id": "ca_h", "toolkit": {"slug": "notion"}, "alias": "home", "status": "ACTIVE", "user_id": "u1"})
     agent = await agent_with(rt, sessions, {"notion": "write"})
+    async with sessions() as db:
+        await agent_store.update_agent(db, agent.id, connector_account_scopes={"notion": ["ca_n", "ca_h"]})
     thread = await new_thread(rt, agent, cli, run_step(run_args(composio)), run_step(run_args(composio, account="home")))
 
     async def unnamed():

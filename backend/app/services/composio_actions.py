@@ -71,7 +71,8 @@ async def forget(db: AsyncSession, owner_id: str, *, agent_id: int | None = None
             await service._save(db, owner_id, {**record, "first_use": keep})
 
 
-async def search(db: AsyncSession, owner_id: str, make_client, *, app: str, query: str | None, cursor: str | None) -> dict:
+async def search(db: AsyncSession, owner_id: str, make_client, *, app: str, query: str | None, cursor: str | None,
+                 allowed_account_ids: list[str] | None = None) -> dict:
     """A page of actions of one connected app, with each one's revision and parameters."""
     refused = generic.refusal_for(app)
     if refused:
@@ -81,7 +82,8 @@ async def search(db: AsyncSession, owner_id: str, make_client, *, app: str, quer
         return {"error": "Connected apps are not set up. The person can add their Composio key on the Apps page.", "code": "not_configured"}
     client = make_client(record["api_key"])
     try:
-        if not any(a.status == "ACTIVE" for a in await client.accounts(record["user_id"], app)):
+        if not any(a.status == "ACTIVE" and (allowed_account_ids is None or a.id in allowed_account_ids)
+                   for a in await client.accounts(record["user_id"], app)):
             return {"error": f"No {app} account is connected. The person can connect one on the Apps page.", "code": "not_connected"}
         page = await client.tools(app, query, cursor, limit=generic.MAX_SEARCH_RESULTS + 4)
     except ComposioError as exc:
@@ -89,7 +91,8 @@ async def search(db: AsyncSession, owner_id: str, make_client, *, app: str, quer
     return generic.search_result(app, page.items, page.next_cursor)
 
 
-async def run(db: AsyncSession, owner_id: str, make_client, *, agent_id: int, auto_called: bool, request: dict) -> dict:
+async def run(db: AsyncSession, owner_id: str, make_client, *, agent_id: int, auto_called: bool, request: dict,
+              allowed_account_ids: list[str] | None = None) -> dict:
     """Run one generic action. `request` is generic.parse_run's result. `auto_called` is True when no card was shown
     for this call (a reviewed read), which then needs its first use on record."""
     app, action, alias = request["app"], request["action"], request["account"]
@@ -119,7 +122,8 @@ async def run(db: AsyncSession, owner_id: str, make_client, *, agent_id: int, au
     except generic.GenericError as exc:
         return {"error": str(exc), "code": "bad_arguments"}
     try:
-        active = [a for a in await client.accounts(record["user_id"], app) if a.status == "ACTIVE"]
+        active = [a for a in await client.accounts(record["user_id"], app)
+                  if a.status == "ACTIVE" and (allowed_account_ids is None or a.id in allowed_account_ids)]
         account, problem_reply = service._choose(active, alias, app)
         if problem_reply:
             return problem_reply

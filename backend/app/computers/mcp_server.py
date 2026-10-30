@@ -18,8 +18,11 @@ Line-delimited JSON-RPC 2.0 on stdin/stdout, standard library only. Started as
 import argparse
 import json
 import os
+import stat
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from app.computers import browser, docker_cli, grants, screen
@@ -105,7 +108,7 @@ _TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
 
 class Server:
-    def __init__(self, container: str, user: str, grants_dir: Path, state_dir: Path, docker: str | None, kind: str = "shell", turn_id: str = "", max_actions: int = 300, browser_enabled: bool = False) -> None:
+    def __init__(self, container: str, user: str, grants_dir: Path, state_dir: Path, docker: str | None, kind: str = "shell", turn_id: str = "", max_actions: int = 300, browser_enabled: bool = False, provider: str = "docker", computer_id: int | None = None, api_origin: str = "", capability: str = "") -> None:
         self.container = docker_cli.check_name(container)
         self.user = user
         self.grants_dir = grants_dir
@@ -113,6 +116,10 @@ class Server:
         self.docker = docker
         self.kind = kind
         self.browser_enabled = kind == "desktop" and browser_enabled
+        self.provider = provider
+        self.computer_id = computer_id
+        self.api_origin = api_origin.rstrip("/")
+        self.capability = capability
         self.screen = screen.Screen(self, turn_id or str(grants_dir), max_actions)
         self.browser = browser.Browser(self)
 
@@ -153,7 +160,9 @@ class Server:
         problem = browser.validate(name, arguments) if name in browser.DEFINITIONS else screen.validate(name, arguments) if name in screen.DEFINITIONS else _argument_problem(name, arguments)
         if problem:
             return _text(problem, error=True)
-        if not grants.consume(self.grants_dir, name, arguments):
+        # The local bridge consumes cloud-tool permits after checking the
+        # turn capability; the child cannot consume one on behalf of itself.
+        if self.provider != "boat" and not grants.consume(self.grants_dir, name, arguments):
             return _text(NOT_APPROVED, error=True)
         if name not in ("read_file", "list_files") and screen.held(self.state_dir):
             self.screen.needs_observation = True
@@ -165,6 +174,8 @@ class Server:
         return getattr(self, f"_{name}")(arguments)
 
     def _exec(self, args: dict) -> dict:
+        if self.provider == "boat":
+            return self._provider_tool("exec", args)
         seconds = docker_cli.exec_seconds(args.get("timeout_seconds"))
         cwd = args.get("cwd")
         if cwd is not None:
@@ -190,6 +201,8 @@ class Server:
         return _text("\n".join(lines), error=code != 0)
 
     def _read_file(self, args: dict) -> dict:
+        if self.provider == "boat":
+            return self._provider_tool("read_file", args)
         refused = _secret_path(args.get("path"))
         if refused is not None:
             self._remember("read_file", args["path"], None, False, refused)
@@ -206,6 +219,8 @@ class Server:
         return _text(data.decode("utf-8", errors="replace"))
 
     def _write_file(self, args: dict) -> dict:
+        if self.provider == "boat":
+            return self._provider_tool("write_file", args)
         content = args["content"].encode("utf-8")
         done = docker_cli.run(
             docker_cli.write_args(self.container, args["path"], self.user),
@@ -217,6 +232,8 @@ class Server:
         return _text(f"Wrote {len(content)} bytes to {args['path']}.")
 
     def _list_files(self, args: dict) -> dict:
+        if self.provider == "boat":
+            return self._provider_tool("list_files", args)
         path = args.get("path") or "."
         refused = _secret_path(path)
         if refused is not None:
@@ -227,6 +244,34 @@ class Server:
         if done.code != 0:
             return _text(done.stderr.strip() or "The folder could not be listed.", error=True)
         return _text(docker_cli.clip_output(done.stdout))
+
+    def _provider_tool(self, name: str, arguments: dict) -> dict:
+        if self.provider != "boat" or not self.computer_id or not self.api_origin or not self.capability:
+            return _text("The cloud computer tool bridge is unavailable.", error=True)
+        body = json.dumps({"name": name, "arguments": arguments}, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.api_origin}/api/v1/computers/{self.computer_id}/provider-tool",
+            data=body,
+            headers={"Content-Type": "application/json", "X-Open-Dots-Computer-Capability": self.capability},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                if response.status != 200:
+                    return _text("The cloud computer tool call was refused.", error=True)
+                raw = response.read(3_000_001)
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return _text("The cloud computer tool bridge could not be reached.", error=True)
+        if len(raw) > 3_000_000:
+            return _text("The cloud computer returned too much data.", error=True)
+        try:
+            result = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return _text("The cloud computer tool bridge returned an invalid response.", error=True)
+        if not isinstance(result, dict) or not isinstance(result.get("content"), list):
+            return _text("The cloud computer tool bridge returned an invalid response.", error=True)
+        self._remember(name, str(arguments)[:1000], 0 if not result.get("isError") else 1, False, "")
+        return result
 
     def _remember(self, tool: str, subject: str, code: int | None, timed_out: bool, output: str) -> None:
         """What ran last, for the Computer panel. Best effort."""
@@ -271,6 +316,43 @@ def _text(text: str, *, error: bool = False) -> dict:
     return result
 
 
+def _read_capability(path: str | None) -> str:
+    """Read and consume a short-lived Desktop bridge token from a private file.
+
+    The path, unlike the token, may appear in the CLI's MCP config argument.
+    """
+    if not path:
+        return ""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise ValueError("computer capability is unavailable") from None
+    try:
+        metadata = os.fstat(fd)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or (hasattr(os, "getuid") and metadata.st_uid != os.getuid())
+            or not 1 <= metadata.st_size <= 128
+        ):
+            raise ValueError("computer capability is invalid")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(129)
+        token = raw.decode("ascii")
+        if not token or len(token) > 128:
+            raise ValueError("computer capability is invalid")
+    except (OSError, UnicodeDecodeError):
+        raise ValueError("computer capability is invalid") from None
+    finally:
+        os.close(fd)
+    try:
+        os.unlink(path)
+    except OSError:
+        raise ValueError("computer capability could not be consumed") from None
+    return token
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="open-dots-computer-mcp")
     parser.add_argument("--container", required=True)
@@ -282,10 +364,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--turn-id", default="")
     parser.add_argument("--max-screen-actions", type=int, default=300)
     parser.add_argument("--browser", action="store_true")
+    parser.add_argument("--provider", choices=("docker", "boat"), default="docker")
+    parser.add_argument("--computer-id", type=int)
+    parser.add_argument("--api-origin", default="")
+    parser.add_argument("--capability-file", default=None)
     options = parser.parse_args(argv)
     try:
-        server = Server(options.container, options.user, Path(options.grants), Path(options.state), options.docker, options.kind, options.turn_id, options.max_screen_actions, options.browser)
+        capability = _read_capability(options.capability_file)
+        server = Server(options.container, options.user, Path(options.grants), Path(options.state), options.docker, options.kind, options.turn_id, options.max_screen_actions, options.browser, options.provider, options.computer_id, options.api_origin, capability)
     except docker_cli.InvalidSpec as exc:
+        sys.stderr.write(f"invalid computer connection: {exc}\n")
+        return 2
+    except ValueError as exc:
         sys.stderr.write(f"invalid computer connection: {exc}\n")
         return 2
     for line in sys.stdin:

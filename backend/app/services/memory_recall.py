@@ -34,6 +34,8 @@ MAX_TERMS = 12
 MAX_NOTES = 4
 MAX_PASSAGES = 4
 PER_CONVERSATION = 2
+MAX_BRIDGE_TOPICS = 3
+MAX_BRIDGE_TERMS = 8
 NOTE_CHARS = 600
 PASSAGE_CHARS = 400
 MAX_CHARS = 6_000
@@ -113,11 +115,11 @@ def _note_passage(body: str, terms: list[str]) -> str:
     return "\n".join(lines[start:])
 
 
-def note_passages(agent_id: int, terms: list[str]) -> list[dict]:
+def _note_matches(agent_id: int, terms: list[str]) -> list[tuple[int, float, dict, list[str]]]:
     if not terms:
         return []
     want = needed(terms)
-    scored: list[tuple[int, float, dict]] = []
+    scored: list[tuple[int, float, dict, list[str]]] = []
     today = memory_entries.today()
     for topic in memory_topics.list_topics(agent_id):
         if topic.name == memory_topics.ARCHIVE_NAME:
@@ -128,27 +130,68 @@ def note_passages(agent_id: int, terms: list[str]) -> list[dict]:
         body = memory_topics.body_of(visible)
         if not body:
             continue
-        named = " ".join([topic.name[:-3].replace("-", " ").replace("_", " "), topic.title or "", *topic.aliases]).lower()
+        identity_text = " ".join(
+            [topic.name[:-3].replace("-", " ").replace("_", " "), topic.title or "", *topic.aliases]
+        )
+        named = identity_text.lower()
         folded = body.lower()
         matched = sum(1 for t in terms if t in folded or t in named)
         if matched < want:
             continue
         snippet = _clean(_note_passage(body, terms), NOTE_CHARS)
         if snippet:
-            scored.append((matched, topic.modified_at, {"name": topic.name, "title": topic.title, "snippet": snippet}))
+            # A body-only match must not fan out into unrelated title/alias
+            # terms. Bridge only when the current query also names this topic.
+            bridge = [term for term in terms_of(identity_text) if term not in terms] if any(
+                term in named for term in terms
+            ) else []
+            scored.append(
+                (
+                    matched,
+                    topic.modified_at,
+                    {"name": topic.name, "title": topic.title, "snippet": snippet},
+                    bridge,
+                )
+            )
     scored.sort(key=lambda s: (-s[0], -s[1]))
-    return [s[2] for s in scored[:MAX_NOTES]]
+    return scored
 
 
-async def conversation_passages(db, owner_id: str, agent_id: int, thread_id: int, terms: list[str]) -> list[dict]:
+def note_passages(agent_id: int, terms: list[str]) -> list[dict]:
+    return [match[2] for match in _note_matches(agent_id, terms)[:MAX_NOTES]]
+
+
+def _bridge_terms(matches: list[tuple[int, float, dict, list[str]]]) -> list[str]:
+    """Bound expansion to the first directly matched topics and their labels."""
+    out: list[str] = []
+    for _, _, _, bridge in matches[:MAX_BRIDGE_TOPICS]:
+        for term in bridge:
+            if term not in out:
+                out.append(term)
+            if len(out) >= MAX_BRIDGE_TERMS:
+                return out
+    return out
+
+
+def _recall_match(score: float, want: int) -> bool:
+    # A half-point is one topic-identity bridge. It intentionally lets an
+    # alias-only passage through the normal two-word threshold because the
+    # user's query already matched that topic's name, title or alias.
+    return int(score) >= want or score % 1 > 0
+
+
+async def conversation_passages(
+    db, owner_id: str, agent_id: int, thread_id: int, terms: list[str], bridge_terms: list[str] | None = None
+) -> list[dict]:
     if not terms:
         return []
     want = needed(terms)
     hits = await conversation_search.search_any(
-        db, owner_id, terms, agent_id=agent_id, exclude_thread_id=thread_id
+        db, owner_id, terms, agent_id=agent_id, exclude_thread_id=thread_id, bridge_terms=bridge_terms
     )
     ranked = sorted(
-        (h for h in hits if h[1] >= want), key=lambda h: (-h[1], -(h[0].at.timestamp() if h[0].at else 0))
+        (h for h in hits if _recall_match(h[1], want)),
+        key=lambda h: (-h[1], -(h[0].at.timestamp() if h[0].at else 0)),
     )
     out: list[dict] = []
     per: dict[int, int] = {}
@@ -203,8 +246,10 @@ async def build(db, *, owner_id: str, agent_id: int, thread_id: int, message: st
     terms = terms_of(message)
     if not terms:
         return None
-    notes = note_passages(agent_id, terms)
-    conversations = await conversation_passages(db, owner_id, agent_id, thread_id, terms)
+    note_matches = _note_matches(agent_id, terms)
+    notes = [match[2] for match in note_matches[:MAX_NOTES]]
+    bridges = _bridge_terms(note_matches)
+    conversations = await conversation_passages(db, owner_id, agent_id, thread_id, terms, bridges)
     return render(notes, conversations)
 
 

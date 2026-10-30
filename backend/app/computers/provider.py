@@ -2,9 +2,9 @@
 
 A provider knows how to make, wake, sleep and remove one isolated machine for
 an agent, how to report what it finds, and how the agent's tools reach it (an
-MCP server launch). Docker is the only provider today; a remote server over
-SSH (`docker -H ssh://alias`) and a desktop computer with a screen fit the
-same interface (docs/COMPUTERS.md).
+MCP server launch). Docker provides local computers and Boat provides cloud
+computers in the Desktop app. A remote server over SSH remains a future
+provider (docs/COMPUTERS.md).
 
 Every method is synchronous and may block on the docker CLI: callers run them
 in a worker thread.
@@ -84,8 +84,11 @@ class ComputerProvider(Protocol):
 
     def stop(self, spec: Spec) -> Status: ...
 
-    def delete(self, spec: Spec) -> None:
-        """Remove the machine. Never touches the agent's workspace folder."""
+    def delete(self, spec: Spec) -> str | None:
+        """Remove the machine, returning an ID while provider deletion is pending.
+
+        Never touches the agent's workspace folder.
+        """
 
     def update_limits(self, spec: Spec) -> None: ...
 
@@ -94,7 +97,7 @@ class ComputerProvider(Protocol):
 
     def remove_by_name(self, name: str, instance: str) -> None: ...
 
-    def mcp_launch(self, spec: Spec, grants_dir: Path, state_dir: Path) -> McpLaunch: ...
+    def mcp_launch(self, spec: Spec, grants_dir: Path, state_dir: Path, *, turn_id: int | None = None) -> McpLaunch: ...
 
 
 def _backend_root() -> Path:
@@ -306,7 +309,7 @@ class DockerProvider:
             raise ComputerError("That container was not made by this installation.", "computer_foreign")
         self._must(["rm", "-f", name], "remove the computer")
 
-    def mcp_launch(self, spec: Spec, grants_dir: Path, state_dir: Path) -> McpLaunch:
+    def mcp_launch(self, spec: Spec, grants_dir: Path, state_dir: Path, *, turn_id: int | None = None) -> McpLaunch:
         return mcp_launch_for(spec.name, spec.run_as, grants_dir, state_dir, self._docker or docker_cli.docker_executable(), spec.kind)
 
 

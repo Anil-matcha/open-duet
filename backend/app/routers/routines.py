@@ -52,7 +52,7 @@ async def _validated_grants(db, owner_id, agent_id, grants):
     from app import composio_tools
     from app.db.models import Agent
     from app.services import composio_service
-    from app.services.composio_bridge import apps_for, make_client
+    from app.services.composio_bridge import accounts_for, apps_for, make_client
 
     if grants is None:
         raise _error(422, "invalid_app_grant", "Use an empty list to switch app access off.")
@@ -70,6 +70,7 @@ async def _validated_grants(db, owner_id, agent_id, grants):
     if agent is None or agent.owner_id != owner_id or agent.archived_at is not None:
         raise _error(422, "invalid_app_grant", "Choose an available agent.")
     scopes = apps_for(agent.connector_scopes)
+    account_scopes = accounts_for(agent.connector_account_scopes)
     try:
         accounts = await composio_service.accounts(db, owner_id, make_client)
     except composio_service.UserError as exc:
@@ -78,6 +79,8 @@ async def _validated_grants(db, owner_id, agent_id, grants):
         tool = composio_tools.BY_NAME.get(grant.tool)
         if tool is None or (tool.kind != "read" and grant.tool not in composio_tools.ROUTINE_WRITE_TOOLS) or not composio_tools.allows(scopes.get(tool.app), tool.kind):
             raise _error(422, "invalid_app_grant", "The agent must have access to this action's app.")
+        if grant.account_id not in account_scopes.get(tool.app, []):
+            raise _error(422, "invalid_app_grant", "The agent must be allowed to use this exact connected account.")
         if not any(a.id == grant.account_id and a.toolkit == tool.app and a.status == "ACTIVE" for a in accounts):
             raise _error(422, "invalid_app_grant", "Select an active connected account for each action.")
     return [g.model_dump() for g in grants]

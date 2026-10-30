@@ -10,13 +10,13 @@ const COPY: Record<Kind, { open: string; word: string; path: string; warning: st
     open: "Reset this profile",
     word: "RESET",
     path: "/desktop-account/reset-profile",
-    warning: "This permanently erases the agents, conversations, memory, routines and settings saved on this computer and unlinks it from its account. Your cloud account is not deleted. Engine sign-ins (Claude, Codex) are kept.",
+    warning: "This permanently erases the agents, conversations, memory, routines, settings and saved provider keys on this computer and unlinks it from its account. Remove all cloud computers first; they are separate resources and may incur charges. Your cloud account is not deleted. Engine sign-ins (Claude, Codex) are kept.",
   },
   delete: {
     open: "Delete my account",
     word: "DELETE",
     path: "/desktop-account/delete-account",
-    warning: "This permanently deletes your cloud account, then erases everything saved on this computer. It cannot be undone.",
+    warning: "This permanently deletes your cloud account, then erases everything saved on this computer, including provider keys. Remove all cloud computers first; they are separate resources and may incur charges. It cannot be undone.",
   },
 };
 

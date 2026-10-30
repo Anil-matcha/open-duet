@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 
 from sqlalchemy import BigInteger, Boolean, Identity, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,14 +13,14 @@ from app.db.types import BigIntPK, UTCDateTime
 # a crash or a stopped Docker is finished later instead of leaving an orphan.
 COMPUTER_STATES = ("missing", "creating", "running", "stopped", "error", "deleting")
 COMPUTER_KINDS = ("shell", "desktop")
-COMPUTER_PROVIDERS = ("docker",)
+COMPUTER_PROVIDERS = ("docker", "boat")
 COMPUTER_NETWORKS = ("none", "default")
 
 
 class Computer(Base):
     """An agent's own isolated machine (docs/COMPUTERS.md). At most one per
-    agent. The machine itself lives in the provider (a Docker container); this
-    row is its configuration and the last state the app saw."""
+    agent. The machine itself lives in its selected provider; this row is its
+    configuration and the last state the app saw."""
 
     __tablename__ = "computer"
     __table_args__ = (
@@ -71,6 +72,14 @@ class Computer(Base):
     # The folder mounted at /workspace when the machine was made.
     workspace_path: Mapped[str | None] = mapped_column(String, nullable=True)
     container_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Stable across retries of one cloud create, rotated before each recreate.
+    # It prevents a provider idempotency key from returning a deleted sandbox.
+    provider_generation: Mapped[str] = mapped_column(
+        String, nullable=False, default=lambda: str(uuid.uuid4()), server_default="legacy"
+    )
+    # Boat deletes resources asynchronously; keep the operation ID locally so
+    # retries and profile-reset guards can wait for provider confirmation.
+    provider_delete_id: Mapped[str | None] = mapped_column(String, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime, server_default=func.now(), nullable=False

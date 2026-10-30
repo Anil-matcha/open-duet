@@ -31,6 +31,12 @@ def automatic(tool, mode, team, arguments):
     if team is None:
         return 'denied', 'no_team'
     name = tool.removeprefix('mcp__team__')
+    if name == 'refresh_today':
+        if not team.is_lead:
+            return 'denied', 'lead_only'
+        if team.origin != 'person':
+            return 'denied', 'outside_origin'
+        return 'allowed', 'team_read'
     if not team.configuration_allowed and name in ('create_agent', 'create_room', 'propose_team_setup', 'propose_bot_deletion',
                                                   'propose_profile', 'propose_model', 'create_routine', 'manage_routine', 'skill_manage', 'close_thread'):
         return 'denied', 'admin_scope_required'

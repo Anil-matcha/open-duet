@@ -105,7 +105,7 @@ export function sourceLabel(source: SkillSource): string {
 
 // The skills the backend recorded as used on a turn (`skill.used` event data).
 export function usedSkills(data: Record<string, unknown>): string[] {
-  const names = data.names;
+  const names = Array.isArray(data.skills) ? data.skills : data.names;
   return Array.isArray(names) ? names.filter((n): n is string => typeof n === "string") : [];
 }
 

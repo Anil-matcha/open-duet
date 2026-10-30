@@ -42,7 +42,8 @@ async def grant_world(sessions, owner, monkeypatch):
     monkeypatch.setattr(composio_bridge, "make_client", lambda key: ComposioClient(key, transport=__import__("httpx").MockTransport(fake.handler)))
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=owner, name="Routine reader")
-        await agent_store.update_agent(db, agent.id, connector_scopes={"github": "read"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"github": "read"},
+                                       connector_account_scopes={"github": ["ca_1"]})
         await composio_service._save(db, owner, {"api_key": KEY, "user_id": "u1", "session_id": "sess_1"})
         routine = Routine(owner_id=owner, agent_id=agent.id, name="R", prompt="Read", schedule_kind="manual",
                           schedule_spec={}, timezone="UTC", paused=False, run_limit_minutes=30,
@@ -70,7 +71,8 @@ async def grant_world(sessions, owner, monkeypatch):
     async def approved(*_args):
         return True
     monkeypatch.setattr("app.team.bridge.consume_allowed_approval", approved)
-    bridge = composio_bridge.ComposioBridge(runtime, run, {"github": "read"})
+    run.ctx.composio_account_scopes = {"github": ["ca_1"]}
+    bridge = composio_bridge.ComposioBridge(runtime, run, {"github": "read"}, account_scopes={"github": ["ca_1"]})
     yield runtime, run, routine, fake, bridge
     await bridge.close()
     async with sessions() as db:
@@ -124,7 +126,9 @@ async def _runtime_mount_context(world, sessions, owner, monkeypatch, *, trigger
     monkeypatch.setattr(settings, "ROUTINE_CONNECTED_APPS_ENABLED", enabled)
     if scopes is not None:
         async with sessions() as db:
-            await agent_store.update_agent(db, agent.id, connector_scopes=scopes)
+            account_ids = {"github": ["ca_1"], "gmail": ["ca_mail"]}
+            await agent_store.update_agent(db, agent.id, connector_scopes=scopes,
+                connector_account_scopes={app: account_ids[app] for app in scopes if app in account_ids})
     thread = await runtime.create_thread(agent_id=agent.id)
     snapshot = grants if grants is not None else [
         {"tool": "github_get_authenticated_user", "account_id": "ca_1"}

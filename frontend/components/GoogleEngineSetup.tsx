@@ -66,7 +66,18 @@ export function GoogleEngineSetup({ engine, onChanged }: { engine: Engine; onCha
       </>}
       {running && <button type="button" className={BUTTON} disabled={busy} onClick={() => void act(async () => { await api.cancelGoogleSetup(); setOperation(await api.googleSetupStatus()); setCallback(""); changed.current(); })}>Cancel setup</button>}
     </div>
-    {running && <p role="status" className="text-xs text-muted">{operation.kind === "install" ? "Downloading and verifying the official Google runtime. This can take a few minutes." : operation.kind === "models" ? "Refreshing the models available to your account…" : "Waiting for Google sign-in and loading your models…"}</p>}
+    {running && (
+      <div className="space-y-2">
+        <p role="status" className="text-xs text-muted">
+          {operation.detail || (operation.kind === "install" ? "Downloading and verifying the official Google runtime. This can take a few minutes." : operation.kind === "models" ? "Refreshing the models available to your account…" : "Waiting for Google sign-in and loading your models…")}
+        </p>
+        {operation.progress != null && (
+          <div className="w-full bg-line rounded-full h-2 overflow-hidden">
+            <div className="bg-accent h-2 rounded-full transition-all duration-200" style={{ width: `${Math.max(4, Math.min(100, operation.progress))}%` }} />
+          </div>
+        )}
+      </div>
+    )}
     {running && operation.authorization_url && <div className="space-y-2">
       <button type="button" className={BUTTON} disabled={busy} onClick={() => void act(async () => {
         if (!window.openDots?.openGoogleSignIn) throw new Error("Open this setup in the Open Duet desktop app to continue.");
