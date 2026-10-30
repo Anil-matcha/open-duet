@@ -15,6 +15,8 @@
 ### Fixed
 
 - Fix Today / Needs You refresh failing while serializing Sentinel issue rows.
+- Show readable, privacy-safe summaries for structured health-scan errors instead
+  of placeholder punctuation.
 - Redact secret-like text from background memory capture prompts before they
   reach the agent's own engine, and use directly matched topic aliases as a
   bounded, on-device bridge when retrieving related conversation passages.

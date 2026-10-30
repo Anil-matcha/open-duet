@@ -15,14 +15,16 @@ and reads the log files.
 Privacy: an issue never holds raw tool output. Its `title` is the error with
 quoted text, URLs, email addresses, paths, ids and numbers replaced, cut at
 160 characters; a failed shell command is grouped only by exit code and error
-class, because its output names the files of the work in hand. `evidence`
-points back at the event or decision, for someone allowed to read it.
+class, because its output names the files of the work in hand. Structured
+errors use only safe categories, HTTP status codes and allowlisted field names.
+`evidence` points back at the event or decision, for someone allowed to read it.
 
     uv run python -m app.services.sentinel [--hours 24] [--json]
 """
 
 import argparse
 import asyncio
+import ast
 import hashlib
 import json
 import re
@@ -77,6 +79,91 @@ _SHELL_CLASSES = (
     (re.compile(r"user (?:rejected|denied|doesn't want)|was denied|not allowed", re.I), "denied"),
 )
 _EXIT_CODE = re.compile(r"\bexit(?:ed with)?(?: code| status)?\s*[:=]?\s*(-?\d+)", re.I)
+_STRUCTURED_FIELDS = frozenset(
+    {
+        "code", "detail", "error", "error_code", "http_status", "message", "reason", "status", "status_code", "type",
+    }
+)
+_STRUCTURED_MESSAGE_FIELDS = ("error", "message", "detail", "reason")
+_HTTP_STATUS_FIELDS = ("http_status", "status_code", "status")
+_HTTP_STATUS = re.compile(r"\b([45]\d\d)\b")
+_ERROR_CLASSES = (
+    (
+        re.compile(
+            r"\b(?:unauthori[sz]ed|not authorized|authentication required|"
+            r"invalid credentials|invalid (?:api )?key|invalid token)\b",
+            re.I,
+        ),
+        "authentication failed",
+    ),
+    (re.compile(r"\b(?:forbidden|permission denied|access denied)\b", re.I), "access denied"),
+    (re.compile(r"\b(?:not found|does not exist)\b", re.I), "resource not found"),
+    (re.compile(r"\b(?:too many requests|rate limit(?:ed)?)\b", re.I), "rate limited"),
+    (re.compile(r"\b(?:timed? out|timeout)\b", re.I), "timed out"),
+    (re.compile(r"\b(?:connection refused|network error|unreachable)\b", re.I), "network error"),
+    (re.compile(r"\b(?:bad request|invalid request)\b", re.I), "invalid request"),
+)
+
+
+def _structured_failure(text: str) -> tuple[str, str] | None:
+    """Summarize mapping-shaped tool errors without showing their values.
+
+    A generic normalization pass redacts quoted text, which turns serialized
+    mappings into unreadable `{<q>: <q>}` titles. Keep only an allowlist of
+    field labels, recognized error categories and ordinary HTTP status codes.
+    """
+    if len(text) > 4096:
+        return None
+    stripped = text.strip()
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        return None
+    try:
+        value = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError, RecursionError):
+        try:
+            value = ast.literal_eval(stripped)
+        except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+            return None
+    if not isinstance(value, dict):
+        return None
+
+    fields = sorted(
+        {key.lower() for key in value if isinstance(key, str) and key.lower() in _STRUCTURED_FIELDS}
+    )
+    status: int | None = None
+    for key in _HTTP_STATUS_FIELDS:
+        raw = value.get(key)
+        if isinstance(raw, int) and not isinstance(raw, bool) and 400 <= raw <= 599:
+            status = raw
+            break
+        if isinstance(raw, str):
+            match = _HTTP_STATUS.search(raw)
+            if match:
+                status = int(match.group(1))
+                break
+
+    texts = [str(value[key]) for key in _STRUCTURED_MESSAGE_FIELDS if isinstance(value.get(key), str)]
+    category = next(
+        (label for pattern, label in _ERROR_CLASSES for candidate in texts if pattern.search(candidate)),
+        None,
+    )
+    if status is not None:
+        category = {
+            401: "authentication failed",
+            403: "access denied",
+            404: "resource not found",
+            408: "timed out",
+            429: "rate limited",
+        }.get(status, "HTTP error")
+        description = f"{category} (HTTP {status})"
+    elif category:
+        description = category
+    else:
+        description = "structured error response"
+    if fields:
+        description += f" · fields: {', '.join(fields)}"
+    key = f"structured:{description}"
+    return key, description[:MAX_TITLE]
 
 
 def failure_key(tool: str, text: str) -> tuple[str, str]:
@@ -87,6 +174,9 @@ def failure_key(tool: str, text: str) -> tuple[str, str]:
         code = code_match.group(1) if code_match else None
         parts = [f"exit {code}" if code is not None else None, error_class or (None if code else "failed")]
         return f"{code or ''}\n{error_class or ''}", ": ".join(p for p in parts if p)[:MAX_TITLE]
+    structured = _structured_failure(text)
+    if structured is not None:
+        return structured
     normalized = normalize(text)
     return normalized, (normalized[:MAX_TITLE] or "failed")
 
