@@ -16,6 +16,9 @@ jest.mock('expo-router', () => {
     useFocusEffect: (callback: () => void) => useEffect(callback, [callback]),
   };
 });
+jest.mock('@/lib/auth-context', () => ({
+  useAuth: () => ({ state: { status: 'paired', server: 'https://dots.example.com', token: 't', label: 'My phone' }, welcome: false, dismissWelcome: jest.fn() }),
+}));
 jest.mock('@/lib/use-api', () => ({ useApi: () => mockApi }));
 
 const agent = (id: number, name: string, extra: Partial<Agent> = {}): Agent => ({

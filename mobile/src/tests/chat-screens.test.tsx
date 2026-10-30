@@ -21,6 +21,11 @@ jest.mock('expo-router', () => {
   };
 });
 
+let mockWelcome = false;
+const mockDismiss = jest.fn();
+jest.mock('@/lib/auth-context', () => ({
+  useAuth: () => ({ state: { status: 'paired', server: 'https://dots.example.com', token: 't', label: 'My phone' }, welcome: mockWelcome, dismissWelcome: mockDismiss }),
+}));
 jest.mock('@/lib/use-api', () => ({ useApi: () => mockApi }));
 jest.mock('@/lib/use-thread', () => ({ useThread: () => mockThreadState }));
 
@@ -38,6 +43,7 @@ const thread = (id: number, title: string | null) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockWelcome = false;
   mockParams = { id: '3' };
   mockApi.listAgents.mockResolvedValue([]);
   mockThreadState = {
@@ -81,6 +87,32 @@ describe('Conversations', () => {
     mockApi.listThreads.mockRejectedValue(new ApiError(0, 'unreachable', ''));
     await render(<Conversations />);
     expect(await screen.findByText(/could not reach your server/i)).toBeTruthy();
+  });
+
+  it('offers to try again when the list could not load, and loads it', async () => {
+    const { ApiError } = jest.requireActual('@/lib/api');
+    mockApi.listThreads.mockRejectedValueOnce(new ApiError(0, 'unreachable', '')).mockResolvedValueOnce([thread(3, 'Plan the week')]);
+    await render(<Conversations />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Plan the week')).toBeTruthy();
+    expect(screen.queryByText(/could not reach your server/i)).toBeNull();
+  });
+
+  it('says once, after pairing, which server this is and what the phone can do, until it is dismissed', async () => {
+    mockWelcome = true;
+    mockApi.listThreads.mockResolvedValue([]);
+    await render(<Conversations />);
+    expect(screen.getByText('Connected to dots.example.com')).toBeTruthy();
+    expect(screen.getByText(/chat with your agents, stop an answer, and allow or deny/)).toBeTruthy();
+    expect(screen.getByText(/managed on your server/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Got it' }));
+    expect(mockDismiss).toHaveBeenCalled();
+  });
+
+  it('shows no welcome note when it was already dismissed', async () => {
+    mockApi.listThreads.mockResolvedValue([]);
+    await render(<Conversations />);
+    expect(screen.queryByText(/Connected to/)).toBeNull();
   });
 
   it('starts a conversation and opens it', async () => {

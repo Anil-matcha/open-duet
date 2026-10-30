@@ -170,3 +170,52 @@ export function describePairingError(error: PairingError): string {
       return 'Could not reach the server. Check the address, your connection, and that the server has a trusted HTTPS certificate.';
   }
 }
+
+export type ServerCheck = 'ok' | 'needs_setup' | 'unreachable' | 'untrusted_host' | 'refused' | 'not_a_server' | 'server_error';
+
+/**
+ * Asks an address's public status route whether it is a server this app can pair with, before any code is
+ * sent to it. Nothing is stored and no sign-in is needed.
+ */
+export async function checkServer(server: string, fetchImpl: FetchLike = fetch): Promise<ServerCheck> {
+  let response: Response;
+  try {
+    response = await send(fetchImpl, `${server}/api/v1/auth/status`, { method: 'GET', headers: { Accept: 'application/json' } });
+  } catch {
+    return 'unreachable';
+  }
+  if (response.status === 421) return 'untrusted_host';
+  if (response.status === 403) return 'refused';
+  if (response.status >= 500) return 'server_error';
+  if (!response.ok) return 'not_a_server';
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return 'not_a_server';
+  }
+  const status = body as { owner_configured?: unknown; desktop?: unknown } | null;
+  if (typeof status?.owner_configured !== 'boolean') return 'not_a_server';
+  // The desktop app has no owner account and still issues pairing codes, so only another server without one is flagged.
+  return status.owner_configured || status.desktop === true ? 'ok' : 'needs_setup';
+}
+
+/** What to tell the person about the result: good news, a heads-up, or a problem. */
+export function describeServerCheck(result: ServerCheck): { tone: 'good' | 'warn' | 'bad'; text: string } {
+  switch (result) {
+    case 'ok':
+      return { tone: 'good', text: 'Found your server.' };
+    case 'needs_setup':
+      return { tone: 'warn', text: 'Found your server, but it has no owner account yet, so it may have no pairing code to give you. Open it in a browser and finish setup first.' };
+    case 'unreachable':
+      return { tone: 'bad', text: 'Cannot reach this address. Check it, that the server is running, and that this phone can get to it (same network, a VPN, or a public HTTPS address).' };
+    case 'untrusted_host':
+      return { tone: 'bad', text: describePairingError(new PairingError('untrusted_host')) };
+    case 'refused':
+      return { tone: 'bad', text: describePairingError(new PairingError('refused')) };
+    case 'server_error':
+      return { tone: 'bad', text: describePairingError(new PairingError('server_error')) };
+    default:
+      return { tone: 'bad', text: describePairingError(new PairingError('not_a_server')) };
+  }
+}

@@ -11,11 +11,11 @@ export function ConversationTitle({ title, agentId, agentName }: { title: string
     <View style={styles.row} accessible accessibilityRole="header" accessibilityLabel={agentName ? `${title}, ${agentName}` : title}>
       <Avatar agentId={agentId} name={agentName} size="sm" />
       <View style={styles.text}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {title}
         </Text>
         {agentName ? (
-          <Text style={styles.agent} numberOfLines={1}>
+          <Text style={styles.agent} numberOfLines={1} maxFontSizeMultiplier={1.3}>
             {agentName}
           </Text>
         ) : null}

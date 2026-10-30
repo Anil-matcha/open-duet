@@ -16,7 +16,10 @@ function HeaderLink({ href, label, side }: { href: '/settings' | '/rooms'; label
   return (
     <Link href={href} asChild>
       <Pressable accessibilityRole="link" hitSlop={8} style={{ minHeight: touch.min, minWidth: touch.min, justifyContent: 'center', alignItems: side === 'left' ? 'flex-start' : 'flex-end', ...(side === 'left' ? { marginRight: 16 } : {}) }}>
-        <Text style={{ color: theme.accentText, fontWeight: '500', fontSize: 16 }}>{label}</Text>
+        {/* Header text grows with the person's text size, but only so far: the title beside it needs room. */}
+        <Text maxFontSizeMultiplier={1.3} style={{ color: theme.accentText, fontWeight: '500', fontSize: 16 }}>
+          {label}
+        </Text>
       </Pressable>
     </Link>
   );
@@ -49,7 +52,7 @@ function RootStack({ ready }: { ready: boolean }) {
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
-        <Stack.Screen name="pair" options={{ title: 'Pair with your server' }} />
+        <Stack.Screen name="pair" options={{ title: 'Suparagent' }} />
         <Stack.Screen name="scan" options={{ title: 'Scan QR code', presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>

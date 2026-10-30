@@ -1,4 +1,4 @@
-import { checkSession, describePairingError, PairingError, pairDevice, signOutOnServer } from '@/lib/pairing-api';
+import { checkServer, checkSession, describePairingError, describeServerCheck, PairingError, pairDevice, signOutOnServer } from '@/lib/pairing-api';
 
 type Reply = { status: number; body?: unknown; headers?: Record<string, string>; badJson?: boolean };
 
@@ -126,5 +126,56 @@ describe('signOutOnServer and checkSession', () => {
       throw new Error('offline');
     }) as unknown as typeof fetch;
     expect(await checkSession('https://s', 't', down)).toBe('unknown');
+  });
+});
+
+describe('checkServer', () => {
+  const status = { owner_configured: true, setup_allowed: false, desktop: false, signed_in: false };
+
+  it('asks the public status route and says the server is found', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: status });
+    expect(await checkServer('https://dots.example.com', impl)).toBe('ok');
+    expect(calls[0].url).toBe('https://dots.example.com/api/v1/auth/status');
+    // No credential goes with it.
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it('tells a server that has no owner yet from one that can be paired with', async () => {
+    expect(await checkServer('https://s', fakeFetch({ status: 200, body: { ...status, owner_configured: false } }).impl)).toBe('needs_setup');
+  });
+
+  it('does not warn about the desktop app, which has no owner account and still gives pairing codes', async () => {
+    expect(await checkServer('https://s', fakeFetch({ status: 200, body: { ...status, owner_configured: false, desktop: true } }).impl)).toBe('ok');
+  });
+
+  it('names what went wrong', async () => {
+    expect(await checkServer('https://s', fakeFetch({ status: 421 }).impl)).toBe('untrusted_host');
+    expect(await checkServer('https://s', fakeFetch({ status: 403 }).impl)).toBe('refused');
+    expect(await checkServer('https://s', fakeFetch({ status: 502 }).impl)).toBe('server_error');
+    expect(await checkServer('https://s', fakeFetch({ status: 404 }).impl)).toBe('not_a_server');
+  });
+
+  it('does not take any answer for a Suparagent server', async () => {
+    expect(await checkServer('https://s', fakeFetch({ status: 200, badJson: true }).impl)).toBe('not_a_server');
+    expect(await checkServer('https://s', fakeFetch({ status: 200, body: { hello: 'world' } }).impl)).toBe('not_a_server');
+    expect(await checkServer('https://s', fakeFetch({ status: 200, body: null }).impl)).toBe('not_a_server');
+  });
+
+  it('says unreachable when nothing answers', async () => {
+    const down = (async () => {
+      throw new TypeError('Network request failed');
+    }) as unknown as typeof fetch;
+    expect(await checkServer('https://s', down)).toBe('unreachable');
+  });
+});
+
+describe('describeServerCheck', () => {
+  it('has words for every result, good only for a server that can be paired with', () => {
+    const results = ['ok', 'needs_setup', 'unreachable', 'untrusted_host', 'refused', 'not_a_server', 'server_error'] as const;
+    for (const result of results) expect(describeServerCheck(result).text.length).toBeGreaterThan(10);
+    expect(results.filter((result) => describeServerCheck(result).tone === 'good')).toEqual(['ok']);
+    expect(results.filter((result) => describeServerCheck(result).tone === 'warn')).toEqual(['needs_setup']);
+    expect(describeServerCheck('unreachable').text).toMatch(/same network|VPN/);
+    expect(describeServerCheck('needs_setup').text).toMatch(/no owner account/);
   });
 });

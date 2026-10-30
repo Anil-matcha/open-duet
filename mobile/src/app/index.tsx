@@ -4,11 +4,12 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Vie
 
 import { Avatar } from '@/components/avatar';
 import { Text } from '@/components/text';
+import { WelcomeCard } from '@/components/welcome-card';
 import { agentName, type Agent } from '@/lib/agents';
 import { describeApiError, type Thread } from '@/lib/api';
 import { relativeTime } from '@/lib/time';
 import { useApi } from '@/lib/use-api';
-import { radius, useStyles, type Palette } from '@/lib/theme';
+import { radius, touch, useStyles, type Palette } from '@/lib/theme';
 
 export default function Conversations() {
   const styles = useStyles(createStyles);
@@ -72,10 +73,16 @@ export default function Conversations() {
       <Pressable accessibilityRole="search" accessibilityLabel="Search conversations" style={styles.search} onPress={() => router.push('/search')}>
         <Text style={styles.searchText}>Search conversations</Text>
       </Pressable>
+      <WelcomeCard />
       {error ? (
-        <Text style={styles.error} accessibilityRole="alert">
-          {error}
-        </Text>
+        <View style={styles.errorBox}>
+          <Text style={styles.error} accessibilityRole="alert">
+            {error}
+          </Text>
+          <Pressable accessibilityRole="button" hitSlop={8} style={styles.retry} onPress={() => void refresh()}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
       ) : null}
       {threads === null && !error ? (
         <View style={styles.center}>
@@ -115,7 +122,10 @@ const createStyles = (p: Palette) =>
     disabled: { opacity: 0.5 },
     search: { marginHorizontal: 12, marginBottom: 4, borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 12, paddingVertical: 12 },
     searchText: { color: p.muted, fontSize: 16 },
-    error: { color: p.danger, paddingHorizontal: 12, paddingBottom: 8, fontSize: 14 },
+    errorBox: { paddingHorizontal: 12, paddingBottom: 8 },
+    error: { color: p.danger, fontSize: 14 },
+    retry: { alignSelf: 'flex-start', minHeight: touch.min, justifyContent: 'center' },
+    retryText: { color: p.accentText, fontSize: 15, fontWeight: '600' },
     empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: p.muted },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },
     rowText: { flex: 1 },

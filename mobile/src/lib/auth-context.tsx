@@ -13,6 +13,9 @@ type AuthValue = {
   state: AuthState;
   /** Shown on the pairing screen after the server ended this phone's session. */
   notice: string | null;
+  /** True from a successful pairing until the person dismisses the note that says what this phone can do. */
+  welcome: boolean;
+  dismissWelcome: () => void;
   pair: (args: { server: string; code: string }) => Promise<void>;
   signOut: () => Promise<void>;
   /** The server said this phone's token is no longer valid: forget it and go back to pairing. */
@@ -35,6 +38,7 @@ export function useAuth(): AuthValue {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'loading' });
   const [notice, setNotice] = useState<string | null>(null);
+  const [welcome, setWelcome] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const credentials = { server: session.server, token: session.token, label: session.label ?? label };
     await saveCredentials(credentials);
     setNotice(null);
+    setWelcome(true);
     setState({ status: 'paired', ...credentials });
   }, []);
 
@@ -71,15 +76,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (state.status === 'paired') await signOutOnServer(state.server, state.token);
     await clearCredentials();
     setNotice(null);
+    setWelcome(false);
     setState({ status: 'unpaired' });
   }, [state]);
 
   const revoked = useCallback(() => {
     void clearCredentials();
     setNotice(REVOKED_NOTICE);
+    setWelcome(false);
     setState({ status: 'unpaired' });
   }, []);
 
-  const value = useMemo(() => ({ state, notice, pair, signOut, revoked }), [state, notice, pair, signOut, revoked]);
+  const dismissWelcome = useCallback(() => setWelcome(false), []);
+
+  const value = useMemo(() => ({ state, notice, welcome, dismissWelcome, pair, signOut, revoked }), [state, notice, welcome, dismissWelcome, pair, signOut, revoked]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
