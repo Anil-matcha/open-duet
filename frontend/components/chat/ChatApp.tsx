@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
-import { pendingApprovals } from "@/lib/transcript";
+import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
 import { attachmentProblem, conversationUsage, formatCost, formatTokens, MAX_ATTACHMENTS } from "@/lib/everyday";
 import { FilesPanel } from "./FilesPanel";
 import { UsageView } from "./UsagePanel";
@@ -24,6 +25,7 @@ import { ApprovalsPanel } from "@/components/approvals/ApprovalsPanel";
 import type { Remembered } from "./items";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
+import { NeedsYouCard } from "./NeedsYouCard";
 import { ChatHeader } from "./ChatHeader";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Drawer } from "@/components/ui/Drawer";
@@ -41,6 +43,7 @@ import { onboarding } from "@/lib/onboarding";
 import { TeamPanel } from "./TeamPanel";
 import { parseRoom, roomHref } from "@/lib/rooms";
 import { useThreadStream } from "./useThreadStream";
+import type { NeedsYouSnapshot } from "@/lib/needs-you";
 
 const LIST_REFRESH_MS = 15_000;
 const COMPUTER_STATUS_REFRESH_MS = 15_000;
@@ -170,6 +173,10 @@ export function ChatApp() {
   const setPlannerOpen = (open: boolean) => { showPlanner(open); if (!open && params.get("view") === "planner") clearBriefTarget(); };
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
+  const [todayOpen, setTodayOpen] = useState(false);
+  const [todayLoading, setTodayLoading] = useState(false);
+  const [todayError, setTodayError] = useState<string | null>(null);
+  const [todaySnapshot, setTodaySnapshot] = useState<NeedsYouSnapshot | null>(null);
   // Files chosen for the next message, and why one was refused.
   const [attached, setAttached] = useState<File[]>([]);
   const audioAbort = useRef<AbortController | null>(null);
@@ -608,6 +615,37 @@ export function ChatApp() {
     setModelDraft({ threadId, agentId: startingAgentId, provider: selectedProvider, model: threadId === null ? newModel : thread?.model ?? null });
   };
 
+  const refreshToday = async () => {
+    setTodayOpen(true);
+    setTodayLoading(true);
+    setTodayError(null);
+    setTodaySnapshot(null);
+    try {
+      setTodaySnapshot(await api.getNeedsYou());
+    } catch {
+      setTodayError("Could not refresh the Today brief. Try again.");
+    } finally {
+      setTodayLoading(false);
+    }
+  };
+
+  const todayItem: NeedsYouItem | null = todaySnapshot ? {
+    kind: "needs_you",
+    key: todaySnapshot.card_id,
+    turnId: null,
+    cardId: todaySnapshot.card_id,
+    revision: 0,
+    title: todaySnapshot.title,
+    subtitle: todaySnapshot.subtitle,
+    emptyText: todaySnapshot.empty_text,
+    more: todaySnapshot.more,
+    checkedAt: todaySnapshot.checked_at,
+    providerCheckedAt: todaySnapshot.provider_checked_at ?? undefined,
+    timeZone: todaySnapshot.time_zone,
+    sources: todaySnapshot.sources,
+    rows: todaySnapshot.items,
+  } : null;
+
   const computerText = threadComputer ? computerChip(threadComputer, liveComputerState) : null;
   const buildHeader = (withSidebar: boolean) => (
     <ChatHeader
@@ -648,6 +686,7 @@ export function ChatApp() {
       onApprovals={ready ? () => setApprovalsOpen(true) : undefined}
       onFiles={ready && threadId !== null && thread !== null ? () => setFilesOpen(true) : undefined}
       onUsage={ready ? () => setPanel("usage") : undefined}
+      onToday={ready ? () => void refreshToday() : undefined}
       usageHint={conversationTotal}
       trailing={
         ready ? (
@@ -916,6 +955,25 @@ export function ChatApp() {
           />
         </Inspector>
       )}
+      <Dialog
+        open={todayOpen}
+        onOpenChange={setTodayOpen}
+        title="Today"
+        description="A fresh read of your local tasks, team work, routines and connected apps."
+        size="wide"
+        footer={(
+          <>
+            <Button onClick={() => setTodayOpen(false)}>Close</Button>
+            <Button variant="primary" icon={<RefreshCw size={16} />} onClick={() => void refreshToday()} loading={todayLoading}>
+              {todayLoading ? "Refreshing…" : "Refresh"}
+            </Button>
+          </>
+        )}
+      >
+        {todayLoading ? <p role="status" className="text-sm text-muted">Refreshing today&apos;s brief…</p> : null}
+        {todayError ? <p role="alert" className="text-sm text-danger">{todayError}</p> : null}
+        {!todayLoading && !todayError && todayItem ? <NeedsYouCard item={todayItem} /> : null}
+      </Dialog>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { rowAction, summary } from "@/lib/needs-you";
-import type { TranscriptItem } from "@/lib/transcript";
+import type { NeedsYouItem } from "@/lib/transcript";
 
 const SOURCE_STATUS: Record<string, string> = {
   available: "checked", quiet: "checked; no matching records",
@@ -9,9 +9,8 @@ const SOURCE_STATUS: Record<string, string> = {
   unavailable: "unavailable; check the lead’s app access and connected account",
 };
 
-// The day's "Needs you" card, written by the server in the lead's chat. A newer
-// revision replaces the older one (the transcript keeps only the latest).
-export function NeedsYouCard({ item }: { item: Extract<TranscriptItem, { kind: "needs_you" }> }) {
+// A current Today snapshot, shown in the brief panel and in the lead's chat.
+export function NeedsYouCard({ item }: { item: NeedsYouItem }) {
   return (
     <section aria-label={item.title} className="space-y-2 rounded-field border border-line p-3 text-sm">
       <header className="flex items-baseline justify-between gap-2">

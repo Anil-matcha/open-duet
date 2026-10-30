@@ -466,7 +466,7 @@ class NeedsYou:
             NeedsYouState.owner_id == self.owner_id).with_for_update()
             .execution_options(populate_existing=True))
 
-    async def _providers(self, db, lead_id, now, zone):
+    async def _providers(self, db, lead_id, now, zone, *, force_refresh=False):
         # Always re-read authorization before using a snapshot. Changing owner,
         # lead, grants, zone or local day invalidates it immediately.
         agent = await db.scalar(select(Agent).where(Agent.id == lead_id, Agent.owner_id == self.owner_id,
@@ -480,15 +480,20 @@ class NeedsYou:
             return any(scopes.get(app) in {"read", "write"} and sources[source] in {"failed", "unavailable", "partial"}
                        for source, app in (("gmail", "gmail"), ("calendar", "googlecalendar")))
         cached = self._provider_cache
-        if cached and cached[0] == key and timedelta(0) <= now - cached[1] < timedelta(minutes=5):
+        if (not force_refresh and cached and cached[0] == key
+                and timedelta(0) <= now - cached[1] < timedelta(minutes=5)):
             return cached[2], cached[3], cached[1], unknown(cached[3])
         items, sources = await collect_providers(db, self.owner_id, lead_id, now=now,
             zone=zone, make_client=self._provider_client)
         self._provider_cache = (key, now, items, sources)
         return items, sources, now, unknown(sources)
 
-    async def read(self) -> dict:
-        """The card as it would be written now, with no side effects."""
+    async def read(self, *, refresh=False) -> dict:
+        """The card as it would be written now, with no side effects.
+
+        ``refresh`` bypasses the short provider cache for an explicit refresh
+        request. Local rows and provider access remain read-only either way.
+        """
         now = self.clock()
         async with self.runtime.session() as db:
             state = await db.get(NeedsYouState, self.owner_id)
@@ -497,7 +502,8 @@ class NeedsYou:
                                   issues=await self._issue_entries(now))
             items = await collect_local(db, self.owner_id, now=now, zone=zone, attention=items)
             team = await db.scalar(select(Team).where(Team.owner_id == self.owner_id))
-            provider_items, sources, provider_checked, provider_unknown = await self._providers(db, team.lead_agent_id if team else None, now, zone)
+            provider_items, sources, provider_checked, provider_unknown = await self._providers(
+                db, team.lead_agent_id if team else None, now, zone, force_refresh=refresh)
         items.extend(provider_items)
         return build_card(items, day=local_day(now, zone), now=now, zone=zone, sources=sources, provider_checked_at=provider_checked, provider_unknown=provider_unknown)
 
