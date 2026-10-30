@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-30
+
 ### Added
 
 - Add a remote MCP Marketplace with Community and Tested by Open Dots sections,
