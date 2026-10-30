@@ -5,6 +5,7 @@ the remote MCP protocol stay in this backend process.
 """
 
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ import uuid
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 from sqlalchemy import delete, select
 
@@ -64,7 +66,9 @@ def _alias(connection_id: str, tool_name: str, schema_digest: str) -> str:
 def _safe_text(value: str, secret: str | None) -> str:
     text = value[:200_000]
     if secret:
-        text = text.replace(secret, "[credential redacted]")
+        for form in {secret, quote(secret, safe=""), json.dumps(secret)[1:-1],
+                     base64.b64encode(secret.encode()).decode()}:
+            text = text.replace(form, "[credential redacted]")
     return text
 
 

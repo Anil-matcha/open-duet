@@ -208,7 +208,9 @@ async def _get_catalog_data() -> dict:
     try:
         async with asyncio.timeout(60):
             result = await _load_catalog(_raw_file)
-    except McpError:
+    except McpError as exc:
+        if exc.code not in ("catalog_unavailable", "catalog_too_large"):
+            raise  # an invalid upstream catalog must surface, not be hidden by stale bundled data
         result = await _load_catalog(_bundle_file)
     except TimeoutError:
         result = await _load_catalog(_bundle_file)
@@ -546,7 +548,9 @@ class RemoteMcpSession:
             if not isinstance(value, dict) or value.get("jsonrpc") != "2.0":
                 continue
             if value.get("method") is not None:
-                raise McpError("unsupported_protocol", "The remote MCP server sent an unsupported request.", 502)
+                if "id" in value:
+                    raise McpError("unsupported_protocol", "The remote MCP server sent an unsupported request.", 502)
+                continue  # a notification (progress, logging) never carries the result
             if value.get("id") == expected_id:
                 if "error" in value:
                     raise McpError("remote_error", "The remote MCP server rejected the request.", 502)
@@ -660,7 +664,10 @@ class RemoteMcpSession:
             if not isinstance(page, list):
                 raise McpError("invalid_response", "The remote MCP server returned an invalid tool list.", 502)
             for raw in page:
-                tool = _normalize_tool(raw)
+                try:
+                    tool = _normalize_tool(raw)
+                except McpError:
+                    continue  # one tool Open Dots cannot validate must not hide the rest
                 total_bytes += len(canonical(tool).encode("utf-8"))
                 if total_bytes > MAX_TOOLSET_BYTES:
                     raise McpError("toolset_too_large", "This remote server exposes too much tool metadata.", 502)
