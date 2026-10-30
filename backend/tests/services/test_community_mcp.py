@@ -51,6 +51,40 @@ def test_schema_and_argument_validation_reject_unsafe_shapes():
             validate_arguments(schema, bad)
 
 
+def test_schema_supports_bounded_uri_defaults_and_model_enums():
+    schema = _normalize_tool({"name": "media", "inputSchema": {
+        "type": "object", "additionalProperties": False, "properties": {
+            "image_url": {"type": "string", "format": "uri"},
+            "model": {"type": "string", "enum": [f"model-{n}" for n in range(217)], "default": "model-0"},
+            "duration": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+            "enabled": {"type": "boolean", "default": False},
+        }}})["inputSchema"]
+    assert schema["properties"]["image_url"]["format"] == "uri"
+    assert schema["properties"]["model"]["default"] == "model-0"
+    validate_arguments(schema, {"image_url": "https://cdn.example/image.png"})
+    validate_arguments(schema, {"image_url": "https://cdn.example/image.png", "duration": 5})
+    for bad in (
+        {"image_url": "http://cdn.example/image.png"},
+        {"image_url": "https://localhost/image.png"},
+        {"image_url": "https://cdn.example/image.png", "duration": 6},
+        {"image_url": "https://cdn.example/image.png", "model": "unknown"},
+    ):
+        with pytest.raises(McpError):
+            validate_arguments(schema, bad)
+
+
+def test_schema_rejects_unsafe_formats_defaults_and_oversized_enums():
+    for input_schema in (
+        {"type": "object", "properties": {"x": {"type": "string", "format": "uri-reference"}}},
+        {"type": "object", "properties": {"x": {"type": "string", "default": 3}}},
+        {"type": "object", "properties": {"x": {"type": "integer", "minimum": 2, "default": 1}}},
+        {"type": "object", "properties": {"x": {"type": "object", "default": {}}}},
+        {"type": "object", "properties": {"x": {"type": "string", "enum": [f"model-{n}" for n in range(257)]}}},
+    ):
+        with pytest.raises(McpError):
+            _normalize_tool({"name": "unsafe", "inputSchema": input_schema})
+
+
 @pytest.mark.parametrize("url", [
     "http://example.com/mcp", "https://localhost/mcp", "https://10.0.0.1/mcp",
     "https://user:pw@example.com/mcp", "https://example.com:8443/mcp", "https://example.com/mcp?x=1",

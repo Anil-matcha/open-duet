@@ -303,13 +303,17 @@ def safe_schema(value: object, depth: int = 0) -> dict:
     """Keep only a bounded, locally validated JSON Schema subset."""
     if depth > MAX_DEPTH or not isinstance(value, dict) or len(canonical(value).encode("utf-8")) > MAX_SCHEMA_BYTES:
         raise McpError("unsupported_schema", "This tool's input schema is too large or complex.", 422)
-    allowed = {"$schema", "type", "title", "description", "properties", "required", "additionalProperties", "items", "enum", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"}
+    allowed = {"$schema", "type", "title", "description", "properties", "required", "additionalProperties", "items", "enum", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems", "format", "default"}
     if set(value) - allowed:
         raise McpError("unsupported_schema", "This tool uses a schema feature Open Dots cannot validate safely.", 422)
     kind = value.get("type", "object")
     if kind not in ("object", "array", "string", "number", "integer", "boolean", "null"):
         raise McpError("unsupported_schema", "This tool uses an unsupported input type.", 422)
     result = {"type": kind}
+    if "format" in value:
+        if kind != "string" or value["format"] != "uri":
+            raise McpError("unsupported_schema", "This tool uses an unsupported string format.", 422)
+        result["format"] = "uri"
     for key in ("title", "description"):
         if key in value and isinstance(value[key], str):
             result[key] = value[key][:1000 if key == "title" else 4000]
@@ -317,7 +321,7 @@ def safe_schema(value: object, depth: int = 0) -> dict:
         result["$schema"] = value["$schema"]
     if "enum" in value:
         options = value["enum"]
-        if not isinstance(options, list) or len(options) > 200 or len(canonical(options).encode("utf-8")) > 8_000:
+        if not isinstance(options, list) or len(options) > 256 or len(canonical(options).encode("utf-8")) > 8_000:
             raise McpError("unsupported_schema", "This tool has an oversized enum.", 422)
         result["enum"] = options
     for key in ("minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"):
@@ -348,6 +352,12 @@ def safe_schema(value: object, depth: int = 0) -> dict:
         result["items"] = safe_schema(value["items"], depth + 1)
     if kind != "object" and any(key in value for key in ("properties", "required", "additionalProperties")):
         raise McpError("unsupported_schema", "This tool has schema fields that do not match its input type.", 422)
+    if "default" in value:
+        default = value["default"]
+        if isinstance(default, (dict, list)):
+            raise McpError("unsupported_schema", "This tool uses an unsupported compound default.", 422)
+        validate_arguments(result, default)
+        result["default"] = default
     return result
 
 
@@ -368,6 +378,11 @@ def validate_arguments(schema: dict, value: object, depth: int = 0) -> None:
         raise McpError("bad_arguments", f"Expected {kind} tool arguments.")
     if "enum" in schema and value not in schema["enum"]:
         raise McpError("bad_arguments", "Tool arguments are outside the listed choices.")
+    if schema.get("format") == "uri":
+        try:
+            _validate_public_url(value, "tool argument", max_length=MAX_REQUEST_BYTES)
+        except McpError:
+            raise McpError("bad_arguments", "Expected a public HTTPS URL.") from None
     if kind == "object":
         props = schema.get("properties", {})
         if len(value) > 100 or any(not isinstance(k, str) or len(k) > 128 for k in value):
