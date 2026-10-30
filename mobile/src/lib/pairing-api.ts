@@ -163,7 +163,7 @@ export function describePairingError(error: PairingError): string {
     case 'not_a_server':
       return 'That address answered, but it does not look like a Suparagent server.';
     case 'wrong_scope':
-      return 'That code gives full access. The app only accepts a Chat only code. Create a new code with access set to Chat only.';
+      return 'That code gives full access. The app only accepts a Chat only or Chat and files code. Create a new code with access set to one of those.';
     case 'server_error':
       return 'Your server hit an error. Try again in a moment.';
     default:

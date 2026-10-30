@@ -14,7 +14,7 @@ import { useServerCheck } from '@/lib/use-server-check';
 
 const STEPS = [
   'On your server, open Settings → Devices.',
-  'Set Access to “Chat only” and create a pairing code.',
+  'Set Access to “Chat only” (or “Chat and files” to open the files agents make) and create a pairing code.',
   'Scan its QR code here, or type the address and code below.',
 ];
 

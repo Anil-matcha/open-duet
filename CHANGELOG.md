@@ -4,6 +4,11 @@
 
 ### Added
 
+- Open the files an agent made from the phone app. A pairing code can now be made with
+  **Chat and files** access (a new `files` scope; `--scope files` on the CLI): the phone lists
+  a conversation's workspace, previews text and images, and shares or saves any file. A
+  chat-only phone is unchanged and still cannot reach workspace files; the folder zip stays
+  admin-only. Automated tests and lint pass; not yet run on a device.
 - Add a Desktop-only Local/Cloud computer choice. Cloud uses a Boat API key
   encrypted in the local Desktop profile; the local backend sends it only to
   Boat's API over HTTPS, not to the agent or cloud computer. The cloud machine

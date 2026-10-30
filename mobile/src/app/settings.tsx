@@ -33,7 +33,7 @@ export default function Settings() {
       <Text style={styles.label}>Device name</Text>
       <Text style={styles.value}>{state.label || 'Phone'}</Text>
       <Text style={styles.label}>Access</Text>
-      <Text style={styles.value}>Chat only</Text>
+      <Text style={styles.value}>Chat only, or chat and files if the code allowed them</Text>
       <Pressable accessibilityRole="button" style={[styles.danger, busy && styles.disabled]} disabled={busy} onPress={confirmSignOut}>
         <Text style={styles.dangerText}>Sign out and forget this server</Text>
       </Pressable>

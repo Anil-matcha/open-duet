@@ -1,6 +1,6 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';
 import { ApprovalCard } from '@/components/approval-card';
@@ -14,12 +14,14 @@ import { rowKeyForSeq } from '@/lib/search';
 import { pendingApprovals } from '@/lib/transcript';
 import { useApi } from '@/lib/use-api';
 import { useThread } from '@/lib/use-thread';
-import { useStyles, type Palette } from '@/lib/theme';
+import { touch, useStyles, useTheme, type Palette } from '@/lib/theme';
 
 const BANNER: Record<string, string> = { connecting: 'Connecting…', reconnecting: 'Reconnecting…' };
 
 export default function Thread() {
   const styles = useStyles(createStyles);
+  const theme = useTheme();
+  const router = useRouter();
   // Opened from a search result: `seq` is the message that matched.
   const { id, seq } = useLocalSearchParams<{ id: string; seq?: string }>();
   const targetKey = rowKeyForSeq(seq);
@@ -58,6 +60,19 @@ export default function Thread() {
       <Stack.Screen
         options={{
           title: thread?.title || 'Conversation',
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Files in this conversation"
+              hitSlop={8}
+              style={{ minHeight: touch.min, minWidth: touch.min, justifyContent: 'center', alignItems: 'flex-end' }}
+              onPress={() => router.push({ pathname: '/files/[id]', params: { id: String(id) } })}
+            >
+              <Text maxFontSizeMultiplier={1.3} style={{ color: theme.accentText, fontWeight: '500', fontSize: 16 }}>
+                Files
+              </Text>
+            </Pressable>
+          ),
           headerTitle: () => <ConversationTitle title={thread?.title || 'Conversation'} agentId={thread?.agent_id ?? null} agentName={agentName(agents, thread?.agent_id)} />,
         }}
       />

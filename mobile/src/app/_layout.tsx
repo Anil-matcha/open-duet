@@ -48,6 +48,8 @@ function RootStack({ ready }: { ready: boolean }) {
         <Stack.Screen name="rooms/index" options={{ title: 'Rooms' }} />
         <Stack.Screen name="rooms/[id]" options={{ title: 'Room' }} />
         <Stack.Screen name="thread/[id]" options={{ title: 'Conversation' }} />
+        <Stack.Screen name="files/[id]/index" options={{ title: 'Files' }} />
+        <Stack.Screen name="files/[id]/view" options={{ title: 'File' }} />
         <Stack.Screen name="new" options={{ title: 'New conversation', presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack.Protected>

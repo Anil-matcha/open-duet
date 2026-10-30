@@ -53,6 +53,12 @@ describe('pairDevice', () => {
     expect((calls[1].init.headers as Record<string, string>).Authorization).toBe('Bearer ods_admin');
   });
 
+  it('accepts a chat session that also has the files scope', async () => {
+    const files = { token: 'ods_files', session: { scopes: ['chat', 'files'], session_id: 11 } };
+    const { impl } = fakeFetch({ status: 200, body: files });
+    expect((await pairDevice({ ...args, fetchImpl: impl })).scopes).toEqual(['chat', 'files']);
+  });
+
   it('refuses a session without the chat scope', async () => {
     const { impl } = fakeFetch({ status: 200, body: { token: 't', session: { scopes: [] } } }, { status: 204 });
     expect((await failure(pairDevice({ ...args, fetchImpl: impl }))).code).toBe('wrong_scope');
