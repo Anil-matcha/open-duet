@@ -9,6 +9,10 @@
   a conversation's workspace, previews text and images, and shares or saves any file. A
   chat-only phone is unchanged and still cannot reach workspace files; the folder zip stays
   admin-only. Automated tests and lint pass; not yet run on a device.
+- Add a remote MCP Marketplace with Community and Tested by Open Dots sections,
+  GitHub PR catalog validation, separately stored bearer credentials, exact
+  per-agent tool grants and one-time call approvals. The source implementation
+  is present; automated, live-service and packaged-app qualification remain.
 - Add a Desktop-only Local/Cloud computer choice. Cloud uses a Boat API key
   encrypted in the local Desktop profile; the local backend sends it only to
   Boat's API over HTTPS, not to the agent or cloud computer. The cloud machine
@@ -18,6 +22,13 @@
   open.
 
 ### Fixed
+
+- Fix Today / Needs You refresh failing while serializing Sentinel issue rows.
+- Show readable, privacy-safe summaries for structured health-scan errors instead
+  of placeholder punctuation.
+- Redact secret-like text from background memory capture prompts before they
+  reach the agent's own engine, and use directly matched topic aliases as a
+  bounded, on-device bridge when retrieving related conversation passages.
 
 - Recover cloud-computer removal when Boat has already deleted the sandbox or
   no longer retains its deletion-operation record, instead of leaving the

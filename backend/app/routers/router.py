@@ -79,6 +79,9 @@ router.include_router(needs_you_router)
 from app.routers.integrations import router as integrations_router
 router.include_router(integrations_router)
 
+from app.routers.community_mcp import router as community_mcp_router
+router.include_router(community_mcp_router)
+
 from app.routers.onboarding import router as onboarding_router
 from app.routers.engine_install import router as engine_install_router
 from app.routers.desktop_account import router as desktop_account_router

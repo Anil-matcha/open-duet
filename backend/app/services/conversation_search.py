@@ -239,14 +239,18 @@ async def search_any(
     agent_id: int,
     exclude_thread_id: int | None = None,
     candidates: int = 200,
-) -> list[tuple[SearchHit, int]]:
+    bridge_terms: list[str] | None = None,
+) -> list[tuple[SearchHit, float]]:
     """Messages in one agent's conversations holding ANY of `terms`, newest
     first, each with how many distinct terms it holds (for recall, which
-    ranks by that). Archived conversations and `exclude_thread_id` are left
-    out. The same portable query as `search`, with OR instead of AND."""
-    terms = [t for t in terms if t]
+    ranks by that). Optional `bridge_terms` are only candidate expansion; a
+    match contributes a half-point after original query matches. Archived
+    conversations and `exclude_thread_id` are left out. Search stays portable."""
+    terms = list(dict.fromkeys(t for t in terms if t))
+    bridge_terms = list(dict.fromkeys(t for t in (bridge_terms or []) if t and t not in terms))
     if not terms:
         return []
+    candidate_terms = [*terms, *bridge_terms]
     message_text = func.coalesce(
         Event.data["text"].as_string(), Event.data["prompt_text"].as_string()
     )
@@ -258,21 +262,22 @@ async def search_any(
             Thread.agent_id == agent_id,
             Thread.archived_at.is_(None),
             Event.type.in_(tuple(MESSAGE_TYPES)),
-            or_(*[message_text.icontains(term, autoescape=True) for term in terms]),
+            or_(*[message_text.icontains(term, autoescape=True) for term in candidate_terms]),
         )
         .order_by(Event.created_at.desc(), Event.id.desc())
         .limit(candidates)
     )
     if exclude_thread_id is not None:
         statement = statement.where(Thread.id != exclude_thread_id)
-    out: list[tuple[SearchHit, int]] = []
+    out: list[tuple[SearchHit, float]] = []
     for event, thread, body in (await db.execute(statement)).all():
         body = body or ""
         folded = body.lower()
         matched = sum(1 for term in terms if term in folded)
-        if not matched:
+        bridge_match = any(term in folded for term in bridge_terms)
+        if not matched and not bridge_match:
             continue
-        snippet, spans = make_snippet(body, terms, before=120, after=240)
+        snippet, spans = make_snippet(body, candidate_terms, before=120, after=240)
         out.append(
             (
                 SearchHit(
@@ -287,7 +292,7 @@ async def search_any(
                     seq=event.seq,
                     turn_id=event.turn_id,
                 ),
-                matched,
+                matched + (0.5 if bridge_match else 0.0),
             )
         )
     return out

@@ -2,6 +2,8 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -200,6 +202,17 @@ app.add_middleware(
 @app.exception_handler(BoatNotConfigured)
 async def boat_not_configured_handler(request: Request, exc: BoatNotConfigured):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    # FastAPI's default validation body includes the rejected input. Never let
+    # an invalid bearer-token payload echo a credential back to the caller.
+    if (request.method == "PUT" and "/integrations/marketplace/connections/" in request.url.path
+            and request.url.path.endswith("/credential")):
+        return JSONResponse(status_code=422, content={"detail": {"error_code": "invalid_marketplace_request"}},
+                            headers={"Cache-Control": "no-store"})
+    return await request_validation_exception_handler(request, exc)
 
 
 app.include_router(app_router)

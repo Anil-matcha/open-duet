@@ -15,6 +15,12 @@ def automatic(tool, mode, run, arguments):
         return ('allowed', 'memory_read') if tool in ('mcp__memory__session_search', 'mcp__memory__session_read') else ('denied', 'unknown_memory_tool')
     if tool.startswith('mcp__team__'):
         return teams.automatic(tool, mode, run.ctx.team, arguments)
+    if tool.startswith('mcp__community__'):
+        # Marketplace tools have unknown effects. They are never automatically
+        # allowed, and plan mode cannot execute them even if a card is answered.
+        if tool.removeprefix('mcp__community__') not in getattr(run.ctx, 'community_tools', []):
+            return 'denied', 'marketplace_tool_not_granted'
+        return ('denied', 'plan_mode') if mode == 'plan' else None
     if tool.startswith(composio_policy.PREFIX):
         # Connected apps (composio_bridge.py): decided here, never by a saved command rule.
         grants = getattr(run, "routine_grants", None)

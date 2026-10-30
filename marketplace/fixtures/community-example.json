@@ -1,0 +1,15 @@
+{
+  "slug": "sample-community-service",
+  "name": "Sample Community Service",
+  "version": "1.0.0",
+  "summary": "Example listing used to document the community manifest format.",
+  "publisher": "Example Publisher",
+  "source_repo": "https://github.com/example/sample-community-service",
+  "endpoint": "https://mcp.example.org/mcp",
+  "auth_mode": "bearer_token",
+  "privacy_url": "https://example.org/privacy",
+  "terms_url": "https://example.org/terms",
+  "license": "MIT",
+  "setup_instructions": "Create a token with the service provider, then configure the MCP endpoint and token in Open Dots.",
+  "test_instructions": "Connect to the endpoint and confirm the service's listed tools are available."
+}

@@ -19,11 +19,14 @@ from app.db.models.notification import Notification
 from app.db.models.needs_you import NeedsYouState
 from app.db.models.auth import AuthSession, OwnerAccount, PairingCode
 from app.db.models.work_item import WorkBoard, WorkColumn, WorkItem, WorkItemRun, WorkItemEvent
+from app.db.models.community_mcp import CommunityMcpConnection, CommunityMcpToolGrant
 
 __all__ = [
     "WorkBoard", "WorkColumn", "WorkItem", "WorkItemRun", "WorkItemEvent",
     "UserSandbox",
     "UserCredential",
+    "CommunityMcpConnection",
+    "CommunityMcpToolGrant",
     "Tasks",
     "LinkCode",
     "Schedule",

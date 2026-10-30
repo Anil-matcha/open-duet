@@ -37,7 +37,7 @@ const STATE_BADGE: Record<CardState, { tone: "neutral" | "success" | "warning" |
 // Composio key. Agent access is granted separately in each eligible agent's settings.
 export function AppsApp() {
   return <div className="min-h-dvh">
-    <header className="flex h-12 items-center gap-4 border-b border-line px-4"><Link href="/chat/" className="text-sm text-muted hover:underline">← Chat</Link><h1 className="text-sm font-semibold">Apps</h1></header>
+    <header className="flex h-12 items-center gap-4 border-b border-line px-4"><Link href="/chat/" className="text-sm text-muted hover:underline">← Chat</Link><h1 className="text-sm font-semibold">Apps</h1><Link href="/marketplace/" className="ml-auto text-sm underline">MCP Marketplace</Link></header>
     <main className="mx-auto max-w-3xl space-y-6 px-5 py-8">
       <div>
         <h2 className="text-xl font-semibold">Apps</h2>
