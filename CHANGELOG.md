@@ -14,6 +14,11 @@
 
 ### Fixed
 
+- Fix Today / Needs You refresh failing while serializing Sentinel issue rows.
+- Redact secret-like text from background memory capture prompts before they
+  reach the agent's own engine, and use directly matched topic aliases as a
+  bounded, on-device bridge when retrieving related conversation passages.
+
 - Recover cloud-computer removal when Boat has already deleted the sandbox or
   no longer retains its deletion-operation record, instead of leaving the
   agent blocked in `deleting`. Cloud desktop screenshots now transfer through

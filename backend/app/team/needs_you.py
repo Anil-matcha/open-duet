@@ -449,7 +449,7 @@ class NeedsYou:
         if self._issues is not None:
             return await self._issues()
         report = await sentinel.scan(self.runtime.session, self.owner_id, now=now)
-        return [issue.public() for issue in report["issues"]]
+        return report["issues"]
 
     async def _state(self, db) -> NeedsYouState:
         # INSERT + row lock also serializes the first visit across backends,
