@@ -483,6 +483,8 @@ export type Agent = {
   recall_enabled?: boolean;
   // Connected apps (Composio) the agent may read, {app: "read"}; null for none.
   connector_scopes?: Record<string, string> | null;
+  // Exact connected accounts this agent may use, keyed by Composio app slug.
+  connector_account_scopes?: Record<string, string[]>;
   // Off: no quick model call files facts noticed in its conversations.
   memory_upkeep?: boolean;
   compaction_summary?: boolean;
@@ -519,6 +521,8 @@ export type AgentInput = {
   fallback_model?: string | null;
   // Update only: connected apps this agent may read, {app: "read"}; null or {} for none.
   connector_scopes?: Record<string, string> | null;
+  // Update only: exact connected account IDs this agent may use, keyed by app.
+  connector_account_scopes?: Record<string, string[]>;
   // Create only: the first contents of the agent's notes.
   starter_notes?: string | null;
 };
@@ -909,6 +913,7 @@ export type AppNotification = {
 
 export const api = {
   roomExportUrl: (id: number, format: "md" | "json") => requestBlobUrl(`/rooms/${id}/export?format=${format}`),
+  getNeedsYou: () => request<import("./needs-you").NeedsYouSnapshot>("/needs-you?refresh=true"),
   requestTeamLead: (agentId: number) => request<{ id: number; lead_agent_id: number }>("/team/lead", { method: "POST", body: JSON.stringify({ agent_id: agentId }) }),
   getEngines: (refresh = false) => request<Engine[]>(`/engines${refresh ? "?refresh=true" : ""}`),
   logoutClaudeEngine: () => request<void>("/engines/claude/logout", { method: "POST" }),
@@ -1161,6 +1166,10 @@ export const api = {
   // as "computers are not available" and keep working. ---
 
   computersHealth: () => request<ComputerHealth>("/computers/health"),
+  boatCredentialStatus: () => request<{ configured: boolean }>("/computers/boat-credentials"),
+  saveBoatCredential: (apiKey: string) => request<{ configured: boolean }>("/computers/boat-credentials", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
+  deleteBoatCredential: () => request<void>("/computers/boat-credentials", { method: "DELETE" }),
+  boatDesktopUrl: (id: number, leaseId: string) => request<{ url: string }>(`/computers/${id}/boat-desktop-url`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
 
   getAgentComputer: (agentId: number) => request<Computer>(`/agents/${agentId}/computer`),
 
@@ -1175,7 +1184,7 @@ export const api = {
   releaseBrowserControl: (agentId: number, leaseId: string) => request<ControlSnapshot>(`/agents/${agentId}/browser/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
   browserControlHeartbeat: (agentId: number, leaseId: string) => request<void>(`/agents/${agentId}/browser/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
   computerScreenshot: (id: number) => requestBlobUrl(`/computers/${id}/screenshot`),
-  createAgentComputer: (agentId: number, settings: ComputerSettings & { kind?: ComputerKind; start?: boolean } = {}) =>
+  createAgentComputer: (agentId: number, settings: ComputerSettings & { provider?: "docker" | "boat"; kind?: ComputerKind; start?: boolean } = {}) =>
     request<Computer>(`/agents/${agentId}/computer`, { method: "POST", body: JSON.stringify(settings) }),
 
   getComputer: (computerId: number) => request<Computer>(`/computers/${computerId}`),

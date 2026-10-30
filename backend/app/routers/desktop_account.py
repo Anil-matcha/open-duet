@@ -5,11 +5,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.desktop import account, profile
+from app.desktop import account, profile, boat_credentials
 from app.auth.routes import require_admin
 from app.services.local_access_policy import require_local_access
 from app.db.session import get_db
-from app.db.models import Turn
+from app.db.models import Computer, Turn
 from app.desktop.local_data import wipe_local_data
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,6 +108,18 @@ async def _refuse_while_running(db: AsyncSession, action: str) -> None:
         raise HTTPException(409, detail={"error_code": "turn_running", "message": f"Stop active agent tasks before {action}."})
 
 
+async def _refuse_while_cloud_computers_exist(db: AsyncSession) -> None:
+    cloud_computer = await db.scalar(select(Computer.id).where(Computer.provider == "boat").limit(1))
+    if cloud_computer is not None:
+        raise HTTPException(
+            409,
+            detail={
+                "error_code": "cloud_computers_remain",
+                "message": "Remove all cloud computers first. Profile reset does not delete remote resources; successful reset erases their saved key.",
+            },
+        )
+
+
 def _require_confirm(data: Confirm, word: str) -> None:
     if data.confirm != word:
         raise HTTPException(400, detail={"error_code": "confirmation_required", "message": f"Type {word} to confirm."})
@@ -119,10 +131,12 @@ async def reset_profile(data: Confirm, db: AsyncSession = Depends(get_db)):
     manager = _manager()
     _require_confirm(data, "RESET")
     await _refuse_while_running(db, "resetting this profile")
-    try:
-        return await manager.reset_profile(lambda: wipe_local_data(db))
-    except account.DesktopAccountError as err:
-        raise _error(err)
+    async with boat_credentials.configuration_lock:
+        await _refuse_while_cloud_computers_exist(db)
+        try:
+            return await manager.reset_profile(lambda: wipe_local_data(db))
+        except account.DesktopAccountError as err:
+            raise _error(err)
 
 
 @router.post("/delete-account")
@@ -131,7 +145,9 @@ async def delete_account(data: Confirm, db: AsyncSession = Depends(get_db)):
     manager = _manager()
     _require_confirm(data, "DELETE")
     await _refuse_while_running(db, "deleting your account")
-    try:
-        return await manager.delete_account(lambda: wipe_local_data(db))
-    except account.DesktopAccountError as err:
-        raise _error(err)
+    async with boat_credentials.configuration_lock:
+        await _refuse_while_cloud_computers_exist(db)
+        try:
+            return await manager.delete_account(lambda: wipe_local_data(db))
+        except account.DesktopAccountError as err:
+            raise _error(err)

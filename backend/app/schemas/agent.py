@@ -108,6 +108,8 @@ class AgentUpdateRequest(BaseModel):
     use_helper: bool | None = None
     # Connected apps this agent may read, {app: "read"}; {} or null turns them all off.
     connector_scopes: dict[str, str] | None = None
+    # Exact Composio account IDs the agent may use, keyed by app. Empty denies all accounts.
+    connector_account_scopes: dict[str, list[str]] | None = None
     # An explicit null removes the fallback engine (and its model).
     fallback_provider: str | None = Field(default=None, min_length=1, max_length=64)
     fallback_model: str | None = Field(default=None, max_length=200)
@@ -161,6 +163,7 @@ class AgentResponse(BaseModel):
     fallback_provider: str | None = None
     fallback_model: str | None = None
     connector_scopes: dict | None = None
+    connector_account_scopes: dict[str, list[str]] = Field(default_factory=dict)
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime

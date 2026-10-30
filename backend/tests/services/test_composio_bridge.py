@@ -101,7 +101,8 @@ async def world(sessions, owner, fake, tmp_path, monkeypatch):
     runtime = ThreadRuntime(hub=ThreadHub(), adapters={"claude": engine}, owner_id=owner, _session_factory=sessions)
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=owner, name="Reader")
-        await agent_store.update_agent(db, agent.id, connector_scopes={"github": "read"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"github": "read"},
+                                       connector_account_scopes={"github": ["ca_1"]})
         await composio_service._save(db, owner, {"api_key": KEY, "user_id": "u1", "session_id": "sess_1"})
     yield runtime, engine, agent
     await runtime.shutdown()
@@ -196,7 +197,8 @@ async def test_an_approval_covers_exactly_those_arguments_and_once(world, fake):
 async def test_an_app_the_agent_was_not_given_is_denied_at_the_gate(world, fake, sessions):
     runtime, engine, agent = world
     async with sessions() as db:
-        await agent_store.update_agent(db, agent.id, connector_scopes={"gmail": "read"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"gmail": "read"},
+                                       connector_account_scopes={"gmail": ["ca_mail"]})
     seen = {}
 
     async def handler(ctx, sink, gate):
@@ -218,7 +220,7 @@ async def test_removing_the_app_mid_turn_stops_a_call_that_was_already_approved(
         handle = await gate.open(request_id=uuid4().hex, tool=PREFIX + "github_get_authenticated_user", input={}, summary=None, kind=None)
         assert (await gate.decide(handle)).kind == ALLOW
         async with sessions() as db:
-            await agent_store.update_agent(db, agent.id, connector_scopes=None)
+            await agent_store.update_agent(db, agent.id, connector_scopes=None, connector_account_scopes={})
         seen["answer"] = await ask(ctx, gate, "github_get_authenticated_user", {}, approve=False)
         return TurnOutcome("succeeded", result="ok")
 
@@ -228,6 +230,9 @@ async def test_removing_the_app_mid_turn_stops_a_call_that_was_already_approved(
 
 async def test_two_accounts_need_a_name_and_the_name_is_part_of_the_approval(world, fake):
     fake.accounts.append({"id": "ca_2", "toolkit": {"slug": "github"}, "alias": "home", "status": "ACTIVE", "user_id": "u1"})
+    runtime, _, agent = world
+    async with runtime.session() as db:
+        await agent_store.update_agent(db, agent.id, connector_account_scopes={"github": ["ca_1", "ca_2"]})
     seen = {}
 
     async def handler(ctx, sink, gate):
@@ -242,6 +247,37 @@ async def test_two_accounts_need_a_name_and_the_name_is_part_of_the_approval(wor
     assert seen["home"]["result"]["login"] == "o"
     assert seen["wrong"]["code"] == "unknown_account"
     assert [e["account"] for e in fake.executes] == ["ca_2"]
+
+
+async def test_an_unselected_account_is_hidden_and_cannot_be_called(world, fake):
+    fake.accounts.append({"id": "ca_2", "toolkit": {"slug": "github"}, "alias": "home", "status": "ACTIVE", "user_id": "u1"})
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        seen["accounts"] = await ask(ctx, gate, "list_accounts", {})
+        seen["home"] = await ask(ctx, gate, "github_get_authenticated_user", {"account": "home"})
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["accounts"] == {"apps": {"github": ["work"]}}
+    assert seen["home"]["code"] == "unknown_account"
+    assert fake.executes == []
+
+
+async def test_account_grant_revocation_stops_a_waiting_call(world, fake, sessions):
+    runtime, engine, agent = world
+    seen = {}
+
+    async def handler(ctx, sink, gate):
+        handle = await gate.open(request_id=uuid4().hex, tool=PREFIX + "github_get_authenticated_user", input={}, summary=None, kind=None)
+        assert (await gate.decide(handle)).kind == ALLOW
+        async with sessions() as db:
+            await agent_store.update_agent(db, agent.id, connector_account_scopes={})
+        seen["answer"] = await ask(ctx, gate, "github_get_authenticated_user", {}, approve=False)
+        return TurnOutcome("succeeded", result="ok")
+
+    await one_turn(world, handler)
+    assert seen["answer"]["code"] == "not_allowed" and fake.executes == []
 
 
 async def test_the_agent_can_see_account_names_but_not_ids_or_tokens(world, fake):
@@ -362,7 +398,8 @@ async def test_an_engine_that_cannot_mount_them_gets_none(sessions, owner, fake,
     runtime = ThreadRuntime(hub=ThreadHub(), adapters={"claude": engine}, owner_id=owner, _session_factory=sessions)
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=owner, name="Plain")
-        await agent_store.update_agent(db, agent.id, connector_scopes={"github": "read"})
+        await agent_store.update_agent(db, agent.id, connector_scopes={"github": "read"},
+                                       connector_account_scopes={"github": ["ca_1"]})
         await composio_service._save(db, owner, {"api_key": KEY, "user_id": "u1", "session_id": None})
     seen = {}
 
@@ -406,7 +443,8 @@ MADE = {"result_type": "completed", "error": None,
 
 async def set_level(sessions, agent, level):
     async with sessions() as db:
-        await agent_store.update_agent(db, agent.id, connector_scopes={"github": level} if level else None)
+        await agent_store.update_agent(db, agent.id, connector_scopes={"github": level} if level else None,
+                                       connector_account_scopes={"github": ["ca_1"]} if level else {})
 
 
 async def card(runtime, ctx, gate, name, args, decision="allow", sent=None):

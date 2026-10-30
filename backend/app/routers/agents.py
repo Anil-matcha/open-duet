@@ -192,6 +192,43 @@ async def _check_connector_scopes(rt: ThreadRuntime, scopes: dict | None, provid
     return dict(sorted(scopes.items()))
 
 
+async def _check_connector_account_scopes(rt: ThreadRuntime, account_scopes: dict | None,
+                                          app_scopes: dict | None) -> dict[str, list[str]]:
+    """Validate exact account IDs against this owner's active Composio links.
+
+    Account IDs are the authority; aliases are mutable labels and are never
+    accepted as grants. An empty map denies all accounts.
+    """
+    from app.services import composio_bridge, composio_service
+
+    if not account_scopes:
+        return {}
+    bad = _error(422, "invalid_connector_account_scopes",
+                 "Choose active connected account IDs for apps this agent is allowed to use.")
+    levels = app_scopes if isinstance(app_scopes, dict) else {}
+    requested: dict[str, list[str]] = {}
+    for app, ids in account_scopes.items():
+        if not isinstance(app, str) or app not in levels or not isinstance(ids, list) or len(ids) > composio_service.MAX_ACCOUNTS_PER_APP:
+            raise bad
+        if len(set(ids)) != len(ids):
+            raise bad
+        if any(not isinstance(account_id, str) or not account_id.strip() or len(account_id) > 300 for account_id in ids):
+            raise bad
+        if ids:
+            requested[app] = sorted(ids)
+    if not requested:
+        return {}
+    try:
+        async with rt.session() as db:
+            accounts = await composio_service.accounts(db, rt.owner_id, composio_bridge.make_client)
+    except composio_service.UserError as exc:
+        raise _error(exc.status, exc.code, exc.message) from None
+    active = {(account.toolkit, account.id) for account in accounts if account.status == "ACTIVE"}
+    if any((app, account_id) not in active for app, ids in requested.items() for account_id in ids):
+        raise bad
+    return dict(sorted(requested.items()))
+
+
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(payload: AgentCreateRequest, rt: ThreadRuntime = Depends(get_runtime)):
     if payload.make_lead:
@@ -278,14 +315,25 @@ async def update_agent(
             "fallback_provider",
             "fallback_model",
             "connector_scopes",
+            "connector_account_scopes",
         )
         if field in payload.model_fields_set
     }
+    account_scopes_submitted = "connector_account_scopes" in changes
     if "connector_scopes" in changes:
         changes["connector_scopes"] = await _check_connector_scopes(
             rt, changes["connector_scopes"], changes.get("provider", agent.provider), agent.connector_scopes)
+        if "connector_account_scopes" not in changes:
+            current_accounts = agent.connector_account_scopes if isinstance(agent.connector_account_scopes, dict) else {}
+            changes["connector_account_scopes"] = {
+                app: ids for app, ids in current_accounts.items()
+                if app in (changes["connector_scopes"] or {}) and isinstance(ids, list)
+            }
     elif agent.connector_scopes and changes.get("provider", agent.provider) != agent.provider:
         await _check_connector_scopes(rt, agent.connector_scopes, changes["provider"], agent.connector_scopes)
+    if account_scopes_submitted:
+        changes["connector_account_scopes"] = await _check_connector_account_scopes(
+            rt, changes["connector_account_scopes"], changes.get("connector_scopes", agent.connector_scopes))
     if "fallback_provider" in changes and changes["fallback_provider"] != agent.fallback_provider:
         changes.setdefault("fallback_model", None)  # the old fallback's model means nothing to the new one
     provider = changes.get("provider", agent.provider)
@@ -325,7 +373,7 @@ async def update_agent(
             agent = await store.update_agent(
                 db, agent_id, archived=payload.archived, make_lead=payload.make_lead, **changes
             )
-        if "connector_scopes" in changes or payload.archived:
+        if "connector_scopes" in changes or "connector_account_scopes" in changes or payload.archived:
             # What an agent has already run once (generic connected-app actions) is not carried over to new access.
             from app.services import composio_actions
             async with rt.session() as db:

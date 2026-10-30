@@ -326,7 +326,11 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
 
     case "skill.used": {
       // The skills the person picked for this turn's message, shown on that message.
-      const names = Array.isArray(data.names) ? data.names.filter((n): n is string => typeof n === "string") : [];
+      const names = Array.isArray(data.skills)
+        ? data.skills.filter((n): n is string => typeof n === "string")
+        : Array.isArray(data.names)
+          ? data.names.filter((n): n is string => typeof n === "string")
+          : [];
       if (id === null || names.length === 0) return base;
       return {
         ...base,

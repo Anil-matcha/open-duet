@@ -18,7 +18,8 @@ def test_grants_default_off_and_only_exact_actions():
 
 async def test_validate_exact_account_and_agent_scope(monkeypatch):
     from app.services import composio_service
-    agent = SimpleNamespace(owner_id="owner", archived_at=None, connector_scopes={READ.app: "read"})
+    agent = SimpleNamespace(owner_id="owner", archived_at=None, connector_scopes={READ.app: "read"},
+                            connector_account_scopes={READ.app: ["ca_test"]})
     class DB:
         async def get(self, *args):
             return agent
@@ -46,6 +47,7 @@ async def test_person_grant_round_trip_and_import_off(api, agent, sessions, monk
     async with sessions() as db:
         stored = await db.get(Agent, agent.id)
         stored.connector_scopes = {READ.app: "read"}
+        stored.connector_account_scopes = {READ.app: ["ca_test"]}
         await db.commit()
     async def accounts(*args):
         return [SimpleNamespace(id="ca_test", toolkit=READ.app, status="ACTIVE")]
@@ -76,6 +78,7 @@ async def test_send_email_requires_agent_write_scope(api, agent, sessions, monke
         async with sessions() as db:
             stored = await db.get(Agent, agent.id)
             stored.connector_scopes = {"gmail": level}
+            stored.connector_account_scopes = {"gmail": ["ca_mail"]}
             await db.commit()
     send = {"tool": "gmail_send_email", "account_id": "ca_mail"}
     body = {"agent_id": agent.id, "name": "Send mail", "prompt": "Review mail", "connected_app_grants": [send]}

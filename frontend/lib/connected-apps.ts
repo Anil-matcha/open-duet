@@ -114,6 +114,7 @@ export function supportsConnectedApps(provider: string): boolean {
 
 export type Level = "off" | "read" | "write";
 export type Scopes = Record<string, string>;
+export type AccountScopes = Record<string, string[]>;
 
 export function levelOf(scopes: Scopes | null | undefined, slug: string): Level {
   const level = scopes?.[slug];
@@ -125,6 +126,26 @@ export function withApp(scopes: Scopes | null | undefined, slug: string, level: 
   const next: Scopes = { ...(scopes ?? {}) };
   if (level === "off") delete next[slug]; else next[slug] = level;
   return next;
+}
+
+export function withAccount(scopes: AccountScopes | null | undefined, slug: string,
+                            accountId: string, allowed: boolean): AccountScopes {
+  const next = { ...(scopes ?? {}) };
+  const ids = new Set(Array.isArray(next[slug]) ? next[slug] : []);
+  if (allowed) ids.add(accountId); else ids.delete(accountId);
+  if (ids.size) next[slug] = [...ids].sort(); else delete next[slug];
+  return next;
+}
+
+export function accountScopesToSend(accountScopes: AccountScopes | null | undefined,
+                                    appScopes: Scopes | null | undefined,
+                                    provider: string): AccountScopes {
+  if (!supportsConnectedApps(provider)) return {};
+  return Object.fromEntries(Object.entries(accountScopes ?? {}).flatMap(([app, ids]) => {
+    if (levelOf(appScopes, app) === "off" || !Array.isArray(ids)) return [];
+    const selected = [...new Set(ids.filter((id) => typeof id === "string" && id.length > 0 && id.length <= 300))].sort();
+    return selected.length ? [[app, selected]] : [];
+  }));
 }
 
 // An app name as Composio writes it (lower case, letters, digits, - and _). It says nothing about the app existing:

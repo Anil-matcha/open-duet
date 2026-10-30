@@ -17,6 +17,8 @@ CREATE TABLE computer (
 	last_error TEXT, 
 	workspace_path VARCHAR, 
 	container_id VARCHAR, 
+	provider_generation VARCHAR DEFAULT 'legacy' NOT NULL,
+	provider_delete_id VARCHAR,
 	last_used_at TIMESTAMP WITH TIME ZONE, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 

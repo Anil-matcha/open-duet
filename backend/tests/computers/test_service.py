@@ -6,7 +6,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import delete, select
 
-from app.computers.provider import ComputerError, DockerProvider
+from app.computers.provider import ComputerError, DockerProvider, Health
 from app.computers.service import ComputerService, ComputerUnavailable, _utcnow
 from app.db.models import Agent, Computer
 from tests.computers.harness import IMAGE, docker  # noqa: F401
@@ -192,6 +192,38 @@ async def test_a_removal_cut_short_is_finished_later(service, agent, workspace, 
         assert await db.get(Computer, computer.id) is None
     assert docker.container(name) is None
     assert (await service.for_agent(agent.id)) is None
+
+
+async def test_upkeep_reloads_pending_cloud_removals_even_though_get_hides_them(service, agent, workspace, sessions):
+    class FinishedBoat:
+        key = "boat"
+
+        def __init__(self):
+            self.deleted = []
+
+        def health(self):
+            return Health("boat", True)
+
+        def delete(self, spec):
+            self.deleted.append(spec)
+            return None
+
+    boat = FinishedBoat()
+    service.providers["boat"] = boat
+    computer, _ = await service.create_for_agent(agent, workspace=workspace)
+    async with sessions() as db:
+        row = await db.get(Computer, computer.id)
+        row.provider = "boat"
+        row.state = "deleting"
+        row.provider_delete_id = "bdop_" + "a" * 32
+        await db.commit()
+
+    await service.upkeep()
+
+    assert len(boat.deleted) == 1
+    assert boat.deleted[0].provider_delete_id == "bdop_" + "a" * 32
+    async with sessions() as db:
+        assert await db.get(Computer, computer.id) is None
 
 
 async def test_deleting_keeps_the_workspace_files(service, agent, workspace, docker):  # noqa: F811

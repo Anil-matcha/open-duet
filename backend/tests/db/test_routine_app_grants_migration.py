@@ -2,6 +2,22 @@ import sqlite3
 from tests.db.sqlite_helpers import run_alembic
 
 
+def test_existing_agents_start_with_no_account_grants_and_downgrade(tmp_path):
+    database = tmp_path / "agent-account-scopes.db"
+    result = run_alembic(database, "upgrade", "f6b4d8a2c901")
+    assert result.returncode == 0, result.stderr
+    with sqlite3.connect(database) as db:
+        db.execute("INSERT INTO agent (owner_id,name) VALUES ('owner','Reader')")
+    result = run_alembic(database, "upgrade", "c7d4e2a91f60")
+    assert result.returncode == 0, result.stderr
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT connector_account_scopes FROM agent").fetchone() == ("{}",)
+    result = run_alembic(database, "downgrade", "f6b4d8a2c901")
+    assert result.returncode == 0, result.stderr
+    with sqlite3.connect(database) as db:
+        assert "connector_account_scopes" not in {row[1] for row in db.execute("PRAGMA table_info(agent)")}
+
+
 def test_existing_routines_keep_grants_off_and_downgrade(tmp_path):
     database = tmp_path / "routine-grants.db"
     result = run_alembic(database, "upgrade", "d4b9e1a37c58")

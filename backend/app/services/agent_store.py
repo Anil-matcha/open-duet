@@ -38,6 +38,7 @@ _EDITABLE = (
     "fallback_provider",
     "fallback_model",
     "connector_scopes",
+    "connector_account_scopes",
 )
 
 

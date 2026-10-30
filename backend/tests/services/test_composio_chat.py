@@ -73,7 +73,10 @@ async def agent_with(rt, sessions, scopes):  # noqa: F811
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=rt.owner_id, name="Reader")
         if scopes is not None:
-            await agent_store.update_agent(db, agent.id, connector_scopes=scopes)
+            account_ids = {"github": ["ca_1"], "notion": ["ca_n"], "gmail": ["ca_mail"],
+                           "googlecalendar": ["ca_calendar"]}
+            await agent_store.update_agent(db, agent.id, connector_scopes=scopes,
+                connector_account_scopes={app: account_ids[app] for app in scopes if app in account_ids})
         await composio_service._save(db, rt.owner_id, {"api_key": KEY, "user_id": "u1", "session_id": "sess_1"})
     return agent
 
