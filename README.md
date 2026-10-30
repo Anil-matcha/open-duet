@@ -35,13 +35,32 @@ does not include a model or a model subscription.
   [routines](docs/ROUTINES.md).
 - **Stay in control.** Choose Ask first, Accept edits, or Plan only. Review
   tool activity and approval decisions in the app. Agents can also be given
-  an isolated Docker computer; computer and browser access are experimental
-  and off until you enable them.
+  an isolated Docker computer, a Boat cloud computer (desktop app only), or a
+  local browser; computer and browser access are experimental and off until
+  you enable them.
+- **Connect your apps.** Browse and connect apps such as GitHub, Gmail and
+  Google Calendar from the Apps page (through your own Composio key), then
+  choose which Claude or Codex agents may use which connected accounts. Calls
+  that change anything wait for your approval. See
+  [connected apps](docs/CONNECTED_APPS.md).
+- **Add tools from the MCP Marketplace.** Browse a GitHub-backed catalog of community and tested remote
+  MCP servers, store credentials separately, and grant an agent exact tools,
+  with one-time approvals for calls. Source implementation only; live-service
+  qualification remains.
+- **See what needs you.** The Today view gathers pending approvals and
+  questions, routine outcomes, engine failures and due tasks, and can show
+  read-only Gmail and calendar items. Routines can report quiet results and
+  draft replies for your review. Ask for a refreshed brief from chat. See [everyday features](docs/EVERYDAY.md).
+- **Reuse instructions.** Save skills, which are text instructions you pick
+  per message, and start new agents from templates. See [skills](docs/SKILLS.md)
+  and [templates](docs/TEMPLATES.md).
 - **Use it from your phone.** Pair the phone app with your own server to chat,
   stop an answer and allow or deny a tool call. It is early and source-only; see
   the [phone app guide](docs/MOBILE.md).
 - **Keep track of work.** Search conversations, attach text files and images,
-  browse or download workspace files, and review reported token use and cost.
+  import audio for transcription (with your consent and credentials), browse or
+  download workspace files, export your history, and review reported token use
+  and cost.
 - **Plan tasks and deadlines.** Keep work on a board, assign an agent or team,
   and review deadlines alongside routine occurrences in a week or month
   calendar. Start an agent from a card, schedule a one-time run, and review
@@ -77,8 +96,8 @@ a hosted model or a model subscription.
 
 ## Choose an engine
 
-Connect an engine you already use: Claude Code or Codex CLI, Gemini CLI or
-Cursor, another command-line agent using the Agent Client Protocol (ACP),
+Connect an engine you already use: Claude Code or Codex CLI, Gemini CLI,
+Google Gemini through Antigravity, Cursor, another command-line agent using the Agent Client Protocol (ACP),
 OpenRouter, or an OpenAI-compatible API such as Ollama or LM Studio. Available
 tools vary by engine; for example, image input and agent computers are not
 supported by every engine.
@@ -120,7 +139,7 @@ workspace and approval mode, and can create a starter agent. Then:
    approval before actions that need it.
 4. Add teammates or a routine when you want to split up work or repeat it later.
 
-As of 2026-10-28, the [Releases page](https://github.com/Anil-matcha/open-duet/releases) has a Windows x64 installer and macOS arm64 DMG for `v0.5.0` (listed as a pre-release, so it is not under "latest"). Both are experimental and unsigned. The macOS installer omits native desktop preview; that preview remains available from a source checkout with the reviewed bundle staged. The app includes an assisted update flow that offers a SHA-256-verified installer for you to open; it does not install updates automatically. The release-to-release update path has not been verified end to end.
+As of 2026-10-30, the [Releases page](https://github.com/Anil-matcha/open-duet/releases) has a Windows x64 installer and macOS arm64 DMG for `v0.6.0` (listed as a pre-release, so it is not under "latest"). Newer work, such as the MCP Marketplace and cloud computers, is on `main` and may not be in that installer; see the [changelog](CHANGELOG.md). Both installers are experimental and unsigned. The macOS installer omits native desktop preview; that preview remains available from a source checkout with the reviewed bundle staged. The app includes an assisted update flow that offers a SHA-256-verified installer for you to open; it does not install updates automatically. The release-to-release update path has not been verified end to end.
 
 ## Scheduling tasks
 
@@ -147,9 +166,13 @@ is needed for the agent workspace.
   [desktop setup details](docs/SETUP.md#desktop-app-from-a-source-checkout-experimental).
 - Open Duet does not provide model access. You are responsible for your model
   provider's account, terms, and usage costs.
-- A built-in catalog of integrations such as Gmail, Slack, and Notion is not
-  available yet. The optional Telegram and Boat flow remains separate from
-  the agent workspace.
+- Connected apps are reached through Composio and tested against a fake
+  Composio, not yet the real service. Only Claude and Codex agents can use
+  them, and every change to an app waits for your approval. The MCP
+  Marketplace, Boat cloud computers, quiet routine results and audio
+  transcription have not had live-service or packaged-app qualification. The
+  optional Telegram and Boat task flow remains separate from the agent
+  workspace.
 
 ## Guides
 
@@ -161,7 +184,11 @@ is needed for the agent workspace.
 - [Routines](docs/ROUTINES.md)
 - [Tasks and calendar](docs/TASKS.md)
 - [Connected apps](docs/CONNECTED_APPS.md)
-- [Agent computers](docs/COMPUTERS.md) and [browser tools](docs/BROWSER.md)
+- [Skills](docs/SKILLS.md) and [templates](docs/TEMPLATES.md)
+- [Everyday features](docs/EVERYDAY.md): search, attachments, audio, Today
+- [Agent computers](docs/COMPUTERS.md), [native desktop](docs/NATIVE-DESKTOP.md) and [browser tools](docs/BROWSER.md)
+- [Features](docs/FEATURES.md), [capability matrix](docs/CAPABILITIES.md) and [roadmap](docs/ROADMAP.md)
+- [Changelog](CHANGELOG.md)
 - [Self-hosting](docs/SELF-HOSTING.md)
 - [Phone app](docs/MOBILE.md)
 - [Contributing](docs/CONTRIBUTING.md)
