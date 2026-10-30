@@ -17,6 +17,8 @@ export type Palette = {
   surface: string;
   /** Code blocks and inline code (the web's code background, set into a bubble). */
   surfaceStrong: string;
+  /** The person's own messages (the web's neutral bubble); `text` is the text on it. */
+  bubbleUser: string;
   text: string;
   muted: string;
   border: string;
@@ -28,6 +30,8 @@ export type Palette = {
   accentText: string;
   /** Red text and outlines. `dangerFill` is a red button with `onAccent` text on it. */
   danger: string;
+  /** Something went right (the web's success colour). */
+  success: string;
   dangerFill: string;
   notice: string;
   /** The approval card and the reconnecting banner. */
@@ -41,6 +45,7 @@ export const light: Palette = {
   background: '#f7f6f3',
   surface: '#e9e6df',
   surfaceStrong: '#f0ede6',
+  bubbleUser: '#ebe7dd',
   text: '#1c1b19',
   muted: '#5b574f',
   border: '#dcd8cf',
@@ -49,6 +54,7 @@ export const light: Palette = {
   onAccent: '#ffffff',
   accentText: '#3151c8',
   danger: '#b92b27',
+  success: '#17703f',
   dangerFill: '#b92b27',
   notice: '#8f5200',
   warnBackground: '#fff8e1',
@@ -61,6 +67,7 @@ export const dark: Palette = {
   background: '#0e0e10',
   surface: '#2a2a2e',
   surfaceStrong: '#19191c',
+  bubbleUser: '#2a2a30',
   text: '#ececee',
   muted: '#a3a3ab',
   border: '#2f2f35',
@@ -69,6 +76,7 @@ export const dark: Palette = {
   onAccent: '#0b0d14',
   accentText: '#7b95ff',
   danger: '#ff7b7b',
+  success: '#4cc38a',
   dangerFill: '#ff7b7b',
   notice: '#e5a03a',
   warnBackground: '#2e2608',
@@ -83,6 +91,9 @@ export const dark: Palette = {
  * checks them. `round` makes a circle of any small square.
  */
 export const radius = { field: 10, card: 14, round: 999 } as const;
+
+/** The smallest a tappable control may be, in points (the platform guidelines say 44 on iOS and 48 dp on Android; 44 here, with `hitSlop` for a smaller-looking one). */
+export const touch = { min: 44 } as const;
 
 export function paletteFor(scheme: string | null | undefined): Palette {
   return scheme === 'dark' ? dark : light;

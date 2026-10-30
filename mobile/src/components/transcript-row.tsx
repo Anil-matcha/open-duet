@@ -95,14 +95,16 @@ export function TranscriptRow({ row, attachmentSource }: Props) {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
-    bubble: { maxWidth: '88%', borderRadius: radius.card, paddingHorizontal: 12, paddingVertical: 8, marginVertical: 4 },
-    user: { alignSelf: 'flex-end', backgroundColor: p.accent },
-    assistant: { alignSelf: 'flex-start', backgroundColor: p.surface },
-    userText: { color: p.onAccent, fontSize: 16 },
+    // As on the web: the person's message is a neutral bubble with a small corner at the bottom right, and
+    // the agent's answer is plain text with no bubble.
+    bubble: { marginVertical: 4 },
+    user: { alignSelf: 'flex-end', maxWidth: '88%', backgroundColor: p.bubbleUser, borderRadius: radius.card, borderBottomRightRadius: 6, paddingHorizontal: 14, paddingVertical: 10 },
+    assistant: { alignSelf: 'stretch', paddingHorizontal: 4, paddingVertical: 4 },
+    userText: { color: p.text, fontSize: 16 },
     assistantText: { color: p.text, fontSize: 16 },
     files: { gap: 6, marginBottom: 6 },
-    thumb: { width: 180, height: 180, borderRadius: radius.field, backgroundColor: '#ffffff33' },
-    fileChip: { color: p.onAccent, fontSize: 13, backgroundColor: '#ffffff33', borderRadius: radius.field, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
+    thumb: { width: 180, height: 180, borderRadius: radius.field, backgroundColor: p.surface },
+    fileChip: { color: p.text, fontSize: 13, backgroundColor: p.surface, borderRadius: radius.field, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
     muted: { color: p.muted, fontSize: 12, marginTop: 4 },
     line: { color: p.muted, fontSize: 13, marginVertical: 3, paddingHorizontal: 4 },
     approval: { alignSelf: 'stretch', borderWidth: 1, borderColor: p.warnBorder, backgroundColor: p.warnBackground, borderRadius: radius.field, padding: 10, marginVertical: 6 },

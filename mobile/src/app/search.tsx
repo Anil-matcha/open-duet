@@ -7,7 +7,7 @@ import { KeyboardScreen } from '@/components/keyboard-screen';
 import { highlightPieces, hitLabel, hitTarget, MIN_SEARCH_CHARS, type SearchHit } from '@/lib/search';
 import { relativeTime } from '@/lib/time';
 import { useSearch } from '@/lib/use-search';
-import { radius, useStyles, useTheme, type Palette } from '@/lib/theme';
+import { radius, touch, useStyles, useTheme, type Palette } from '@/lib/theme';
 
 function Hit({ hit, onOpen }: { hit: SearchHit; onOpen: () => void }) {
   const styles = useStyles(createStyles);
@@ -106,7 +106,7 @@ const createStyles = (p: Palette) =>
     center: { alignItems: 'center', marginTop: 40, gap: 12 },
     hint: { textAlign: 'center', marginTop: 40, paddingHorizontal: 24, fontSize: 16, color: p.muted },
     error: { color: p.danger, textAlign: 'center', paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
-    retry: { borderWidth: 1, borderColor: p.accentText, borderRadius: radius.field, paddingHorizontal: 16, paddingVertical: 10 },
+    retry: { minHeight: touch.min, justifyContent: 'center', borderWidth: 1, borderColor: p.accentText, borderRadius: radius.field, paddingHorizontal: 16 },
     retryText: { color: p.accentText, fontSize: 16, fontWeight: '600' },
     more: { marginVertical: 16 },
     row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },

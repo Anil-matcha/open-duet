@@ -1,14 +1,18 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';
 import { ApprovalCard } from '@/components/approval-card';
 import { Composer } from '@/components/composer';
+import { ConversationTitle } from '@/components/conversation-title';
+import { JumpToLatest } from '@/components/jump-to-latest';
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { TranscriptRow, type Row } from '@/components/transcript-row';
+import { agentName, type Agent } from '@/lib/agents';
 import { rowKeyForSeq } from '@/lib/search';
 import { pendingApprovals } from '@/lib/transcript';
+import { useApi } from '@/lib/use-api';
 import { useThread } from '@/lib/use-thread';
 import { useStyles, type Palette } from '@/lib/theme';
 
@@ -24,6 +28,14 @@ export default function Thread() {
   // A conversation opened at a search result stays there instead of following the end.
   const stuckToEnd = useRef(targetKey === null);
   const jumped = useRef(false);
+  // Shown while the reader is scrolled up from the newest message.
+  const [away, setAway] = useState(false);
+  // Only to put the agent's name in the header; without it the header shows the title alone.
+  const api = useApi();
+  const [agents, setAgents] = useState<Agent[]>([]);
+  useEffect(() => {
+    api?.listAgents().then(setAgents, () => undefined);
+  }, [api]);
 
   const waiting = pendingApprovals(transcript.items);
   const rows: Row[] = transcript.typing ? [...transcript.items, { kind: 'typing', key: 'typing', text: transcript.typing }] : transcript.items;
@@ -43,7 +55,12 @@ export default function Thread() {
 
   return (
     <KeyboardScreen>
-      <Stack.Screen options={{ title: thread?.title || 'Conversation' }} />
+      <Stack.Screen
+        options={{
+          title: thread?.title || 'Conversation',
+          headerTitle: () => <ConversationTitle title={thread?.title || 'Conversation'} agentId={thread?.agent_id ?? null} agentName={agentName(agents, thread?.agent_id)} />,
+        }}
+      />
       {BANNER[connection] ? <Text style={styles.banner}>{BANNER[connection]}</Text> : null}
       {!loaded ? (
         <View style={styles.center}>
@@ -54,36 +71,49 @@ export default function Thread() {
           <Text style={styles.empty}>Say something to start.</Text>
         </View>
       ) : (
-        <FlatList
-          ref={list}
-          style={styles.list}
-          keyboardShouldPersistTaps="handled"
-          onLayout={() => {
-            if (stuckToEnd.current) list.current?.scrollToEnd({ animated: false });
-          }}
-          data={rows}
-          keyExtractor={(row) => row.key}
-          renderItem={({ item }) => (
-            <View style={item.key === targetKey ? styles.target : undefined}>
-              <TranscriptRow row={item} attachmentSource={attachmentSource} />
-            </View>
-          )}
-          // Rows further down are not measured yet: go near, then to the row itself.
-          onScrollToIndexFailed={(info) => {
-            list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
-            setTimeout(() => list.current?.scrollToIndex({ index: info.index, viewPosition: 0.15, animated: false }), 100);
-          }}
-          contentContainerStyle={styles.content}
-          // Follow new text unless the person scrolled up to read.
-          onScroll={({ nativeEvent }) => {
-            const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
-            stuckToEnd.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 80;
-          }}
-          scrollEventThrottle={100}
-          onContentSizeChange={() => {
-            if (stuckToEnd.current) list.current?.scrollToEnd({ animated: true });
-          }}
-        />
+        <View style={styles.list}>
+          <FlatList
+            ref={list}
+            testID="conversation-list"
+            style={styles.list}
+            keyboardShouldPersistTaps="handled"
+            onLayout={() => {
+              if (stuckToEnd.current) list.current?.scrollToEnd({ animated: false });
+            }}
+            data={rows}
+            keyExtractor={(row) => row.key}
+            renderItem={({ item }) => (
+              <View style={item.key === targetKey ? styles.target : undefined}>
+                <TranscriptRow row={item} attachmentSource={attachmentSource} />
+              </View>
+            )}
+            // Rows further down are not measured yet: go near, then to the row itself.
+            onScrollToIndexFailed={(info) => {
+              list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+              setTimeout(() => list.current?.scrollToIndex({ index: info.index, viewPosition: 0.15, animated: false }), 100);
+            }}
+            contentContainerStyle={styles.content}
+            // Follow new text unless the person scrolled up to read.
+            onScroll={({ nativeEvent }) => {
+              const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+              stuckToEnd.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 80;
+              setAway(!stuckToEnd.current);
+            }}
+            scrollEventThrottle={100}
+            onContentSizeChange={() => {
+              if (stuckToEnd.current) list.current?.scrollToEnd({ animated: true });
+            }}
+          />
+          {away ? (
+            <JumpToLatest
+              onPress={() => {
+                stuckToEnd.current = true;
+                setAway(false);
+                list.current?.scrollToEnd({ animated: true });
+              }}
+            />
+          ) : null}
+        </View>
       )}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">

@@ -1,35 +1,29 @@
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Link, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, useColorScheme, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { PairingLinkHandler } from '@/components/pairing-link-handler';
-import { FontsLoadedContext, useFont } from '@/components/text';
+import { FontsLoadedContext, Text, useFont } from '@/components/text';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { FONT_FILES } from '@/lib/font-assets';
-import { useTheme } from '@/lib/theme';
+import { touch, useTheme } from '@/lib/theme';
 
-function SettingsLink() {
+// A header link is a full-size touch target around its words, with room on the side facing the title.
+function HeaderLink({ href, label, side }: { href: '/settings' | '/rooms'; label: string; side: 'left' | 'right' }) {
   const theme = useTheme();
-  const style = useFont({ color: theme.accentText, fontWeight: '500' });
   return (
-    <Link href="/settings" style={style}>
-      Settings
+    <Link href={href} asChild>
+      <Pressable accessibilityRole="link" hitSlop={8} style={{ minHeight: touch.min, minWidth: touch.min, justifyContent: 'center', alignItems: side === 'left' ? 'flex-start' : 'flex-end', ...(side === 'left' ? { marginRight: 16 } : {}) }}>
+        <Text style={{ color: theme.accentText, fontWeight: '500', fontSize: 16 }}>{label}</Text>
+      </Pressable>
     </Link>
   );
 }
 
-function RoomsLink() {
-  const theme = useTheme();
-  // Room to the right, so the link does not touch the title beside it.
-  const style = useFont({ color: theme.accentText, fontWeight: '500', marginRight: 16 });
-  return (
-    <Link href="/rooms" style={style}>
-      Rooms
-    </Link>
-  );
-}
+const SettingsLink = () => <HeaderLink href="/settings" label="Settings" side="right" />;
+const RoomsLink = () => <HeaderLink href="/rooms" label="Rooms" side="left" />;
 
 function RootStack({ ready }: { ready: boolean }) {
   const { state } = useAuth();

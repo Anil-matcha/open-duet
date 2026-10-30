@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';
 import { parsePairingLink } from '@/lib/pairing-link';
-import { radius, useStyles, type Palette } from '@/lib/theme';
+import { radius, touch, useStyles, type Palette } from '@/lib/theme';
 
 export default function Scan() {
   const styles = useStyles(createStyles);
@@ -23,7 +23,7 @@ export default function Scan() {
         <Pressable accessibilityRole="button" style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Allow camera</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.back()}>
+        <Pressable accessibilityRole="button" hitSlop={16} onPress={() => router.back()}>
           <Text style={styles.link}>Type the code instead</Text>
         </Pressable>
       </View>
@@ -56,7 +56,7 @@ const createStyles = (p: Palette) =>
     fill: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
     text: { fontSize: 16, textAlign: 'center', color: p.text },
-    button: { backgroundColor: p.accent, borderRadius: radius.field, paddingVertical: 12, paddingHorizontal: 20 },
+    button: { minHeight: touch.min, justifyContent: 'center', backgroundColor: p.accent, borderRadius: radius.field, paddingHorizontal: 20 },
     buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
     link: { color: p.accentText, fontSize: 16 },
     // Over the camera picture, so it does not follow the look.

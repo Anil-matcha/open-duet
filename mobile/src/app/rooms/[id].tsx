@@ -1,14 +1,15 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';
 import { ApprovalCard } from '@/components/approval-card';
 import { Composer } from '@/components/composer';
+import { JumpToLatest } from '@/components/jump-to-latest';
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { RoomMessage } from '@/components/room-message';
 import { mentionNames, workingNames, type RoomItem } from '@/lib/rooms';
-import { useStyles, type Palette } from '@/lib/theme';
+import { touch, useStyles, type Palette } from '@/lib/theme';
 import { useRoom } from '@/lib/use-room';
 
 const BANNER: Record<string, string> = { connecting: 'Connecting…', reconnecting: 'Reconnecting…' };
@@ -21,6 +22,8 @@ export default function RoomScreen() {
   const styles = useStyles(createStyles);
   const list = useRef<FlatList<RoomItem>>(null);
   const stuckToEnd = useRef(true);
+  // Shown while the reader is scrolled up from the newest message.
+  const [away, setAway] = useState(false);
   const working = workingNames(room);
 
   return (
@@ -36,26 +39,39 @@ export default function RoomScreen() {
           <Text style={styles.empty}>No messages yet. Tag an agent with @ to get its attention.</Text>
         </View>
       ) : (
-        <FlatList
-          ref={list}
-          style={styles.list}
-          keyboardShouldPersistTaps="handled"
-          onLayout={() => {
-            if (stuckToEnd.current) list.current?.scrollToEnd({ animated: false });
-          }}
-          data={items}
-          keyExtractor={(item) => item.key}
-          renderItem={({ item }) => <RoomMessage item={item} />}
-          contentContainerStyle={styles.content}
-          onScroll={({ nativeEvent }) => {
-            const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
-            stuckToEnd.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 80;
-          }}
-          scrollEventThrottle={100}
-          onContentSizeChange={() => {
-            if (stuckToEnd.current) list.current?.scrollToEnd({ animated: true });
-          }}
-        />
+        <View style={styles.list}>
+          <FlatList
+            ref={list}
+            testID="conversation-list"
+            style={styles.list}
+            keyboardShouldPersistTaps="handled"
+            onLayout={() => {
+              if (stuckToEnd.current) list.current?.scrollToEnd({ animated: false });
+            }}
+            data={items}
+            keyExtractor={(item) => item.key}
+            renderItem={({ item }) => <RoomMessage item={item} />}
+            contentContainerStyle={styles.content}
+            onScroll={({ nativeEvent }) => {
+              const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+              stuckToEnd.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 80;
+              setAway(!stuckToEnd.current);
+            }}
+            scrollEventThrottle={100}
+            onContentSizeChange={() => {
+              if (stuckToEnd.current) list.current?.scrollToEnd({ animated: true });
+            }}
+          />
+          {away ? (
+            <JumpToLatest
+              onPress={() => {
+                stuckToEnd.current = true;
+                setAway(false);
+                list.current?.scrollToEnd({ animated: true });
+              }}
+            />
+          ) : null}
+        </View>
       )}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
@@ -76,7 +92,7 @@ export default function RoomScreen() {
           <Text style={styles.workingText} numberOfLines={1}>
             {working.length ? `${working.join(', ')} working…` : 'Working…'}
           </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={() => void stop()}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Stop" hitSlop={12} onPress={() => void stop()}>
             <Text style={styles.stop}>Stop</Text>
           </Pressable>
         </View>
@@ -94,7 +110,7 @@ const createStyles = (p: Palette) =>
     empty: { fontSize: 16, color: p.muted, textAlign: 'center' },
     banner: { textAlign: 'center', paddingVertical: 4, backgroundColor: p.warnBackground, color: p.warnText, fontSize: 13 },
     error: { color: p.danger, paddingHorizontal: 12, paddingVertical: 6, fontSize: 14 },
-    working: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: p.surface },
+    working: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: touch.min, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: p.surface },
     workingText: { flex: 1, color: p.muted, fontSize: 13 },
     stop: { color: p.danger, fontSize: 15, fontWeight: '700', paddingLeft: 12 },
   });

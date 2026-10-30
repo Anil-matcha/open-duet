@@ -98,6 +98,25 @@ describe('Thread', () => {
     items: Array.from({ length: 12 }, (_, n) => ({ kind: 'assistant' as const, key: `e${n + 1}`, turnId: 1, text: `message ${n + 1}`, incomplete: false })),
   });
 
+  const scrolled = (y: number) => ({ nativeEvent: { contentOffset: { x: 0, y }, contentSize: { width: 300, height: 3000 }, layoutMeasurement: { width: 300, height: 600 } } });
+
+  it('offers a jump to the latest message only while scrolled up from it, and goes there', async () => {
+    const toEnd = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => undefined);
+    mockThreadState = { ...mockThreadState, transcript: longConversation() };
+    await render(<Thread />);
+    expect(screen.queryByLabelText('Jump to latest')).toBeNull();
+
+    await fireEvent.scroll(screen.getByTestId('conversation-list'), scrolled(0));
+    await fireEvent.press(screen.getByLabelText('Jump to latest'));
+    expect(toEnd).toHaveBeenLastCalledWith({ animated: true });
+    expect(screen.queryByLabelText('Jump to latest')).toBeNull();
+
+    // Back near the end, the button stays away.
+    await fireEvent.scroll(screen.getByTestId('conversation-list'), scrolled(2380));
+    expect(screen.queryByLabelText('Jump to latest')).toBeNull();
+    toEnd.mockRestore();
+  });
+
   it('opens at the message a search found instead of the end', async () => {
     const toIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex').mockImplementation(() => undefined);
     const toEnd = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => undefined);

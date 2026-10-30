@@ -5,7 +5,7 @@ import { Text } from '@/components/text';
 import { MONO } from '@/lib/fonts';
 import { approvalFields, previewValue } from '@/lib/approval-text';
 import type { TranscriptItem } from '@/lib/transcript';
-import { radius, useStyles, type Palette } from '@/lib/theme';
+import { radius, touch, useStyles, type Palette } from '@/lib/theme';
 
 
 type Approval = Extract<TranscriptItem, { kind: 'approval' }>;
@@ -30,7 +30,7 @@ function Field({ name, value }: { name: string; value: string }) {
         {expanded || !cut ? value : `${text}…`}
       </Text>
       {cut ? (
-        <Pressable accessibilityRole="button" onPress={() => setExpanded((open) => !open)}>
+        <Pressable accessibilityRole="button" hitSlop={12} onPress={() => setExpanded((open) => !open)}>
           <Text style={styles.link}>{expanded ? 'Show less' : 'Show all'}</Text>
         </Pressable>
       ) : null}
@@ -95,7 +95,7 @@ const createStyles = (p: Palette) =>
     fieldValue: { fontSize: 14, color: p.text, fontFamily: MONO },
     link: { fontSize: 13, color: p.accentText, paddingVertical: 4 },
     buttons: { flexDirection: 'row', gap: 10, marginTop: 12 },
-    button: { flex: 1, borderRadius: radius.field, paddingVertical: 12, alignItems: 'center' },
+    button: { flex: 1, minHeight: touch.min, borderRadius: radius.field, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
     allow: { backgroundColor: p.accent },
     deny: { backgroundColor: p.background, borderWidth: 1, borderColor: p.danger },
     buttonText: { color: p.onAccent, fontSize: 16, fontWeight: '600' },
