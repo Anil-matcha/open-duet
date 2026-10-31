@@ -122,10 +122,13 @@ async def test_codex_waits_for_the_exact_routine_connected_app_server(crt, sessi
     await crt.send_turn(thread.id, "Search authorized Gmail.")
     await finished(sessions, thread.id)
 
-    server = codex.received("thread/start")[0]["params"]["config"]["mcp_servers"]["open_dots_composio"]
+    started = codex.received("thread/start")[0]["params"]
+    server = started["config"]["mcp_servers"]["open_dots_composio"]
     assert server["enabled_tools"] == ["gmail_fetch_emails"]
     assert server["required"] is True and server["startup_timeout_sec"] == 10
     assert server["default_tools_approval_mode"] == "prompt"
+    assert "exactly these tools: gmail_fetch_emails" in started["developerInstructions"]
+    assert "call the matching tool before concluding that the app is unavailable" in started["developerInstructions"]
 
 
 async def test_a_chat_turn_then_a_resumed_one(crt, sessions, owner, codex):
