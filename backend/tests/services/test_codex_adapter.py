@@ -2,9 +2,10 @@
 `codex` (tests/services/fake_codex_cli.py)."""
 
 import json
+from pathlib import Path
 import stat
 import sys
-from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete
@@ -104,6 +105,27 @@ def test_policy_mapping():
     assert codex_policy("accept_edits", True).approval == "untrusted"
     assert codex_policy("plan", True) == codex_adapter.CodexPolicy("never", "read-only", "readOnly")
     assert codex_policy("ask", False).sandbox == "read-only"
+
+
+async def test_codex_waits_for_the_exact_routine_connected_app_server(crt, sessions, codex, monkeypatch):
+    thread = await crt.create_thread(provider="codex")
+    adapter = crt.adapters["codex"]
+    run_turn = adapter.run_turn
+
+    async def with_routine_grant(ctx, sink, gate):
+        ctx.composio_launch = SimpleNamespace(command="composio-mcp", args=[], env={})
+        ctx.composio_apps = {"gmail": "read"}
+        ctx.composio_exact_tools = ["gmail_fetch_emails"]
+        return await run_turn(ctx, sink, gate)
+
+    monkeypatch.setattr(adapter, "run_turn", with_routine_grant)
+    await crt.send_turn(thread.id, "Search authorized Gmail.")
+    await finished(sessions, thread.id)
+
+    server = codex.received("thread/start")[0]["params"]["config"]["mcp_servers"]["open_dots_composio"]
+    assert server["enabled_tools"] == ["gmail_fetch_emails"]
+    assert server["required"] is True and server["startup_timeout_sec"] == 10
+    assert server["default_tools_approval_mode"] == "prompt"
 
 
 async def test_a_chat_turn_then_a_resumed_one(crt, sessions, owner, codex):

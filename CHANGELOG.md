@@ -7,6 +7,9 @@
 - Remove the server-wide routine connected-app switch. Explicitly granted
   scheduled and manual routine actions are eligible immediately, subject to
   current agent permissions, active accounts and existing run restrictions.
+- Require Codex to initialize a routine's exact connected-app tools before its
+  turn starts, waiting up to 10 seconds so missing tools cannot be mistaken for
+  unchecked access.
 
 ## 0.7.0 - 2026-10-30
 

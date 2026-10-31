@@ -900,8 +900,20 @@ class ThreadRuntime:
         person started, on an engine that can mount them, for an agent the person
         allowed, with a Composio key saved, and not in an agent computer (its data
         would leave the sandbox)."""
-        if run.agent_id is None or not capabilities_of(adapter).connected_apps or run.ctx.computer is not None:
+        is_routine = getattr(run, "routine_run_id", None) is not None
+
+        def unavailable(reason: str) -> dict:
+            if is_routine:
+                logger.warning("routine connected-app tools were not mounted", reason=reason,
+                               routine_run_id=run.routine_run_id, thread_id=run.thread_id)
             return {}
+
+        if run.agent_id is None:
+            return unavailable("missing_agent")
+        if not capabilities_of(adapter).connected_apps:
+            return unavailable("engine_does_not_support_connected_apps")
+        if run.ctx.computer is not None:
+            return unavailable("computer_attached")
         try:
             from app.db.models import Agent, Turn
             from app.services import composio_service
@@ -909,21 +921,23 @@ class ThreadRuntime:
             async with self.session() as db:
                 agent = await db.get(Agent, run.agent_id)
                 turn = await db.get(Turn, run.turn_id)
+                if is_routine and (turn is None or turn.origin != "routine"):
+                    return unavailable("routine_turn_not_linked")
                 apps = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None and agent.owner_id == self.owner_id else {}
                 account_scopes = accounts_for(agent.connector_account_scopes) if apps else {}
                 apps = {app: level for app, level in apps.items() if account_scopes.get(app)}
                 run.ctx.composio_account_scopes = {app: ids for app, ids in account_scopes.items() if app in apps}
                 if not apps:
-                    return {}
+                    return unavailable("agent_app_or_account_scope_missing")
                 if turn is not None and turn.origin not in (None, "person"):
                     from app.db.models.routine import Routine, RoutineRun
                     if turn.origin != "routine":
-                        return {}
+                        return unavailable("turn_origin_not_routine")
                     rr = await db.get(RoutineRun, run.routine_run_id) if run.routine_run_id else None
                     routine = await db.get(Routine, rr.routine_id) if rr else None
                     if (not routine or routine.owner_id != self.owner_id or routine.agent_id != run.agent_id
                             or rr.trigger not in ("schedule", "manual") or rr.thread_id != run.thread_id):
-                        return {}
+                        return unavailable("run_not_eligible")
                     from app import composio_tools
                     run.routine_id = routine.id
                     run.routine_grants = {
@@ -936,11 +950,17 @@ class ThreadRuntime:
                     apps = {app: ("write" if any(composio_tools.BY_NAME[t].app == app and composio_tools.BY_NAME[t].kind == "write" for t in run.routine_grants) else "read")
                             for app in {composio_tools.BY_NAME[t].app for t in run.routine_grants}}
                     if not apps:
-                        return {}
-                return apps if await composio_service.configured(db, self.owner_id) else {}
+                        return unavailable("routine_grants_not_in_agent_scope")
+                if not await composio_service.configured(db, self.owner_id):
+                    return unavailable("composio_not_configured")
+                if is_routine:
+                    logger.info("routine connected-app tools mounted", apps=sorted(apps),
+                                tools=sorted(getattr(run, "routine_grants", {})),
+                                routine_run_id=run.routine_run_id, thread_id=run.thread_id)
+                return apps
         except Exception:  # noqa: BLE001
             logger.exception("could not work out connected apps; the turn goes on without them", thread_id=run.thread_id)
-            return {}
+            return unavailable("runtime_check_failed")
 
     async def _recall(self, agent, thread_id: int, prompt_text: str):
         """Passages from the agent's topic notes and other conversations for
