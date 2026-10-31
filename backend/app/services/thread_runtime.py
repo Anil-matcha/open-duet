@@ -917,8 +917,7 @@ class ThreadRuntime:
                     return {}
                 if turn is not None and turn.origin not in (None, "person"):
                     from app.db.models.routine import Routine, RoutineRun
-                    from app.core.config import settings
-                    if not settings.ROUTINE_CONNECTED_APPS_ENABLED or turn.origin != "routine":
+                    if turn.origin != "routine":
                         return {}
                     rr = await db.get(RoutineRun, run.routine_run_id) if run.routine_run_id else None
                     routine = await db.get(Routine, rr.routine_id) if rr else None

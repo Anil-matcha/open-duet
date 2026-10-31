@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import delete
 
-from app.core.config import settings
 from app.db.models import Agent, Turn
 from app.db.models.routine import Routine, RoutineRun, RoutineAppAction
 from app.services import agent_store, composio_bridge, composio_service, tool_policy
@@ -38,7 +37,6 @@ class _Runtime:
 @pytest.fixture
 async def grant_world(sessions, owner, monkeypatch):
     fake = FakeComposio()
-    monkeypatch.setattr(settings, "ROUTINE_CONNECTED_APPS_ENABLED", True)
     monkeypatch.setattr(composio_bridge, "make_client", lambda key: ComposioClient(key, transport=__import__("httpx").MockTransport(fake.handler)))
     async with sessions() as db:
         agent = await agent_store.create_agent(db, owner_id=owner, name="Routine reader")
@@ -120,10 +118,9 @@ async def test_revocation_in_current_definition_overrides_the_run_grant_snapshot
     assert fake.executes == []
 
 
-async def _runtime_mount_context(world, sessions, owner, monkeypatch, *, trigger="manual",
-                                 enabled=True, computer=None, scopes=None, grants=None):
+async def _runtime_mount_context(world, sessions, owner, *, trigger="manual",
+                                 computer=None, scopes=None, grants=None):
     runtime, engine, agent = world
-    monkeypatch.setattr(settings, "ROUTINE_CONNECTED_APPS_ENABLED", enabled)
     if scopes is not None:
         async with sessions() as db:
             account_ids = {"github": ["ca_1"], "gmail": ["ca_mail"]}
@@ -168,19 +165,18 @@ async def _remove_runtime_routine(sessions, routine_id):
         await db.commit()
 
 
-@pytest.mark.parametrize("trigger,enabled,computer,expected", [
-    ("manual", True, None, {"github": "read"}),
-    ("schedule", True, None, {"github": "read"}),
-    ("webhook", True, None, {}),
-    ("manual", False, None, {}),
-    ("manual", True, object(), {}),
+@pytest.mark.parametrize("trigger,computer,expected", [
+    ("manual", None, {"github": "read"}),
+    ("schedule", None, {"github": "read"}),
+    ("webhook", None, {}),
+    ("manual", object(), {}),
 ])
-async def test_runtime_mounts_only_enabled_scheduled_or_manual_grants(
-    composio_world, sessions, owner, monkeypatch, trigger, enabled, computer, expected
+async def test_runtime_mounts_only_scheduled_or_manual_grants(
+    composio_world, sessions, owner, trigger, computer, expected
 ):
     runtime, engine, _ = composio_world
-    context = await _runtime_mount_context(composio_world, sessions, owner, monkeypatch,
-                                           trigger=trigger, enabled=enabled, computer=computer,
+    context = await _runtime_mount_context(composio_world, sessions, owner,
+                                           trigger=trigger, computer=computer,
                                            grants=[
                                                {"tool": "github_get_authenticated_user", "account_id": "ca_1"},
                                                {"tool": "github_create_issue", "account_id": "ca_1"},
@@ -204,9 +200,9 @@ async def test_runtime_mounts_only_enabled_scheduled_or_manual_grants(
         await _remove_runtime_routine(sessions, routine.id)
 
 
-async def test_run_snapshot_does_not_mount_a_tool_added_to_the_live_routine(composio_world, sessions, owner, monkeypatch):
+async def test_run_snapshot_does_not_mount_a_tool_added_to_the_live_routine(composio_world, sessions, owner):
     runtime, engine, _ = composio_world
-    context = await _runtime_mount_context(composio_world, sessions, owner, monkeypatch)
+    context = await _runtime_mount_context(composio_world, sessions, owner)
     runtime, engine, agent, routine, rr, turn, run = context
     try:
         assert await runtime._composio_apps(run, engine) == {"github": "read"}
@@ -230,10 +226,10 @@ async def test_run_snapshot_does_not_mount_a_tool_added_to_the_live_routine(comp
     ("write", {"gmail": "write"}, ["gmail_send_email"]),
 ])
 async def test_runtime_mounts_only_granted_routine_writes_at_the_agent_scope(
-    composio_world, sessions, owner, monkeypatch, gmail_scope, expected_apps, expected_tools
+    composio_world, sessions, owner, gmail_scope, expected_apps, expected_tools
 ):
     context = await _runtime_mount_context(
-        composio_world, sessions, owner, monkeypatch,
+        composio_world, sessions, owner,
         scopes={"gmail": gmail_scope},
         grants=[
             {"tool": "gmail_send_email", "account_id": "ca_mail"},

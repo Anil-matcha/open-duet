@@ -214,10 +214,9 @@ and chat-created routines receive no grant; only the person-facing editor can
 assign one. Local shell commands such as `git commit` use command permissions,
 independently of these connected-app grants.
 
-Execution requires `ROUTINE_CONNECTED_APPS_ENABLED=true`, default false. Enable
-only after qualifying the unattended execution safety boundary. This setting
-does not implement a credential broker; local shell visibility of saved keys
-remains a separate safety limitation.
+These grants apply directly on eligible scheduled/manual runs. The safety box
+and credential isolation have separate qualification gates; local shell
+visibility of saved keys remains a separate safety limitation.
 
 Only scheduled/manual runs qualify; webhook runs, retries and runs with an agent
 computer receive no connected-app tools. Each run records its starting grants.

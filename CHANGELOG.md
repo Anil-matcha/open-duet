@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- Remove the server-wide routine connected-app switch. Explicitly granted
+  scheduled and manual routine actions are eligible immediately, subject to
+  current agent permissions, active accounts and existing run restrictions.
+
 ## 0.7.0 - 2026-10-30
 
 ### Added

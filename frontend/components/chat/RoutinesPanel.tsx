@@ -397,7 +397,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
               <section className="space-y-3 rounded-md border border-line p-3" aria-labelledby="routine-app-access-title">
                 <div>
                   <h3 id="routine-app-access-title" className="text-sm font-medium">Connected app access</h3>
-                  <p className="mt-1 text-xs text-muted">Off by default. Choose exact read actions and the connected account each action uses. The agent must already be allowed to use that app and account. When routine app access is enabled on the server, these reads can run without an action-time approval. Draft replies, other writes, webhooks, and routines with a computer are not available here.</p>
+                  <p className="mt-1 text-xs text-muted">No actions are selected by default. Choose exact read actions and the connected account each action uses. The agent must already be allowed to use that app and account. Granted reads run without an action-time approval. Draft replies, other writes, webhooks, and routines with a computer are not available here.</p>
                 </div>
                 {connectedAccounts === null ? <p role="status" className="text-xs text-muted">Loading connected accounts…</p> : ROUTINE_READ_TOOLS.map((group) => {
                   const agent = agents.find((item) => item.id === draft.agentId);
@@ -426,7 +426,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                     })}</div>
                     {group.writes.length > 0 && <div className="space-y-2 border-t border-line pt-2">
                       <div><p className="text-xs font-semibold">Write actions · explicitly authorize each one</p>
-                        <p className="text-xs text-muted">Selecting an action is your one-time authorization for this exact action and account. Once authorized, it runs without an action-time approval. The agent must also have write access to this app. This is separate from the routine&apos;s approval mode and only takes effect when routine app access is enabled on the server.</p></div>
+                        <p className="text-xs text-muted">Selecting an action is your one-time authorization for this exact action and account. Once authorized, it runs without an action-time approval. The agent must also have write access to this app. This is separate from the routine&apos;s approval mode.</p></div>
                       {group.writes.map(([tool, label]) => {
                         const grant = draft.connectedAppGrants.find((item) => item.tool === tool);
                         const hasWriteScope = agent?.connector_scopes?.[group.app] === "write";

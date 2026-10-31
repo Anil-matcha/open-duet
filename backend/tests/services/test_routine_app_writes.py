@@ -8,7 +8,6 @@ import httpx
 import pytest
 from sqlalchemy import delete, select
 
-from app.core.config import settings
 from app.db.models import Agent, RoutineAppAction, Routine, RoutineRun, UserCredential
 from app.services import agent_store, composio_bridge, composio_service, tool_policy
 from app.services.composio_client import ComposioClient
@@ -26,7 +25,6 @@ async def write_world(sessions, owner, monkeypatch):
     fake = FakeComposio()
     fake.accounts.append({"id": "ca_mail", "toolkit": {"slug": "gmail"}, "alias": "mail", "status": "ACTIVE",
                           "user_id": "u1", "data": {}})
-    monkeypatch.setattr(settings, "ROUTINE_CONNECTED_APPS_ENABLED", True)
     monkeypatch.setattr(composio_bridge, "make_client", lambda key: ComposioClient(key, transport=httpx.MockTransport(fake.handler)))
     grants = [
         {"tool": "gmail_send_email", "account_id": "ca_mail"},

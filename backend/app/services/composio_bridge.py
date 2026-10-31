@@ -252,7 +252,6 @@ class ComposioBridge:
         """
         import hashlib
         from sqlalchemy.exc import IntegrityError
-        from app.core.config import settings
         from app.db.models.routine import Routine, RoutineRun, RoutineAppAction
         from app.db.transactions import begin_write
 
@@ -264,7 +263,7 @@ class ComposioBridge:
         rr = await db.get(RoutineRun, getattr(run, "routine_run_id", None))
         current = {g["tool"]: g["account_id"] for g in routine.connected_app_grants} if routine else {}
         write = tool.kind == "write"
-        permitted = (settings.ROUTINE_CONNECTED_APPS_ENABLED and bound and bound in permitted_accounts
+        permitted = (bound and bound in permitted_accounts
                      and current.get(name) == bound and routine.agent_id == run.agent_id
                      and routine.owner_id == rt.owner_id and run.ctx.computer is None
                      and rr is not None and rr.routine_id == routine.id
@@ -307,7 +306,7 @@ class ComposioBridge:
                     or {g["tool"]: g["account_id"] for g in rr.connected_app_grants} != grants
                     or not composio_tools.allows(allowed.get("gmail"), "write")
                     or bound not in allowed_account_ids.get("gmail", [])
-                    or run.ctx.aborted or not settings.ROUTINE_CONNECTED_APPS_ENABLED):
+                    or run.ctx.aborted):
                 return {"error": "Draft access was revoked or stopped.", "code": "not_allowed"}
             sent = {key: value for key, value in sent.items() if key != "message_id"}
             sent["recipient_email"] = checked["sender"]

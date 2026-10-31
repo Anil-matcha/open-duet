@@ -250,8 +250,7 @@ And outside `/api/v1`: `POST /hooks/{id}` (bearer secret).
 ## Connected apps
 
 The editor lets you authorize exact actions and connected accounts once per
-routine. The agent must also have matching app access, and execution requires
-the server’s default-off `ROUTINE_CONNECTED_APPS_ENABLED` setting. Scheduled and
+routine. The agent must also have matching app and account access. Scheduled and
 manual runs can use granted reads, send a one-recipient plain-text Gmail email,
 create a new GitHub `campaign/` branch, or commit a file on that branch without
 repeated action approvals. Plan mode refuses writes. Webhook, retry and
@@ -283,8 +282,8 @@ Select Prepare checked reply draft with Read message and Read Gmail profile for
 the same account. Combine it only with compatible Gmail reads, never send or
 repository writes. The agent must have Gmail write scope. Execution uses a fresh
 Claude conversation with built-in host tools, memory, skills, team tools and
-fallback disabled. Unsupported engines refuse this mode; the routine-app safety
-setting still defaults off.
+fallback disabled. Unsupported engines refuse this mode; exact read and draft
+grants remain required.
 
 The routine reads the exact message, then supplies message ID, thread ID,
 subject and plain-text body. The server rechecks authoritative Gmail headers,
