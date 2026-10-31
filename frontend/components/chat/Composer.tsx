@@ -3,6 +3,9 @@
 import { ArrowUp, Paperclip, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { isLongPaste, isSendKey, livePastes, removePaste } from "@/lib/composer";
+import { loadDraft, saveDraft } from "@/lib/drafts";
+import { t } from "@/lib/i18n";
 import { MAX_SKILLS_PER_MESSAGE, skillCompletions, type SkillSummary } from "@/lib/skills";
 import { Button } from "@/components/ui/Button";
 import { PendingAttachments } from "./Attachments";
@@ -33,6 +36,7 @@ export function Composer({
   chosenSkills = [],
   onToggleSkill,
   onSaveAsSkill,
+  draftKey = null,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -66,6 +70,9 @@ export function Composer({
   onToggleSkill?: (name: string) => void;
   // Opens the skill editor seeded from this conversation. Sends and saves nothing.
   onSaveAsSkill?: () => void;
+  // Identifies the conversation (its id, or "new"). With it the unsent text is kept per
+  // conversation and put back when you return. Without it nothing is stored.
+  draftKey?: string | null;
 }) {
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -73,6 +80,23 @@ export function Composer({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const menuId = useId();
+  // Long pasted blocks show as a chip; the text stays in the box so Send still includes it.
+  const [pasted, setPasted] = useState<{ key: string | null; list: string[] }>({ key: draftKey, list: [] });
+  const chips = pasted.key === draftKey ? livePastes(value, pasted.list) : [];
+  const setPastes = (update: (all: string[]) => string[]) => setPasted({ key: draftKey, list: update(pasted.key === draftKey ? pasted.list : []) });
+  // Drafts: put the saved text back when the conversation changes, then keep saving edits.
+  // `restored` stops the old text being written under the new key before it is swapped.
+  const restored = useRef<string | null>(null);
+  useEffect(() => {
+    restored.current = draftKey;
+    const saved = loadDraft(draftKey);
+    if (draftKey && saved) onChange(saved);
+    // Only a change of conversation restores; later edits flow through `value`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  useEffect(() => {
+    if (draftKey && restored.current === draftKey) saveDraft(draftKey, value);
+  }, [draftKey, value]);
   const [menu, setMenu] = useState({ context: "", index: 0, dismissed: false });
   const enabledSkills = (skills ?? []).filter((s) => s.enabled);
   const completions = onToggleSkill ? skillCompletions(value, enabledSkills, chosenSkills) : [];
@@ -134,6 +158,18 @@ export function Composer({
         >
           {onRemoveFile && files.length > 0 && (
             <div className="px-2 pt-1"><PendingAttachments files={files} onRemove={onRemoveFile} disabled={sending} /></div>
+          )}
+          {chips.length > 0 && (
+            <ul aria-label="Pasted text" className="flex flex-wrap gap-1.5 px-2 pt-1">
+              {chips.map((text, i) => (
+                <li key={`${i}-${text.length}`} className="inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-inset py-0.5 pl-2.5 pr-1 text-xs text-ink">
+                  <span className="truncate" title={text.slice(0, 200)}>{t("composer.pasted", { count: text.length.toLocaleString() })}</span>
+                  <button type="button" disabled={sending} onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(removePaste(value, text)); setPastes((all) => all.filter((p) => p !== text)); }} aria-label={t("composer.removePasted")} className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-hover hover:text-ink touch:size-8">
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
           {chosenSkills.length > 0 && onToggleSkill && (
             <ul aria-label="Skills for this message" className="flex flex-wrap gap-1.5 px-2 pt-1">
@@ -256,7 +292,18 @@ export function Composer({
               aria-activedescendant={activeOption}
               onPaste={(e) => {
                 const pasted = Array.from(e.clipboardData.files);
-                if (!onAddFiles || pasted.length === 0) return;
+                if (pasted.length === 0) {
+                  const text = e.clipboardData.getData("text");
+                  if (isLongPaste(text) && !sending) {
+                    e.preventDefault();
+                    const el = e.currentTarget;
+                    const at = el.selectionStart;
+                    onChange(value.slice(0, at) + text + value.slice(el.selectionEnd));
+                    setPastes((all) => [...all, text]);
+                  }
+                  return;
+                }
+                if (!onAddFiles) return;
                 e.preventDefault();
                 onAddFiles(pasted);
               }}
@@ -283,7 +330,7 @@ export function Composer({
                   setPickerOpen(false);
                   return;
                 }
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                if (isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.nativeEvent.keyCode })) {
                   e.preventDefault();
                   if (canSend) onSend();
                 }

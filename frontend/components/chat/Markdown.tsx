@@ -102,6 +102,7 @@ function renderBlock(block: Block, key: number): ReactNode {
           {block.items.map((item, i) => (
             <li key={i} className="break-words">
               {renderInline(item)}
+              {block.sub[i]?.length ? <div className="[&_ol]:my-1 [&_ul]:my-1">{block.sub[i].map(renderBlock)}</div> : null}
             </li>
           ))}
         </Tag>

@@ -79,3 +79,20 @@ test('re-parsing every prefix of a streamed answer never throws', () => {
   const full = '# Hi\n\n- a **b\n- c `d\n\n```ts\nlet x\n\n| a | b |\n|--|--|\n| [l](http://x';
   for (let n = 0; n <= full.length; n += 1) parseMarkdown(full.slice(0, n));
 });
+
+test('nested lists attach to the item above, and indented text still continues it', () => {
+  const [ul] = parseMarkdown('- a\n  - a1\n  - a2\n    deeper\n- b\n  more');
+  assert.equal(ul.type, 'list');
+  assert.equal(ul.items.length, 2);
+  assert.equal(ul.sub[0][0].type, 'list');
+  assert.equal(ul.sub[0][0].items.length, 2);
+  assert.equal(ul.sub[1].length, 0);
+  const [ol] = parseMarkdown('1. one\n    - x\n2. two');
+  assert.equal(ol.items.length, 2);
+  assert.equal(ol.sub[0][0].items.length, 1);
+});
+
+test('a table inside a half-written answer keeps its alignment row', () => {
+  const [t] = parseMarkdown('| a | b |\n|:-:|--:|\n| 1 | 2 |');
+  assert.deepEqual(t.align, ['center', 'right']);
+});
