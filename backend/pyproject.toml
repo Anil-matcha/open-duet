@@ -34,3 +34,9 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
+# Freezing the desktop backend (backend/build.py). Kept out of `dev` so a test
+# run never needs it, and pinned here so the release build installs one reviewed
+# PyInstaller from the lockfile rather than whatever `--with` resolves to.
+build = [
+    "pyinstaller>=6.11,<7",
+]

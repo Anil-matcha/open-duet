@@ -13,7 +13,10 @@ does not match still asks, and a command on the safety floor
   prefix  the command starts with these words (`git status` allows
           `git status -s`). A command containing shell operators (`;` `&` `|`
           `<` `>` backtick, `$(`, a newline) never matches a prefix rule,
-          because `git status; rm -rf ~` would otherwise ride along.
+          because `git status; rm -rf ~` would otherwise ride along. A prefix
+          rule may only be saved for a program whose first word names the thing
+          that runs (see `_PREFIX_SAFE_PROGRAMS`); anything else can be always
+          allowed exactly instead.
 
 A rule saved from an answer is tied to that conversation's workspace folder,
 spelled exactly as stored (no symlink or `..` folding, so a rule can never
@@ -31,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.permission_rule import PermissionRule
 from app.db.transactions import begin_write
 from app.services import decision_log, safety_floor
-
 BUCKET = "local_command"
 EXACT = "exact"
 PREFIX = "prefix"
@@ -45,6 +47,53 @@ COMMAND_TOOLS = (BASH_TOOL, "mcp__computer__exec")
 
 _SHELL_OPERATORS = (";", "&", "|", "<", ">", "`", "$(", "\n", "\r")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+# A prefix rule allows the command and anything after it. To be safe to
+# auto-allow, a program's arguments must satisfy two separate properties — and a
+# check for one is not a check for the other:
+#
+#   (a) no argument runs another program. A wrapper (`env`, `sudo`, `time`), a
+#       runner (`xargs`, `find -exec`, `flock`, `chroot`, `su`), a shell, a
+#       multiplexer, or a subcommand dispatcher (`docker`, `ssh`, `python3`)
+#       names the program elsewhere in the line; and an argument hook runs code
+#       even when the first word is right: `sed -i '1e touch f'`,
+#       `awk 'BEGIN{system(...)}'`, `git -c alias.p='!cmd'`,
+#       `tar --checkpoint-action=exec=...`, `rg --pre <script>`,
+#       `sort --compress-program <script>`, `zip -T --unzip-command <cmd>`.
+#   (b) no argument writes outside the project. A workspace scopes WHERE a rule
+#       applies, never WHAT a command may touch: a `cp` rule scoped to `/work/a`
+#       still matches `cp /tmp/x ~/.ssh/authorized_keys`, and `tee`, `mv`, `ln`,
+#       `touch`, `chmod`, `chown`, `mkdir`, `rmdir` are the same. Those effects
+#       are not visible to a program-run check at all.
+#
+# So the allowlist holds only programs that satisfy both: they read, transform
+# or describe, and they never write a path the caller names. Everything else can
+# still be always allowed *exactly* (one literal command, so nothing rides
+# along) and can still be answered on the card.
+#
+# The list is not trusted on its own. tests/services/test_approval_allowlist.py
+# holds two gates: `_ARG_EXEC_HOOKS` (every program known to run code through an
+# argument; its keys must be disjoint from this set) and `_PREFIX_SAFE_REVIEW`
+# (a sentence for each entry saying which of the two properties it keeps, and
+# why). Adding a convenience entry fails until both are answered — the questions
+# that were skipped for `sed`, `awk`, `rg`, `sort`, `zip` and `cp`.
+_PREFIX_SAFE_PROGRAMS = frozenset(
+    {
+        # reading and listing files (arguments are paths and options)
+        "ls", "cat", "head", "tail", "wc", "file", "stat", "readlink", "realpath",
+        "basename", "dirname",
+        # searching text (patterns are data; no expression language, no hook)
+        "grep", "egrep", "fgrep",
+        # shaping text and streams (no expression language, no exec hook, no caller path written)
+        "cut", "tr", "diff", "comm", "jq",
+        # printing and inspecting the environment (values are data)
+        "echo", "printf", "date", "printenv", "which", "whoami", "id", "pwd",
+        "true", "false", "test", "sleep", "seq",
+        # encoding and hashing (pure functions of their input)
+        "base64", "sha256sum", "md5sum", "cksum",
+    }
+)
+
 
 
 class InvalidRule(ValueError):
@@ -69,12 +118,28 @@ def split_scope(stored: str) -> tuple[str, str | None]:
     return kind, (workspace if at else None)
 
 
+def _program(command: str) -> str:
+    words = _words(command)
+    return Path(words[0]).name if words else ""
+
+
+def _is_forbidden_prefix(command: str) -> bool:
+    """True unless the first word names a program safe to always allow."""
+    program = _program(command)
+    return program not in _PREFIX_SAFE_PROGRAMS
+
+
 def command_matches(rule_kind: str, rule_command: str, command: str) -> bool:
     command = command.strip()
     if rule_kind == EXACT:
         return command == rule_command.strip()
     if rule_kind == PREFIX:
         if _has_shell_operators(command):
+            return False
+        # A rule that could never be saved now (its program is not on the
+        # allowlist) must not match a command either, so one saved before this
+        # guard stops allowing.
+        if _is_forbidden_prefix(rule_command):
             return False
         rule_words, words = _words(rule_command), _words(command)
         if not rule_words or words is None:
@@ -111,6 +176,11 @@ def validate_rule(kind: str, command: str, workspace: str | None = None) -> str:
             raise InvalidRule("a prefix rule cannot contain shell operators")
         if not _words(command):
             raise InvalidRule("a prefix rule must be a valid command")
+        if _is_forbidden_prefix(command):
+            raise InvalidRule(
+                "a prefix rule is only allowed for a program that runs itself, not another "
+                "command; save an exact rule for this one instead"
+            )
     if not safety_floor.clears_floor(command):
         raise InvalidRule("this command is on the safety floor and is always asked about")
     validate_workspace(workspace)
@@ -206,6 +276,10 @@ async def matching_rule(
     command = tool_input.get("command")
     if not isinstance(command, str) or not command.strip():
         return None
+    # A floor-held command matches its rule here so the caller can hold it and
+    # record the verdict on the card; the caller's gate never lets the rule
+    # allow the call (a person decides on the card). The matching itself is
+    # pure resolution: whatever rule names this command goes up with it.
     for rule in await list_rules(db, owner_id):
         if not rule.connector or not rule.tool:
             continue

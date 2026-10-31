@@ -3,7 +3,7 @@
 Writers lock the team row, commit before returning and never copy private agent notes.
 """
 from datetime import UTC, datetime
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from app.db.models import Agent, Thread, Team, TeamEvent, AgentJob
 from app.db.transactions import begin_write
 from app.services import agent_memory
@@ -119,6 +119,18 @@ async def undo_create(db, owner, agent_id):
     if await _used(db, agent):
         raise TeamError('agent_used', 'This specialist has already been used. Archive it from Agents instead.')
     team = await db.get(Team, agent.team_id)
+    # Nothing is a foreign key to `agent`: clear the nullable references
+    # that would otherwise name a row about to be gone, including a team
+    # lead, before deleting it.
+    if team and team.lead_agent_id == agent_id:
+        team.lead_agent_id = None
+        team.updated_at = now()
+    await db.execute(
+        update(TeamEvent).where(TeamEvent.agent_id == agent_id).values(agent_id=None)
+    )
+    await db.execute(
+        update(Thread).where(Thread.agent_id == agent_id).values(agent_id=None)
+    )
     await db.delete(agent)
     if team:
         audit(db, team, 'agent_create_undone', agent_id=agent_id, data={'removed': 'deleted'})

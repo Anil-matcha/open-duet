@@ -26,8 +26,12 @@
 # Layers are ordered by how often they change: the base images, then the dependencies, then the
 # engines, then the app files, so a code change rebuilds only the small last layers.
 
-ARG PYTHON_IMAGE=python:3.14-slim-bookworm
-ARG NODE_IMAGE=node:22-bookworm-slim
+# Base images are pinned by digest, not just tag, so a build cannot silently pick
+# up a different image than the one reviewed (the agent computer image in
+# backend/app/computers/docker_cli.py is pinned the same way). Update the digest
+# and the tag together when you move to a new release.
+ARG PYTHON_IMAGE=python:3.14-slim-bookworm@sha256:945c2676dc2b18e0c1f16879244122c57c0ffede60006bf3df159c507a31bcae
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
 
 # 1. The web pages: a static export that talks to the server it is loaded from.
 FROM ${NODE_IMAGE} AS pages
@@ -40,7 +44,7 @@ RUN node scripts/build-ui.js
 
 # 2. The backend's dependencies, from the lock file, without the development group.
 FROM ${PYTHON_IMAGE} AS backend
-COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.9.30@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 /uv /usr/local/bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_COMPILE_BYTECODE=1
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock ./

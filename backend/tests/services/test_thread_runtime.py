@@ -199,6 +199,32 @@ async def _turns(sessions, thread_id):
         return await store.list_turns(db, thread_id)
 
 
+async def test_turns_past_the_admission_limit_wait_for_a_slot(
+    rt, sessions, cli, monkeypatch, owner
+):
+    """A turn past TURN_MAX_CONCURRENT waits instead of taking another worker
+    thread (each running engine blocks one), so recovery jobs keep their
+    threads. With one slot, the second turn's engine must not start until the
+    first ends."""
+    monkeypatch.setattr(settings, "TURN_MAX_CONCURRENT", 1)
+    rt._admission = __import__("asyncio").Semaphore(1)
+    first = await new_thread(sessions, owner)
+    second = await new_thread(sessions, owner)
+    cli.script({"type": "hang"})
+
+    await rt.send_turn(first.id, "first")
+    await wait_until(lambda: cli.log("hanging"))
+    assert cli.launches() == [("new", first.provider_session_id)]
+
+    await rt.send_turn(second.id, "second")
+    # The second run exists but has not reached its engine: one slot is taken.
+    await __import__("asyncio").sleep(0.3)
+    assert cli.launches() == [("new", first.provider_session_id)]
+
+    await rt.stop_turn(first.id)
+    await wait_until(lambda: cli.log("hanging") and len(cli.launches()) == 2)
+
+
 async def test_answering_an_unknown_or_bad_approval_changes_nothing(rt):
     assert not await rt.answer_approval("no-such-approval", "allow")
     with pytest.raises(ValueError):
@@ -404,6 +430,33 @@ async def test_the_sweep_interrupts_a_dead_turn_and_wakes_listeners(rt, sessions
     assert await types_of(sessions, thread.id) == ["turn.started", "turn.interrupted"]  # no invented answer
     assert subscription.wake.is_set()
     assert turn.id not in await rt.sweep_stale()  # once only
+
+
+async def test_the_sweep_stops_an_in_process_run_whose_lease_expired(
+    rt, sessions, cli, monkeypatch, owner
+):
+    """A run alive in this process but whose lease expired must be stopped, not
+    left holding its engine and computer until the stall watchdog fires."""
+    thread = await new_thread(sessions, owner)
+    cli.script({"type": "hang"})
+    # No heartbeat, so the row stays stale once we age it.
+    monkeypatch.setattr(settings, "THREAD_HEARTBEAT_SECONDS", 3600)
+    turn = await rt.send_turn(thread.id, "work")
+    await wait_until(lambda: cli.log("hanging"))
+    assert turn.id in rt._runs
+
+    async with sessions() as db:
+        from sqlalchemy import update
+
+        await db.execute(update(Turn).where(Turn.id == turn.id).values(
+            heartbeat_at=store.utcnow() - timedelta(seconds=settings.THREAD_LEASE_SECONDS + 30)))
+        await db.commit()
+
+    assert turn.id in await rt.sweep_stale()
+
+    await wait_until(lambda: rt._runs == {})
+    assert (await reload(sessions, Turn, turn.id)).status == "interrupted"
+    assert await types_of(sessions, thread.id) == ["turn.started", "turn.interrupted"]
 
 
 # --- typing is tagged so a stream can tell a stale preview from a live one --------------------------

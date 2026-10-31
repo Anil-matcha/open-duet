@@ -454,7 +454,7 @@ async def test_taking_control_holds_the_browser_so_the_agent_is_refused_and_the_
     assert not screen.held(folder.parent / "browser-other")
     # While held, the agent's browser call is refused with the take-over message.
     server = LocalServer(tmp_path / "grants", folder, local=None)
-    assert server.run("browser_snapshot", {})["content"][0]["text"] == screen.CONTROL_REFUSAL
+    assert (await asyncio.to_thread(server.run, "browser_snapshot", {}))["content"][0]["text"] == screen.CONTROL_REFUSAL
     # A watched browser is never the one ended to make room.
     registry = tmp_path / "running"
     guard.register(registry, "agent-" + str(agent), os.getpid(), folder)
@@ -512,7 +512,7 @@ async def test_a_view_ticket_watches_without_holding_and_is_single_use(api, monk
             return {"content": [{"type": "text", "text": "page text"}]}
 
     server = LocalServer(tmp_path / "grants", folder, local=Broker())
-    assert server.run("browser_snapshot", {})["content"][0]["text"] == "page text"
+    assert (await asyncio.to_thread(server.run, "browser_snapshot", {}))["content"][0]["text"] == "page text"
     manager, who = service.viewers, ("loopback", None)
     assert manager.consume(got["ticket"], -agent - 1, who) is None  # bound to this browser, and that spent it
     again = (await api.post(url)).json()

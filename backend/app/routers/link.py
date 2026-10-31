@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import limiter, request_info
 from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.link import LinkCodeCreateResponse, LinkCodeStatusResponse
@@ -14,8 +15,16 @@ router = APIRouter(
 )
 
 
+def _require_rate(request: Request) -> str:
+    source = request_info.client_source(request.scope)
+    if not limiter.link_code_requests.allow(source):
+        raise HTTPException(status_code=429, detail="Too many link codes requested. Try again shortly.")
+    return source
+
+
 @router.post("", response_model=LinkCodeCreateResponse)
-async def create_link_code(db: AsyncSession = Depends(get_db)):
+async def create_link_code(request: Request, db: AsyncSession = Depends(get_db)):
+    _require_rate(request)
     record = await link_service.create_code(db)
     return LinkCodeCreateResponse(
         code=record.code,
@@ -33,6 +42,6 @@ async def get_link_code_status(code: str, db: AsyncSession = Depends(get_db)):
         return LinkCodeStatusResponse(status="expired")
 
     if record.claimed_at is not None:
-        return LinkCodeStatusResponse(status="claimed", user_id=record.user_id)
+        return LinkCodeStatusResponse(status="claimed")
 
     return LinkCodeStatusResponse(status="pending")

@@ -187,3 +187,117 @@ def test_newlines_inside_quotes_and_harmless_lines_still_clear() -> None:
     assert clears_floor("echo 'a\nb'") is True
     assert clears_floor("ls\n") is True
     assert clears_floor("echo hi\n\n\nls -la") is True
+
+
+@pytest.mark.parametrize(
+    "command,rule",
+    [
+        # A wrapper's value option no longer eats the command after it, and the
+        # commands that run another command are read too.
+        ("stdbuf -o L rm -rf ~", "delete-home"),
+        ("time -p rm -rf ~", "delete-home"),
+        ("exec -a x rm -rf ~", "delete-home"),
+        ("command -p rm -rf ~", "delete-home"),
+        ("nohup -p rm -rf ~", "delete-home"),
+        ("nice -n 5 rm -rf /", "delete-root"),
+        ("sudo -u root rm -rf /", "delete-root"),
+        ("env -S 'rm -rf ~'", "delete-home"),
+        ("env --split-string='rm -rf ~'", "delete-home"),
+        ("env -S 'git push --force'", "force-push"),
+        ("find / -delete", "delete-root"),
+        ("find / -exec rm -rf {} +", "delete-root"),
+        ("find /etc -exec chmod -R 777 {} +", "permission-change-root"),
+        ("xargs rm -rf ~", "delete-home"),
+        ("xargs -0 rm -rf /", "delete-root"),
+    ],
+)
+def test_a_wrapper_hiding_the_command_does_not_clear_the_floor(command, rule):
+    assert rule_of(command) == rule
+    assert not clears_floor(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "time -p ls",
+        "command -p ls",
+        "nohup -p ls",
+        "nice -n 5 ls",
+        "sudo -u root ls",
+        "stdbuf -o L echo hi",
+        "env FOO=1 ls",
+        "xargs echo hi",
+        "find . -name x",
+        "find . -exec echo {} +",
+    ],
+)
+def test_a_harmless_wrapped_command_still_clears(command):
+    assert clears_floor(command) is True
+
+
+@pytest.mark.parametrize(
+    "command,rule",
+    [
+        ("flock /tmp/l rm -rf ~", "delete-home"),
+        ("flock /tmp/l rm -rf /", "delete-root"),
+        ("flock -w 5 /tmp/l rm -rf /etc", "delete-system-directory"),
+        ("chroot / rm -rf /", "delete-root"),
+        ("chroot /newroot rm -rf ~", "delete-home"),
+        ("busybox rm -rf /", "delete-root"),
+        ("busybox rm -rf ~", "delete-home"),
+        ("busybox chmod -R 777 /etc", "permission-change-root"),
+        ("strace -f rm -rf /", "delete-root"),
+        ("unshare -r rm -rf /", "delete-root"),
+        ("unshare --map-root-user rm -rf ~", "delete-home"),
+        ("nsenter -t 1 -m rm -rf /", "delete-root"),
+        ("su host rm -rf ~", "delete-home"),
+        ("runuser -u root -- rm -rf /", "delete-root"),
+        ("setpriv --reuid 0 rm -rf /", "delete-root"),
+        ("busybox sh -c 'rm -rf /'", "delete-root"),
+        ("flock /tmp/l sh -c 'rm -rf /'", "delete-root"),
+    ],
+)
+def test_a_runner_hiding_the_command_does_not_clear_the_floor(command, rule):
+    assert rule_of(command) == rule
+    assert not clears_floor(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python3 -c 'print(1)'",
+        "python -c 'import os; os.system(\"rm -rf /\")'",
+        "perl -e 'unlink'",
+        "node -e 'require(\"fs\")'",
+        "ruby -e 'puts 1'",
+        "php -r 'echo 1;'",
+        "flock -c 'rm -rf /'",
+        "su -c 'ls'",
+        "su -c 'rm -rf /'",
+    ],
+)
+def test_an_inline_interpreter_script_is_not_clear(command):
+    assert not clears_floor(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "flock /tmp/l make test",
+        "flock /tmp/l git status",
+        "chroot /newroot ls",
+        "busybox echo hi",
+        "busybox ls -la",
+        "strace -f ls",
+        "unshare -r ls",
+        "nsenter -t 1 ls",
+        "su host ls",
+        "runuser -u root -- ls",
+        "setpriv --reuid 0 ls",
+        "python3 script.py",
+        "perl script.pl",
+        "node app.js",
+    ],
+)
+def test_a_runner_onto_a_harmless_command_still_clears(command):
+    assert clears_floor(command) is True

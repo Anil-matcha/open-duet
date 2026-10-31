@@ -1,5 +1,6 @@
 import json
 import re
+import shlex
 import time
 from dataclasses import dataclass
 
@@ -17,6 +18,33 @@ DEVICE_CODE_POLL_ATTEMPTS = 15
 DEVICE_COMPLETION_POLL_ATTEMPTS = 150
 
 RUNNABLE_BOX_STATES = {"ready", "running", "idle"}
+
+# Everything below ends up inside a command string run by a shell in the
+# sandbox, so untrusted values are validated on the way in (both here and in
+# the request schemas) and quoted on the way out. A box id is a Boat
+# identifier; a provider is one of the fixed names in PROVIDERS.
+_BOX_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class InvalidAuthInputError(Exception):
+    """A box id, provider or code is not the expected shape."""
+
+
+def _safe_box_id(box_id: str) -> str:
+    if not isinstance(box_id, str) or not _BOX_ID_RE.match(box_id):
+        raise InvalidAuthInputError("Invalid sandbox id")
+    return box_id
+
+
+def _checked_session_name(box_id: str, provider: str) -> str:
+    """The tmux session name for this login, safe to interpolate into a
+    shell command: one of the known providers and a validated box id. The
+    result is still quoted by callers that build a command string."""
+    _safe_box_id(box_id)
+    if provider not in PROVIDERS:
+        raise UnsupportedProviderError(f"Unsupported provider: {provider}")
+    return f"auth_{provider}_{box_id}"
+
 
 PROVIDERS = {
     "claude": {
@@ -63,11 +91,8 @@ class BoxCommandError(Exception):
     pass
 
 
-def _session_name(box_id: str, provider: str) -> str:
-    return f"auth_{provider}_{box_id}"
-
-
 def _ensure_box_running(box_id: str) -> None:
+    _safe_box_id(box_id)
     try:
         result = ascii_box_service.get_box(box_id)
     except ApiException as exc:
@@ -116,22 +141,22 @@ def _env_prefix(config: dict) -> str:
 
 def start_login(box_id: str, provider: str) -> str:
     config = _provider_config(provider)
-    session = _session_name(box_id, provider)
+    session = _checked_session_name(box_id, provider)
 
     _ensure_box_running(box_id)
 
-    _run(box_id, f"tmux kill-session -t {session} 2>/dev/null; true")
+    _run(box_id, f"tmux kill-session -t {shlex.quote(session)} 2>/dev/null; true")
 
     _run(
         box_id,
-        f'tmux new-session -d -s {session} -x 500 -y 50 '
+        f"tmux new-session -d -s {shlex.quote(session)} -x 500 -y 50 "
         f'"{_env_prefix(config)}timeout --foreground {config["abandon_timeout_seconds"]}s '
         f'{config["login_command"]}; echo DONE_$?; sleep 60"',
     )
 
     for _ in range(URL_POLL_ATTEMPTS):
         time.sleep(POLL_INTERVAL_SECONDS)
-        pane = _run(box_id, f"tmux capture-pane -t {session} -p")
+        pane = _run(box_id, f"tmux capture-pane -t {shlex.quote(session)} -p")
         match = re.search(r"https?://\S+", pane)
         if match:
             return match.group(0)
@@ -141,19 +166,25 @@ def start_login(box_id: str, provider: str) -> str:
 
 def submit_code(box_id: str, provider: str, code: str) -> str:
     config = _provider_config(provider)
-    session = _session_name(box_id, provider)
+    session = _checked_session_name(box_id, provider)
+    # The code is untrusted; the schema also validates its shape. It is sent
+    # literally with `send-keys -l` and quoted, so no character in it can be
+    # read as shell syntax or as a tmux key name.
+    if not isinstance(code, str) or not (1 <= len(code) <= 256):
+        raise InvalidAuthInputError("Invalid login code")
 
     _ensure_box_running(box_id)
 
-    _run(box_id, f'tmux send-keys -t {session} "{code}" Enter')
+    _run(box_id, f"tmux send-keys -t {shlex.quote(session)} -l -- {shlex.quote(code)}; "
+                 f"tmux send-keys -t {shlex.quote(session)} Enter")
 
     for _ in range(CODE_POLL_ATTEMPTS):
         time.sleep(POLL_INTERVAL_SECONDS)
-        pane = _run(box_id, f"tmux capture-pane -t {session} -p")
+        pane = _run(box_id, f"tmux capture-pane -t {shlex.quote(session)} -p")
         matches = re.findall(r"DONE_(\d+)", pane)
         if matches:
             exit_code = matches[-1]
-            _run(box_id, f"tmux kill-session -t {session} 2>/dev/null; true")
+            _run(box_id, f"tmux kill-session -t {shlex.quote(session)} 2>/dev/null; true")
 
             if exit_code != "0":
                 raise LoginFailedError(f"Login process exited with code {exit_code}")
@@ -170,15 +201,15 @@ def start_device_login(box_id: str, provider: str) -> DeviceLogin:
     to show them; call await_device_login afterwards to wait for completion.
     """
     config = _provider_config(provider)
-    session = _session_name(box_id, provider)
+    session = _checked_session_name(box_id, provider)
 
     _ensure_box_running(box_id)
 
-    _run(box_id, f"tmux kill-session -t {session} 2>/dev/null; true")
+    _run(box_id, f"tmux kill-session -t {shlex.quote(session)} 2>/dev/null; true")
 
     _run(
         box_id,
-        f'tmux new-session -d -s {session} -x 500 -y 50 '
+        f"tmux new-session -d -s {shlex.quote(session)} -x 500 -y 50 "
         f'"{_env_prefix(config)}timeout --foreground {config["abandon_timeout_seconds"]}s '
         f'{config["login_command"]}; echo DONE_$?; sleep 60"',
     )
@@ -186,18 +217,18 @@ def start_device_login(box_id: str, provider: str) -> DeviceLogin:
     dismissed_prompt = False
     for _ in range(DEVICE_CODE_POLL_ATTEMPTS):
         time.sleep(POLL_INTERVAL_SECONDS)
-        pane = _run(box_id, f"tmux capture-pane -t {session} -p")
+        pane = _run(box_id, f"tmux capture-pane -t {shlex.quote(session)} -p")
 
         code_match = re.search(r"one-time code:\s*(\S+)", pane)
         url_match = re.search(r"https?://\S+", pane)
         if code_match and url_match:
             # Unblocks the "Press Enter to open ... in your browser" prompt
             # so the login command moves on to polling for approval.
-            _run(box_id, f"tmux send-keys -t {session} Enter")
+            _run(box_id, f"tmux send-keys -t {shlex.quote(session)} Enter")
             return DeviceLogin(url=url_match.group(0), code=code_match.group(1))
 
         if not dismissed_prompt and "(Y/n)" in pane:
-            _run(box_id, f"tmux send-keys -t {session} Enter")
+            _run(box_id, f"tmux send-keys -t {shlex.quote(session)} Enter")
             dismissed_prompt = True
 
     raise LoginTimeoutError("Timed out waiting for device login code")
@@ -208,17 +239,17 @@ def await_device_login(box_id: str, provider: str) -> str:
     approved, then returns the resulting credential file's content.
     """
     config = _provider_config(provider)
-    session = _session_name(box_id, provider)
+    session = _checked_session_name(box_id, provider)
 
     _ensure_box_running(box_id)
 
     for _ in range(DEVICE_COMPLETION_POLL_ATTEMPTS):
         time.sleep(POLL_INTERVAL_SECONDS)
-        pane = _run(box_id, f"tmux capture-pane -t {session} -p")
+        pane = _run(box_id, f"tmux capture-pane -t {shlex.quote(session)} -p")
         matches = re.findall(r"DONE_(\d+)", pane)
         if matches:
             exit_code = matches[-1]
-            _run(box_id, f"tmux kill-session -t {session} 2>/dev/null; true")
+            _run(box_id, f"tmux kill-session -t {shlex.quote(session)} 2>/dev/null; true")
 
             if exit_code != "0":
                 raise LoginFailedError(f"Login process exited with code {exit_code}")

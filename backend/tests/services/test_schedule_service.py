@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.auth.routes import require_identity
 from app.routers.schedule import router
 from app.services.schedule_service import InvalidScheduleError, compute_next_run
 from app.telegram_bot import _parse_schedule_args
@@ -70,6 +71,7 @@ async def test_schedule_route_persists_requested_weekday(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://owned") as client:
         response = await client.post("/api/v1/schedules", json={
             "user_id": user_id, "provider": "claude", "box_id": "owned-box",
@@ -95,6 +97,7 @@ async def test_schedule_route_persists_first_of_restricted_days(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://owned") as client:
         response = await client.post("/api/v1/schedules", json={
             "user_id": user_id, "provider": "claude", "box_id": "owned-box",

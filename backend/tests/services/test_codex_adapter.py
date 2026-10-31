@@ -200,6 +200,60 @@ async def test_accept_edits_still_asks_about_an_edit_outside_the_workspace(crt, 
     assert codex.answers()[0]["result"] == {"decision": "decline"}
 
 
+async def test_accept_edits_never_auto_allows_a_command(crt, sessions, owner, codex, monkeypatch):
+    # The floor's one gap would be accept_edits auto-allowing a command the CLI
+    # decides for itself. A command must still open a card, whatever the mode.
+    monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
+    codex.plan({"type": "command", "command": "python3 -c 'os.system(\"rm -rf /\")'"})
+    thread = await codex_thread(crt, sessions, owner, mode="accept_edits")
+    await crt.send_turn(thread.id, "clean up")
+    approval = await pending_approval(sessions, thread.id)
+    assert approval.tool == "Bash" and approval.kind == "command"
+    assert "python3 -c" in approval.input["command"]  # the payload is on the card
+    assert await crt.answer_approval(approval.id, "deny")
+    await finished(sessions, thread.id)
+    assert codex.answers()[0]["result"] == {"decision": "decline"}
+
+
+def test_inside_resolves_symlinks_so_a_link_out_is_not_inside(tmp_path):
+    # accept_edits auto-allows an edit only when every path is _inside the
+    # workspace. The check must resolve symlinks: a link under the workspace that
+    # points outside must not let a write through it pass.
+    workspace = (tmp_path / "ws").resolve()
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = workspace / "x"
+    link.symlink_to(outside)
+    assert codex_adapter._inside(str(workspace / "a.txt"), workspace) is True
+    # A path through the symlink resolves outside: not inside.
+    assert codex_adapter._inside(str(link / "cron.d" / "y"), workspace) is False
+    # A path lexical-prefixed by the workspace but aimed elsewhere is not inside.
+    assert codex_adapter._inside(str(tmp_path / "ws-evil" / "y"), workspace) is False
+    assert codex_adapter._inside("relative.txt", workspace) is True
+    assert codex_adapter._inside("../escape.txt", workspace) is False
+
+
+async def test_accept_edits_allows_an_in_workspace_edit_that_runs_later(
+    crt, sessions, owner, codex, monkeypatch
+):
+    # A decided trade-off, not an oversight: accept_edits lets an in-workspace
+    # edit through, and an edit can be code that runs later (a git hook, a
+    # Makefile, a test helper). The floor is never bypassed — no command is
+    # auto-allowed — but the person chose a mode where such a write needs no
+    # card. This pins that the auto-allow happens for an in-workspace path and
+    # that the *tool* is a file write, never a command.
+    monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
+    thread = await codex_thread(crt, sessions, owner, mode="accept_edits")
+    hook = str(Path(thread.workspace_path) / ".git" / "hooks" / "pre-commit")
+    codex.plan({"type": "file", "path": hook})
+    await crt.send_turn(thread.id, "add a hook")
+    await finished(sessions, thread.id)
+    async with sessions() as db:
+        assert await store.list_approvals(db, thread.id) == []  # no card, by design
+    assert codex.answers()[0]["result"] == {"decision": "accept"}
+
+
 async def test_plan_mode_is_read_only_and_declines_without_a_card(crt, sessions, owner, codex, monkeypatch):
     monkeypatch.setattr(settings, "LOCAL_TOOLS_ENABLED", True)
     codex.plan({"type": "command"})

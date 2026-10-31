@@ -225,22 +225,26 @@ export function ApprovalCard({
         </dl>
       )}
       {pending && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering}>
             {screenInput ? "Allow this turn" : "Allow"}
           </Button>
-          {rememberable && (
-            <Button
-              onClick={() => onAnswer("allow", true)}
-              disabled={answering}
-              title="Allow it now, and run exactly this command in this folder without asking from now on"
-            >
-              Always allow this command
-            </Button>
-          )}
           <Button onClick={() => onAnswer("deny")} disabled={answering}>
             Deny
           </Button>
+          {rememberable && (
+            <>
+              <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
+              <Button
+                variant="warning"
+                onClick={() => onAnswer("allow", true)}
+                disabled={answering}
+                title="Allow it now, and run exactly this command in this folder without asking from now on"
+              >
+                Always allow this command
+              </Button>
+            </>
+          )}
         </div>
       )}
       {!pending && remembered?.error && <p className="text-xs text-muted">Allowed this once only: {remembered.error}.</p>}

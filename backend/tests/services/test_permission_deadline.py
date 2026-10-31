@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, event, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.core import hook_token
 from app.core.config import settings
 from app.db.models.permission_ask import PermissionAsk
 from app.db.engine import create_app_async_engine
@@ -57,7 +58,7 @@ async def test_hook_honors_answer_in_final_poll_interval(monkeypatch, answer, ph
         async with AsyncClient(transport=transport, base_url="http://localhost") as client:
             hook = asyncio.create_task(client.post(
                 f"/api/v1/permissions/check/{user}/{task_id}",
-                headers={"Authorization": f"Bearer {settings.HOOK_TOKEN}"},
+                headers={"Authorization": f"Bearer {hook_token.scoped_token(settings.HOOK_TOKEN, user, task_id)}"},
                 json={"tool_name": "Write", "tool_input": {}},
             ))
             if answer is not None:

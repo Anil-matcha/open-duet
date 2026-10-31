@@ -362,6 +362,17 @@ export function ChatApp() {
   const [liveComputer, setLiveComputer] = useState<{ id: number; state: string } | null>(null);
   const liveComputerState = liveComputer && liveComputer.id === threadComputer?.id ? liveComputer.state : null;
 
+  // Each conversation carries its own agent, workspace and approval rules, so a
+  // draft, its files or an error must never cross into another one: it would be
+  // delivered to the wrong agent's context.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing state because the conversation changed is the point
+    setDraft("");
+    setAttached([]);
+    setAttachNotice(null);
+    setSendError(null);
+  }, [threadId]);
+
   useEffect(() => {
     if (!ready || !threadAgent || !threadComputer) return;
     let cancelled = false;

@@ -100,7 +100,19 @@ def mark_watching(state_dir: Path, on: bool = True) -> None:
 
 @contextmanager
 def driver_lock(state_dir: Path):
-    """Cross-process lock around owner checks and desktop actions."""
+    """Cross-process lock around owner checks and desktop actions.
+
+    It blocks a whole thread (fcntl.flock / msvcrt.locking), so it must not be
+    entered on the event loop; call it via asyncio.to_thread. That is enforced
+    here so a new call site cannot reintroduce the stall (issue: release_turn)."""
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("driver_lock blocks; call it through asyncio.to_thread")
     grants.private_dir(state_dir)
     with (state_dir / "screen.lock").open("a+b") as lock:
         if os.name == "nt":

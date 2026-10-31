@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.auth.routes import require_identity
 from app.db.models.task import Tasks
 from app.db.session import get_db
 from app.routers.local import router as local_router
@@ -15,11 +16,12 @@ from app.services.local_access_policy import LocalAccessGrant, _issue_grant
 from app.services.schedule_service import InvalidScheduleError
 
 
-def local_app(db_session) -> FastAPI:
+def local_app(db_session, user_id: str = "test-user-1") -> FastAPI:
     app = FastAPI()
     app.include_router(local_router, prefix="/api/v1")
     app.include_router(task_router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     return app
 
 
