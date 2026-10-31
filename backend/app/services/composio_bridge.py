@@ -81,11 +81,15 @@ class ComposioBridge:
         apps = ",".join(f"{app}={level}" for app, level in sorted(self.apps.items()))
         grants = getattr(self.run, "routine_grants", None)
         exact = ["--exact-tools", ",".join(sorted(grants))] if grants is not None else []
+        uninterrupted = ["--uninterrupted"] if getattr(self.run, "uninterrupted_access", False) else []
         if getattr(sys, "frozen", False):
-            return SimpleNamespace(command=sys.executable, args=["--composio-mcp", "--mailbox", str(self.folder), "--apps", apps] + exact, env={})
+            return SimpleNamespace(command=sys.executable,
+                args=["--composio-mcp", "--mailbox", str(self.folder), "--apps", apps] + exact + uninterrupted,
+                env={})
         root = str(Path(__file__).resolve().parents[2])
         return SimpleNamespace(
-            command=sys.executable, args=["-m", "app.composio_mcp_server", "--mailbox", str(self.folder), "--apps", apps] + exact,
+            command=sys.executable,
+            args=["-m", "app.composio_mcp_server", "--mailbox", str(self.folder), "--apps", apps] + exact + uninterrupted,
             env={"PYTHONPATH": root},
         )
 
@@ -141,6 +145,18 @@ class ComposioBridge:
         async with self.runtime.session() as db:
             agent = await db.get(Agent, self.run.agent_id)
         current = apps_for(agent.connector_scopes) if agent is not None and agent.archived_at is None and agent.owner_id == self.runtime.owner_id else {}
+        if getattr(self.run, "uninterrupted_access", False):
+            from app.services import routine_uninterrupted
+            async with self.runtime.session() as db:
+                state = await routine_uninterrupted.state(self.runtime, self.run, db)
+            if state is None:
+                return {}
+            ceiling = state[2].get("apps", {})
+            current = {app: level for app, level in current.items()
+                       if app in ceiling and app in self.apps}
+            current = {app: ("write" if level == "write" and ceiling[app] == "write"
+                             and self.apps.get(app) == "write" else "read")
+                       for app, level in current.items()}
         return {app: ("write" if level == "write" and self.apps.get(app) == "write" else "read")
                 for app, level in current.items() if app in self.apps}
 
@@ -157,9 +173,95 @@ class ComposioBridge:
         current = accounts_for(agent.connector_account_scopes) if (
             agent is not None and agent.archived_at is None and agent.owner_id == self.runtime.owner_id
         ) else {}
+        snapshot_accounts = None
+        if getattr(self.run, "uninterrupted_access", False):
+            from app.services import routine_uninterrupted
+            async with self.runtime.session() as db:
+                state = await routine_uninterrupted.state(self.runtime, self.run, db)
+            if state is None:
+                return {}
+            snapshot_accounts = state[2].get("accounts", {})
         return {app: [account_id for account_id in account_ids if account_id in current.get(app, [])]
                 for app, account_ids in self.account_scopes.items()
-                if app in self.apps and any(account_id in current.get(app, []) for account_id in account_ids)}
+                if app in self.apps and any(account_id in current.get(app, [])
+                    and (snapshot_accounts is None or account_id in snapshot_accounts.get(app, []))
+                    for account_id in account_ids)}
+
+    async def _reserve_uninterrupted_action(self, db, *, tool_name: str, app: str, kind: str,
+                                           account_id: str, arguments: dict) -> int | dict:
+        """Recheck current routine/app/account authorization and durably reserve a write.
+
+        The request key contains only a digest; request arguments never enter the receipt.
+        A reserved write is never reclaimed after a crash because the provider may have
+        completed it without returning an answer.
+        """
+        import hashlib
+        from sqlalchemy.exc import IntegrityError
+        from app.db.models import Agent
+        from app.db.models.routine import RoutineAppAction
+        from app.db.transactions import begin_write
+        from app.services import routine_uninterrupted
+
+        state = await routine_uninterrupted.state(self.runtime, self.run, db, lock=True)
+        if state is None:
+            return {"error": "Routine uninterrupted access was revoked or the run is no longer eligible.",
+                    "code": "not_allowed"}
+        _, occurrence, ceiling = state
+        agent = await db.get(Agent, self.run.agent_id)
+        current_apps = apps_for(agent.connector_scopes) if (
+            agent is not None and agent.owner_id == self.runtime.owner_id and agent.archived_at is None
+        ) else {}
+        current_accounts = accounts_for(agent.connector_account_scopes) if current_apps else {}
+        permitted = (tool_name in ceiling.get("composio_tools", [])
+                     and composio_tools.allows(ceiling.get("apps", {}).get(app), kind)
+                     and composio_tools.allows(current_apps.get(app), kind)
+                     and account_id in ceiling.get("accounts", {}).get(app, [])
+                     and account_id in current_accounts.get(app, [])
+                     and account_id in self.account_scopes.get(app, []))
+        if kind == "write" and self.run.ctx.approval_mode == "plan":
+            permitted = False
+        if not permitted:
+            return {"error": "Routine app access was revoked or is outside the run's authorized scope.",
+                    "code": "not_allowed"}
+
+        request_key = None
+        if kind == "write":
+            digest = json.dumps({"tool": tool_name, "arguments": arguments}, ensure_ascii=False,
+                                sort_keys=True, separators=(",", ":"))
+            request_key = hashlib.sha256(digest.encode("utf-8")).hexdigest()
+        receipt = RoutineAppAction(run_id=occurrence.id, tool=tool_name,
+                                   account_id=account_id, request_key=request_key, status="reserved")
+        await begin_write(db)
+        db.add(receipt)
+        try:
+            await db.commit()
+            await db.refresh(receipt)
+        except IntegrityError:
+            await db.rollback()
+            return {"error": "This exact write was already attempted in this run. Check the app before repeating it.",
+                    "code": "already_attempted"}
+        # The provider helpers may commit or expire ORM objects.
+        return receipt.id
+
+    async def _finish_uninterrupted_action(self, receipt_id: int | None, result: dict, kind: str) -> None:
+        if receipt_id is None:
+            return
+        from app.db.models.routine import RoutineAppAction
+        from app.db.transactions import begin_write
+        async with self.runtime.session() as db:
+            await begin_write(db)
+            receipt = await db.get(RoutineAppAction, receipt_id)
+            if receipt is None:
+                return
+            code = result.get("code")
+            receipt.status = ("outcome_unknown" if code == "outcome_unknown" else
+                              "failed" if result.get("error") else "completed")
+            receipt.code = code
+            # Do not retain message bodies or app response text in the routine audit.
+            receipt.result = ({"completed": True} if kind == "write" and not result.get("error") else
+                              {"coverage_complete": not bool(result.get("truncated") or result.get("next_page_token"))}
+                              if kind == "read" and not result.get("error") else None)
+            await db.commit()
 
     async def execute_generic(self, name: str, args: dict, allowed: dict,
                               allowed_account_ids: dict[str, list[str]]) -> dict:
@@ -179,19 +281,61 @@ class ComposioBridge:
             return {"error": str(exc), "code": "bad_arguments"}
         level = allowed.get(request["app"])
         reviewed = request["action"] in composio_generic.REVIEWED_READS
+        uninterrupted = bool(getattr(self.run, "uninterrupted_access", False))
         if (level is None or (level != "write" and not reviewed) or self.apps.get(request["app"]) is None
                 or not allowed_account_ids.get(request["app"])):
             return {"error": "This agent is not allowed to do that with that app.", "code": "not_allowed"}
-        auto = composio_generic.call_key(args) in self.run.ctx.composio_auto_calls
+        auto = (not uninterrupted and
+                composio_generic.call_key(args) in self.run.ctx.composio_auto_calls)
+        receipt_id = None
+        receipt_kind = "write"
         async with rt.session() as db:
-            return await composio_actions.run(db, rt.owner_id, self.client_factory, agent_id=self.run.agent_id,
-                auto_called=auto, request=request, allowed_account_ids=allowed_account_ids[request["app"]])
+            async def reserve(account_id, reviewed_action):
+                nonlocal receipt_id, receipt_kind
+                receipt_kind = "read" if reviewed_action else "write"
+                reserved = await self._reserve_uninterrupted_action(db, tool_name=name, app=request["app"],
+                    kind=receipt_kind, account_id=account_id,
+                    arguments={"app": request["app"], "action": request["action"],
+                               "arguments": request["arguments"]})
+                if isinstance(reserved, dict):
+                    return reserved
+                receipt_id = reserved
+                return None
+
+            result = await composio_actions.run(db, rt.owner_id, self.client_factory, agent_id=self.run.agent_id,
+                auto_called=auto, request=request, allowed_account_ids=allowed_account_ids[request["app"]],
+                before_execute=reserve if uninterrupted else None)
+        if receipt_id is not None:
+            await self._finish_uninterrupted_action(receipt_id, result, receipt_kind)
+        return result
+
+    async def execute_uninterrupted(self, db, name, tool, sent, account, allowed_account_ids):
+        """Dispatch one curated action under the routine's current full-capability grant."""
+        if name == "gmail_prepare_checked_reply" and not getattr(self.run.ctx, "draft_only", False):
+            return {"error": "This tool requires a confined draft-only routine.", "code": "not_allowed"}
+        receipt_id = None
+
+        async def reserve(account_id):
+            nonlocal receipt_id
+            reserved = await self._reserve_uninterrupted_action(db, tool_name=name, app=tool.app,
+                kind=tool.kind, account_id=account_id, arguments=sent)
+            if isinstance(reserved, dict):
+                return reserved
+            receipt_id = reserved
+            return None
+
+        result = await composio_service.run_tool(db, self.runtime.owner_id, self.client_factory, tool, sent, account,
+            allowed_account_ids=allowed_account_ids.get(tool.app, []), before_execute=reserve)
+        if receipt_id is not None:
+            await self._finish_uninterrupted_action(receipt_id, result, tool.kind)
+        return result
 
     async def execute(self, name: str, args: dict) -> dict:
         result = await self._execute_checked(name, args)
         # Provider results already have reservation receipts. Keep pre-dispatch
         # refusals too, without retaining untrusted input arguments.
-        if (getattr(self.run, "routine_grants", None) is not None
+        if ((getattr(self.run, "routine_grants", None) is not None
+             or getattr(self.run, "uninterrupted_access", False))
                 and result.get("code") in {"not_allowed", "not_approved", "bad_arguments", "stopped", "already_attempted"}):
             from app.db.models.routine import RoutineAppAction, RoutineRun, Routine
             from app.db.transactions import begin_write
@@ -201,8 +345,9 @@ class ComposioBridge:
                 rr = await db.get(RoutineRun, run_id) if run_id else None
                 routine = await db.get(Routine, rr.routine_id) if rr else None
                 if routine is not None and routine.owner_id == self.runtime.owner_id:
+                    grants = getattr(self.run, "routine_grants", None) or {}
                     db.add(RoutineAppAction(run_id=rr.id, tool=name[:200],
-                           account_id=self.run.routine_grants.get(name, ""),
+                           account_id=grants.get(name, ""),
                            status="refused", code=result["code"]))
                     await db.commit()
         return result
@@ -238,6 +383,8 @@ class ComposioBridge:
         except composio_tools.BadArguments as exc:
             return {"error": str(exc), "code": "bad_arguments"}
         async with rt.session() as db:
+            if getattr(run, "uninterrupted_access", False):
+                return await self.execute_uninterrupted(db, name, tool, sent, account, allowed_account_ids)
             grants = getattr(run, "routine_grants", None)
             if grants is not None:
                 return await self.execute_routine(db, name, tool, sent, account, allowed_account_ids)

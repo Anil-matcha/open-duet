@@ -63,6 +63,7 @@ type Draft = {
   retryLimit: string;
   retryDelay: string;
   connectedAppGrants: ConnectedAppGrant[];
+  uninterruptedAccess: boolean;
 };
 
 // These exact tool identifiers mirror the routine-safe read inventory and the
@@ -92,7 +93,7 @@ function newDraft(agents: Agent[]): Draft {
   return {
     id: null, name: "", agentId: agents[0]?.id ?? null, prompt: "", schedule: emptySchedule(),
     runLimit: "30", approvalMode: "ask", approvalWait: "30", catchUp: "60",
-    quietReporting: false, retryLimit: "0", retryDelay: "5", connectedAppGrants: [],
+    quietReporting: false, retryLimit: "0", retryDelay: "5", connectedAppGrants: [], uninterruptedAccess: false,
   };
 }
 
@@ -105,6 +106,7 @@ function draftOf(routine: Routine): Draft {
     quietReporting: routine.quiet_reporting ?? false,
     retryDelay: String(routine.retry_delay_minutes),
     connectedAppGrants: routine.connected_app_grants ?? [],
+    uninterruptedAccess: routine.uninterrupted_access ?? false,
   };
 }
 
@@ -124,6 +126,7 @@ function inputOf(draft: Draft): RoutineInput {
     retry_limit: Number(draft.retryLimit),
     retry_delay_minutes: Number(draft.retryDelay),
     connected_app_grants: draft.connectedAppGrants,
+    uninterrupted_access: draft.uninterruptedAccess,
   };
 }
 
@@ -438,6 +441,20 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                     </div>}
                   </fieldset>;
                 })}
+              </section>
+              <section className="space-y-2 rounded-md border border-line p-3" aria-labelledby="routine-uninterrupted-access-title">
+                <div>
+                  <h3 id="routine-uninterrupted-access-title" className="text-sm font-medium">Uninterrupted access</h3>
+                  <p className="mt-1 text-xs text-muted">When enabled, this routine can use the selected agent&apos;s existing capabilities without action-time approvals: connected apps, accounts and configured marketplace tools eligible at run start, plus its attached computer (screen, browser, commands, and files). Access is limited to the agent&apos;s current app scopes intersected with the accounts and tools eligible when the run starts; this does not add agent permissions or connected accounts. The exact connected-app grants above configure a separate narrow mode; for eligible routine runs, Uninterrupted access supersedes those grants. This applies only to this routine and does not affect ordinary chats. Configured marketplace tools can have service-defined effects and may change external services; those changes may not be undoable. If the agent has write capabilities, this routine may use them; Plan mode still blocks writes. Unattended runs proceed without waiting for your approval, so enable this only if you want the routine to run on its own with those existing permissions.</p>
+                </div>
+                <label className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={draft.uninterruptedAccess}
+                    onChange={(event) => setDraft({ ...draft, uninterruptedAccess: event.target.checked })}
+                  />
+                  <span>Allow this routine to use the selected agent&apos;s existing capabilities without action-time approval</span>
+                </label>
               </section>
               <details className="rounded-md border border-line p-3 text-xs">
                 <summary className="cursor-pointer font-medium text-muted">Limits and approvals</summary>

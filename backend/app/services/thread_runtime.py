@@ -176,6 +176,8 @@ class ActiveRun:
     routine_run_id: int | None = None
     routine_id: int | None = None
     routine_grants: dict[str, str] | None = None
+    uninterrupted_access: bool = False
+    capability_snapshot: dict = field(default_factory=dict)
     # Seconds an approval waits before it expires (is denied); None means the
     # LOCAL_APPROVAL_TIMEOUT_SECONDS setting. Routines set their own.
     approval_timeout: float | None = None
@@ -276,6 +278,7 @@ class ThreadApprovalGate:
         self._deadlines: dict[str, float] = {}
         # What each open approval was about, for the decision log.
         self._info: dict[str, tuple[str, str | None, str | None]] = {}
+        self._uninterrupted_requests: set[str] = set()
 
     @property
     def waiting(self) -> bool:
@@ -352,8 +355,17 @@ class ThreadApprovalGate:
             async with runtime.session() as db:
                 run.ctx.composio_first_use_hit = await composio_actions.first_use_hit(db, runtime.owner_id, run.agent_id, input)
         auto = tool_policy.automatic(tool, run.ctx.approval_mode or approval_modes.DEFAULT_MODE, run, input)
+        if auto is None or auto[0] != "denied":
+            from app.services import routine_uninterrupted
+            routine_auto = await routine_uninterrupted.automatic(runtime, run, tool, input)
+            if routine_auto is not None:
+                auto = routine_auto
+            elif auto is None and getattr(run, "uninterrupted_access", False):
+                auto = ("denied", "routine_tool_not_granted")
         if auto is not None:
             status, source = auto
+            if source == "routine_uninterrupted_grant":
+                self._uninterrupted_requests.add(request_id)
             async with runtime.session() as db:
                 won = await store.decide_approval(db, approval.id, status, by={"by": source})
             if won:
@@ -422,6 +434,26 @@ class ThreadApprovalGate:
 
         if status in ("expired", "cancelled"):
             self._log(status, handle.approval_id, source="timeout" if status == "expired" else "provider")
+        uninterrupted_allowed = handle.request_id in self._uninterrupted_requests
+        self._uninterrupted_requests.discard(handle.request_id)
+        if status == "allowed" and uninterrupted_allowed:
+            from app.services import routine_uninterrupted
+            async with runtime.session() as db:
+                approved_call = await store.get_approval(db, handle.approval_id)
+            rechecked = (await routine_uninterrupted.automatic(runtime, run, approved_call.tool, approved_call.input)
+                         if approved_call is not None else None)
+            if rechecked != ("allowed", "routine_uninterrupted_grant"):
+                source = rechecked[1] if rechecked is not None else "routine_uninterrupted_revoked"
+                async with runtime.session() as db:
+                    withdrawn = await store.deny_undelivered_allow(db, handle.approval_id, run.owner_token, source=source)
+                if not withdrawn:
+                    run.recorder.lose()
+                    self._info.pop(handle.approval_id, None)
+                    return Decision(LOST)
+                self._log("denied", handle.approval_id, source=source)
+                self._info.pop(handle.approval_id, None)
+                runtime.hub.notify(run.thread_id)
+                return Decision(DENY)
         self._info.pop(handle.approval_id, None)
         if status == "allowed":
             # Re-check, atomically, that this run still owns its turn right
@@ -431,7 +463,8 @@ class ThreadApprovalGate:
             if not delivered:
                 run.recorder.lose()
                 return Decision(LOST)
-            if handle.tool and handle.tool in SCREEN_INPUT and handle.tool != "mcp__computer__screen_read":
+            if (not uninterrupted_allowed and handle.tool and handle.tool in SCREEN_INPUT
+                    and handle.tool != "mcp__computer__screen_read"):
                 run.screen_granted = True
             return Decision(ALLOW)
         if status == "denied":
@@ -731,7 +764,8 @@ class ThreadRuntime:
             from app.services.routine_drafts import TOOL, valid_grants
             async with self.session() as db:
                 draft_run = await db.get(RoutineRun, routine_run_id)
-                draft_grants = {g["tool"]: g["account_id"] for g in draft_run.connected_app_grants} if draft_run else {}
+                draft_grants = ({g["tool"]: g["account_id"] for g in draft_run.connected_app_grants}
+                                if draft_run is not None and not draft_run.uninterrupted_access else {})
             draft_only = TOOL in draft_grants
             if draft_only and (not valid_grants(draft_grants) or thread.provider != "claude" or not capabilities_of(adapter).connected_apps):
                 raise ProviderUnavailable("Draft-only routines require a confined Claude engine and compatible Gmail read grants.")
@@ -896,10 +930,11 @@ class ThreadRuntime:
         return turn
 
     async def _composio_apps(self, run, adapter) -> dict:
-        """The connected apps this turn's tools may use, {app: level}, or none. Only a turn a
-        person started, on an engine that can mount them, for an agent the person
-        allowed, with a Composio key saved, and not in an agent computer (its data
-        would leave the sandbox)."""
+        """Connected apps within current agent scopes and the routine's saved grant.
+
+        Computer-backed turns mount them only for an explicitly authorized
+        uninterrupted routine; ordinary computer chats keep their isolation.
+        """
         is_routine = getattr(run, "routine_run_id", None) is not None
 
         def unavailable(reason: str) -> dict:
@@ -912,7 +947,7 @@ class ThreadRuntime:
             return unavailable("missing_agent")
         if not capabilities_of(adapter).connected_apps:
             return unavailable("engine_does_not_support_connected_apps")
-        if run.ctx.computer is not None:
+        if run.ctx.computer is not None and not getattr(run, "uninterrupted_access", False):
             return unavailable("computer_attached")
         try:
             from app.db.models import Agent, Turn
@@ -929,7 +964,22 @@ class ThreadRuntime:
                 run.ctx.composio_account_scopes = {app: ids for app, ids in account_scopes.items() if app in apps}
                 if not apps:
                     return unavailable("agent_app_or_account_scope_missing")
-                if turn is not None and turn.origin not in (None, "person"):
+                if getattr(run, "uninterrupted_access", False):
+                    from app.services import routine_uninterrupted
+                    current = await routine_uninterrupted.state(self, run, db)
+                    if current is None:
+                        return unavailable("uninterrupted_access_revoked")
+                    ceiling = current[2]
+                    apps = {app: ("write" if level == "write" and ceiling.get("apps", {}).get(app) == "write" else "read")
+                            for app, level in apps.items() if app in ceiling.get("apps", {})}
+                    account_scopes = {app: [account for account in ids if account in ceiling.get("accounts", {}).get(app, [])]
+                                      for app, ids in account_scopes.items() if app in apps}
+                    apps = {app: level for app, level in apps.items() if account_scopes.get(app)}
+                    run.ctx.composio_account_scopes = account_scopes
+                    run.routine_grants = None
+                    if not apps:
+                        return unavailable("uninterrupted_agent_scope_missing")
+                elif turn is not None and turn.origin not in (None, "person"):
                     from app.db.models.routine import Routine, RoutineRun
                     if turn.origin != "routine":
                         return unavailable("turn_origin_not_routine")
@@ -955,7 +1005,7 @@ class ThreadRuntime:
                     return unavailable("composio_not_configured")
                 if is_routine:
                     logger.info("routine connected-app tools mounted", apps=sorted(apps),
-                                tools=sorted(getattr(run, "routine_grants", {})),
+                                tools=sorted(getattr(run, "routine_grants", {}) or {}),
                                 routine_run_id=run.routine_run_id, thread_id=run.thread_id)
                 return apps
         except Exception:  # noqa: BLE001
@@ -1138,6 +1188,11 @@ class ThreadRuntime:
                     run.agent_id, run.turn_id, str(run.ctx.workspace) if run.ctx.workspace else None
                 )
                 run.ctx.computer = binding
+                from app.services import routine_uninterrupted
+                await routine_uninterrupted.load(self, run)
+                if binding is not None and run.ctx.approval_mode != "plan":
+                    authorized = await routine_uninterrupted.automatic(self, run, "mcp__computer__read_file", {})
+                    binding.routine_uninterrupted = authorized == ("allowed", "routine_uninterrupted_grant")
                 if not getattr(run.ctx, "draft_only", False) and binding is None and run.agent_id is not None and capabilities_of(adapter).computers:
                     binding = run.ctx.browser = await self.computers.attach_browser(run.agent_id, run.turn_id)
                 if run.ctx.team is not None:

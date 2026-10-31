@@ -253,8 +253,9 @@ The editor lets you authorize exact actions and connected accounts once per
 routine. The agent must also have matching app and account access. Scheduled and
 manual runs can use granted reads, send a one-recipient plain-text Gmail email,
 create a new GitHub `campaign/` branch, or commit a file on that branch without
-repeated action approvals. Plan mode refuses writes. Webhook, retry and
-computer-backed runs receive no app tools.
+repeated action approvals. Plan mode refuses writes. Webhook and retry runs
+receive no app tools. Computer-backed runs receive them only with the
+Uninterrupted access setting described below.
 
 New grants apply on the next run and revocations stop subsequent calls. Writes
 are reserved before dispatch and the same exact request cannot be replayed in
@@ -262,6 +263,41 @@ that run. Run history shows receipts and uncertain outcomes. A new manual or
 scheduled run can perform the work again: check the app before rerunning after
 an uncertain result. External changes are not covered by file Undo. Other writes,
 remain unavailable except for the separate confined draft mode below. See [Connected apps](CONNECTED_APPS.md#routine-specific-app-access).
+
+## Uninterrupted access
+
+Enable **Uninterrupted access** in the routine editor to authorize the selected
+agent's configured capabilities for scheduled and manual runs. This is a broad
+routine permission: it includes app actions within the agent's selected
+read/write app and account scopes, its exact granted marketplace tools, and
+screen, browser, command and file tools on its attached isolated computer.
+For a daily browser task, the attached Boat desktop can navigate and interact
+without an **Allow this turn** card on every occurrence.
+
+The routine records its available accounts, tools and computer at run start.
+New capabilities apply to the next run; removing the routine permission or an
+agent permission blocks subsequent calls, including during an active run.
+Provider authorization and exact account selection still apply. Plan mode,
+command safety checks and the isolation of the person's native desktop remain
+in force. Unsupported actions are refused without leaving the routine waiting
+for an approval. A login challenge, CAPTCHA, missing credential or inaccessible
+source is handled by instructing the agent to stop and report incomplete.
+Raw desktop control does not enforce detection of these page states.
+Permission is checked again before a tool allowance reaches the provider.
+A call already delivered may finish after revocation; subsequent calls are blocked.
+Connected-app writes and marketplace calls have per-run no-replay receipts.
+Marketplace effects are treated as unknown, so an identical call is attempted
+at most once in a run. Check the external service before starting a new run
+after an uncertain result.
+
+This setting changes only the routine. Ordinary chats continue to use their
+existing approvals. New, imported and chat-created routines start with the
+setting off, and exports do not carry it. Keep the backend running and its
+machine awake for daily scheduling; leaving the Boat computer online does not
+keep a stopped desktop scheduler running.
+
+The source and automated checks cover this permission flow. A real scheduled
+AppSumo research run and a rebuilt installed package have not yet been qualified.
 
 
 ## Quiet results

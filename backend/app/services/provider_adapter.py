@@ -195,6 +195,7 @@ class TurnContext:
     community_prompt_note: str | None = None
     community_bridge: object | None = None
     composio_exact_tools: list[str] | None = None
+    routine_uninterrupted: bool = False
     composio_apps: dict | None = None  # {app: "read" | "write"}
     # Generic connected-app actions (composio_generic.py): whether the call being decided has a first use on
     # record, and the calls decided without a card (the bridge checks those again before it runs them).

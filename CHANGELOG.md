@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- Add an owner-selected Uninterrupted access setting for a routine. Scheduled
+  and manual runs can use the agent's configured app accounts, granted
+  marketplace tools and attached isolated computer without per-call approval.
+  Each run records its starting capability ceilings and rechecks current
+  permission before calls. Ordinary chats retain their own approval behavior.
+  Real AppSumo research and updated installed-package qualification remain open.
+
 ### Changed
 
 - Remove the server-wide routine connected-app switch. Explicitly granted

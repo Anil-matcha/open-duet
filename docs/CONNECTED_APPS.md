@@ -189,7 +189,7 @@ sandbox, a real lost-answer failure, and revocation at GitHub remain unchecked.
 
 ## Routine-specific app access
 
-The routine editor binds exact actions to stable connected account IDs. Grants
+With Uninterrupted access off, the routine editor binds exact actions to stable connected account IDs. Grants
 start empty and do not inherit the agent's broader access. You authorize each
 selected action once for that routine and account; it can then run without a
 fresh approval card. The agent must also have the matching read/write app scope.
@@ -219,9 +219,21 @@ and credential isolation have separate qualification gates; local shell
 visibility of saved keys remains a separate safety limitation.
 
 Only scheduled/manual runs qualify; webhook runs, retries and runs with an agent
-computer receive no connected-app tools. Each run records its starting grants.
+computer receive no connected-app tools in this mode. Each run records its starting grants.
 New permissions apply on the next run; grant/account revocation stops later calls.
 App content is untrusted data and cannot authorize actions.
+
+With **Uninterrupted access** enabled by the owner, scheduled and manual runs
+instead use the selected agent's configured app read/write scopes and exact
+connected accounts, bounded by the run-start snapshot and current permissions.
+Configured generic actions and granted marketplace tools can execute without
+fresh approval cards, including alongside the attached isolated computer.
+The provider's current OAuth rights, action schema checks, app blocklists,
+Plan mode and at-most-once write receipts continue to apply. Revoking the
+routine setting, agent scope or account prevents later calls. Imports and
+chat-created routines cannot enable this setting. See
+[Uninterrupted access](ROUTINES.md#uninterrupted-access) for scheduling and
+computer scope. Real AppSumo and updated installed-package runs remain unqualified.
 
 Every write is durably reserved before provider dispatch. The same tool/account/
 arguments cannot execute again in that run, including concurrent calls, process
