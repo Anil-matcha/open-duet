@@ -13,6 +13,11 @@
 
 ### Changed
 
+- Stop the agent browser announcing itself as `HeadlessChrome`: its user agent,
+  client hints and `navigator.userAgentData` now agree and name Chrome, with the
+  real version and platform. Add a fixed notice when a page shows a visible
+  CAPTCHA frame or a "Just a moment" or "Access denied" page, so the agent stops
+  and asks the person to take control instead of retrying.
 - Remove the server-wide routine connected-app switch. Explicitly granted
   scheduled and manual routine actions are eligible immediately, subject to
   current agent permissions, active accounts and existing run restrictions.
