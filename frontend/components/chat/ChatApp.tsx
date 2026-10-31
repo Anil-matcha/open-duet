@@ -27,6 +27,7 @@ import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { NeedsYouCard } from "./NeedsYouCard";
 import { ChatHeader } from "./ChatHeader";
+import { CommandPalette } from "@/components/shell/CommandPalette";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Drawer } from "@/components/ui/Drawer";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
@@ -710,6 +711,14 @@ export function ChatApp() {
   );
   const header = buildHeader(false);
 
+  // Start a conversation: with the given agent, or (no argument) with whatever is chosen now.
+  const startChat = (agentId?: number) => {
+    if (agentId !== undefined) { setNewAgentId(agentId); setNewModel(null); }
+    setModelDraft(null);
+    setFocusComposer(true);
+    router.push("/chat");
+  };
+
   const sidebar = (
     <Sidebar
       agents={agents}
@@ -721,12 +730,7 @@ export function ChatApp() {
       onToggleArchived={() => setShowArchived((on) => !on)}
       actions={listActions}
       error={manageError}
-      onNewChat={(agentId) => {
-        if (agentId !== undefined) { setNewAgentId(agentId); setNewModel(null); }
-        setModelDraft(null);
-        setFocusComposer(true);
-        router.push("/chat");
-      }}
+      onNewChat={startChat}
       onManageAgents={agents !== null ? () => { setEditAgent(null); setAgentsCreate(false); setAgentsOpen(true); } : undefined}
       leadAgentId={teamState?.team?.lead_agent_id ?? null}
       onChangeLead={session?.scopes.includes("admin") ? async (agent, remove) => {
@@ -802,6 +806,7 @@ export function ChatApp() {
       >
         {t("shell.skip")}
       </a>
+      {ready && <CommandPalette agents={agents} threads={threads} onNewChat={startChat} />}
       {sidebarInline ? (
         <aside className="w-72 shrink-0 border-r border-line">{sidebar}</aside>
       ) : (
@@ -863,6 +868,7 @@ export function ChatApp() {
           ) : (
             <Conversation
               threadId={threadId}
+              loading={threadId !== null && thread === null}
               agent={threadAgent ? { id: threadAgent.id, name: threadAgent.name } : startingAgent ? { id: startingAgent.id, name: startingAgent.name } : null}
               emptyAction={signInAction}
               emptyHint={
@@ -907,6 +913,7 @@ export function ChatApp() {
             </details>
           </div>
           <Composer
+            draftKey={threadId === null ? "new" : String(threadId)}
             focusRequested={focusComposer}
             onFocused={() => setFocusComposer(false)}
             value={draft}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentTarget, rowStatus, sidebarAgents } from "./sidebar.ts";
+import { agentTarget, recentVisible, rowStatus, showsUnreadDot, sidebarAgents } from "./sidebar.ts";
 
 const thread = (id, agent_id, updated_at, archived_at = null) => ({ id, agent_id, updated_at, archived_at });
 
@@ -45,4 +45,21 @@ test("status precedence: waiting, then working, then needs a new session", () =>
   assert.equal(rowStatus({ working: true, brokenSession: true }), "working");
   assert.equal(rowStatus({ brokenSession: true }), "reset");
   assert.equal(rowStatus({}), null);
+});
+
+test("unread is the quietest status and gets a second dot beside a louder one", () => {
+  assert.equal(rowStatus({ unread: true }), "unread");
+  assert.equal(rowStatus({ unread: true, working: true }), "working");
+  assert.equal(showsUnreadDot("working", true), true);
+  assert.equal(showsUnreadDot("unread", true), false);
+  assert.equal(showsUnreadDot(null, true), false);
+  assert.equal(showsUnreadDot("working", false), false);
+});
+
+test("the short list keeps anything needing attention beyond the limit", () => {
+  const threads = [1, 2, 3, 4, 5, 6].map((id) => ({ id }));
+  assert.deepEqual(recentVisible(threads, 2, () => false, false).map((x) => x.id), [1, 2]);
+  assert.deepEqual(recentVisible(threads, 2, (x) => x.id === 5, false).map((x) => x.id), [1, 2, 5]);
+  assert.equal(recentVisible(threads, 2, () => false, true).length, 6);
+  assert.equal(recentVisible(threads, 10, () => false, false).length, 6);
 });

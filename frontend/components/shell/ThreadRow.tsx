@@ -6,26 +6,24 @@ import { useRef, useState } from "react";
 import type { Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { relativeTime } from "@/lib/relative-time";
 import { rowStatus, type RowStatus } from "@/lib/sidebar";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/Menu";
 import { StatusDot } from "./StatusDot";
 
+function whenLabel(iso: string): string {
+  const rel = relativeTime(iso);
+  if (rel === null) return "";
+  return "date" in rel ? rel.date : t(rel.key, "n" in rel ? { n: rel.n } : undefined);
+}
+
 export type RowActions = {
   onRename: (id: number, title: string) => void;
   onArchive: (id: number, archived: boolean) => void;
   onDelete: (id: number) => void;
 };
-
-function when(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const today = new Date();
-  return date.toDateString() === today.toDateString()
-    ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
 
 // One conversation in the Recent list: the agent's avatar, the title, when it last moved, and
 // a menu to rename, archive or delete it. Rename and the delete question happen in place.
@@ -34,6 +32,7 @@ export function ThreadRow({
   selected,
   agentName,
   status,
+  unread = false,
   actions,
   onNavigate,
 }: {
@@ -42,16 +41,19 @@ export function ThreadRow({
   agentName?: string;
   // Live state, known only for the open conversation until the list carries it.
   status: { working?: boolean; waiting?: boolean };
+  // The conversation moved since it was last opened here.
+  unread?: boolean;
   actions: RowActions;
   onNavigate?: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   // The rename field takes focus itself; the menu must not pull it back to its button.
   const keepFocus = useRef(false);
   const archived = thread.archived_at !== null;
-  const shown: RowStatus = rowStatus({ ...status, brokenSession: thread.session_state === "broken" });
+  const shown: RowStatus = rowStatus({ ...status, unread, brokenSession: thread.session_state === "broken" });
 
   const startRename = () => {
     setDraft(thread.title ?? "");
@@ -102,7 +104,11 @@ export function ThreadRow({
   }
 
   return (
-    <li className="group relative">
+    <li
+      className="group relative"
+      // Right-click and the ContextMenu key / Shift+F10 open the same menu as the "…" button.
+      onContextMenu={(event) => { event.preventDefault(); setMenuOpen(true); }}
+    >
       <Link
         href={`/chat?thread=${thread.id}`}
         onClick={onNavigate}
@@ -116,11 +122,11 @@ export function ThreadRow({
         <Avatar agentId={thread.agent_id ?? null} name={agentName} size="md" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate font-medium">{thread.title || t("sidebar.untitled")}</span>
-            <StatusDot status={shown === "reset" ? null : shown} />
+            <span className={cn("min-w-0 flex-1 truncate", unread ? "font-semibold" : "font-medium")}>{thread.title || t("sidebar.untitled")}</span>
+            <StatusDot status={shown === "reset" ? null : shown} unread={unread} />
           </span>
           <span className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="shrink-0">{when(thread.updated_at)}</span>
+            <span className="shrink-0">{whenLabel(thread.updated_at)}</span>
             {agentName ? <span className="min-w-0 truncate">· {agentName}</span> : null}
             {archived ? <span>· {t("sidebar.archivedTag")}</span> : null}
             {shown === "reset" ? <span className="text-warning">· {t("status.reset")}</span> : null}
@@ -128,8 +134,10 @@ export function ThreadRow({
         </span>
       </Link>
 
-      <div className={cn("absolute right-1 top-1/2 -translate-y-1/2", !selected && "opacity-0 focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100")}>
+      <div className={cn("absolute right-1 top-1/2 -translate-y-1/2", !selected && !menuOpen && "opacity-0 focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100")}>
         <Menu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
           trigger={
             <button
               type="button"

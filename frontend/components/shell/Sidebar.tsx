@@ -1,19 +1,21 @@
 "use client";
 
-import { Archive, CalendarClock, Columns3, LayoutGrid, Plus, Send, Settings, SlidersHorizontal, Trash2, Crown } from "lucide-react";
+import { Archive, CalendarClock, Columns3, LayoutGrid, Plus, Send, Settings, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { Agent, Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { agentTarget, rowStatus, sidebarAgents } from "@/lib/sidebar";
+import { agentTarget, recentVisible, rowStatus, sidebarAgents } from "@/lib/sidebar";
 import { ConversationSearch } from "@/components/chat/ConversationSearch";
-import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { IconButton } from "@/components/ui/IconButton";
+import { SkeletonList } from "@/components/ui/Skeleton";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { StatusDot } from "./StatusDot";
+import { AgentRow } from "./AgentRow";
 import { ThreadRow, type RowActions } from "./ThreadRow";
+import { useUnread } from "./useUnread";
 
 export type SidebarLive = {
   // The open conversation and its agent are the only ones whose live state this page knows.
@@ -31,6 +33,9 @@ function SectionHeader({ title, children }: { title: string; children?: React.Re
     </div>
   );
 }
+
+// How many conversations Recent lists before "Show all"; anything needing attention is always listed.
+const RECENT_LIMIT = 8;
 
 const ROW = "flex w-full cursor-pointer items-center gap-2.5 rounded-field py-2 pl-2 pr-2 text-left text-sm transition-colors duration-(--dur-fast) touch:py-2.5";
 
@@ -88,8 +93,16 @@ export function Sidebar({
   collaboration?: React.ReactNode;
 }) {
   const [searching, setSearching] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const unread = useUnread(threads, selectedThreadId);
   const names = new Map((agents ?? []).map((agent) => [agent.id, agent.name]));
   const listed = sidebarAgents(agents);
+  const shownThreads = recentVisible(
+    threads ?? [],
+    RECENT_LIMIT,
+    (thread) => thread.id === selectedThreadId || thread.id === live.threadId || unread.has(thread.id) || thread.session_state === "broken",
+    showAll,
+  );
 
   const newChat = (agentId?: number) => {
     onNewChat(agentId);
@@ -121,54 +134,34 @@ export function Sidebar({
               )}
             </SectionHeader>
             {listed.length === 0 && (
-              <div className="px-3 pb-2 pt-1">
-                <p className="text-xs text-muted">{t("sidebar.noAgents")}</p>
-                {onNewAgent && (
-                  <Button size="sm" className="mt-2" icon={<Plus size={14} aria-hidden="true" />} onClick={() => { onNewAgent(); onNavigate?.(); }}>
+              <EmptyState
+                compact
+                title={t("sidebar.noAgentsTitle")}
+                description={t("sidebar.noAgents")}
+                action={onNewAgent ? (
+                  <Button size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => { onNewAgent(); onNavigate?.(); }}>
                     {t("sidebar.newAgent")}
                   </Button>
-                )}
-              </div>
+                ) : undefined}
+              />
             )}
             <ul className="space-y-0.5">
               {listed.map((agent) => {
                 const target = agentTarget(threads, agent.id);
-                const isSelected = selectedAgentId === agent.id;
-                const status = live.agentId === agent.id ? rowStatus({ working: live.working, waiting: live.waiting }) : null;
-                const body = (
-                  <>
-                    <Avatar agentId={agent.id} name={agent.name} size="md" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{agent.name}{leadAgentId === agent.id ? " · Lead" : ""}</span>
-                      {agent.title ? <span className="block truncate text-xs text-muted">{agent.title}</span> : null}
-                    </span>
-                    <StatusDot status={status} />
-                  </>
-                );
-                const cls = cn(ROW, isSelected ? "bg-hover" : "hover:bg-hover/60");
                 return (
-                  <li key={agent.id} className="flex min-w-0 items-center gap-1">
-                    {target.kind === "thread" ? (
-                      <Link href={`/chat?thread=${target.id}`} onClick={onNavigate} aria-current={isSelected ? "page" : undefined} className={cn(cls, "min-w-0 flex-1")}>
-                        {body}
-                      </Link>
-                    ) : (
-                      <button type="button" onClick={() => newChat(agent.id)} aria-current={isSelected ? "page" : undefined} className={cn(cls, "min-w-0 flex-1")}>
-                        {body}
-                      </button>
-                    )}
-                    {onEditAgent && <IconButton label={`Settings for ${agent.name}`} onClick={() => onEditAgent(agent)} className="size-8 text-muted touch:size-10"><Settings size={14} aria-hidden="true" /></IconButton>}
-                    {onChangeLead && <IconButton label={leadAgentId === agent.id ? `Remove lead role from ${agent.name}` : `Make ${agent.name} lead`} onClick={() => void onChangeLead(agent, leadAgentId === agent.id)} className="size-8 text-muted touch:size-10"><Crown size={14} aria-hidden="true" /></IconButton>}
-                    {onDeleteAgent && (
-                      <IconButton
-                        label={`Delete ${agent.name}`}
-                        onClick={() => onDeleteAgent(agent)}
-                        className="size-8 text-muted hover:text-danger touch:size-10"
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </IconButton>
-                    )}
-                  </li>
+                  <AgentRow
+                    key={agent.id}
+                    agent={agent}
+                    href={target.kind === "thread" ? `/chat?thread=${target.id}` : null}
+                    selected={selectedAgentId === agent.id}
+                    status={live.agentId === agent.id ? rowStatus({ working: live.working, waiting: live.waiting }) : null}
+                    isLead={leadAgentId === agent.id}
+                    onOpenChat={() => newChat(agent.id)}
+                    onNavigate={onNavigate}
+                    onEdit={onEditAgent ? () => onEditAgent(agent) : undefined}
+                    onChangeLead={onChangeLead ? () => void onChangeLead(agent, leadAgentId === agent.id) : undefined}
+                    onDelete={onDeleteAgent ? () => onDeleteAgent(agent) : undefined}
+                  />
                 );
               })}
             </ul>
@@ -189,11 +182,19 @@ export function Sidebar({
             </IconButton>
           </SectionHeader>
           <ul className="space-y-0.5">
-            {threads === null && <li className="px-3 py-2 text-xs text-muted">{t("sidebar.loading")}</li>}
-            {threads?.length === 0 && (
-              <li className="px-3 py-2 text-xs text-muted">{showArchived ? t("sidebar.emptyArchived") : t("sidebar.empty")}</li>
+            {threads === null && (
+              <li><SkeletonList rows={5} className="px-1 pt-1" /></li>
             )}
-            {threads?.map((thread) => {
+            {threads?.length === 0 && (
+              <li>
+                <EmptyState
+                  compact
+                  title={showArchived ? t("sidebar.emptyArchived") : t("sidebar.emptyTitle")}
+                  description={showArchived ? undefined : t("sidebar.empty")}
+                />
+              </li>
+            )}
+            {shownThreads.map((thread) => {
               const open = thread.id === live.threadId;
               return (
                 <ThreadRow
@@ -202,12 +203,23 @@ export function Sidebar({
                   selected={thread.id === selectedThreadId}
                   agentName={thread.agent_id != null ? names.get(thread.agent_id) : undefined}
                   status={open ? { working: live.working, waiting: live.waiting } : {}}
+                  unread={unread.has(thread.id)}
                   actions={actions}
                   onNavigate={onNavigate}
                 />
               );
             })}
           </ul>
+          {threads !== null && threads.length > RECENT_LIMIT && (
+            <button
+              type="button"
+              aria-expanded={showAll}
+              onClick={() => setShowAll((on) => !on)}
+              className="mt-1 w-full cursor-pointer rounded-field px-3 py-2 text-left text-xs font-medium text-muted hover:bg-hover/60 hover:text-ink touch:py-3"
+            >
+              {showAll ? t("sidebar.showFewer") : t("sidebar.showAll")}
+            </button>
+          )}
         </section>
       </div>
 
