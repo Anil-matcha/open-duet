@@ -762,12 +762,7 @@ class ComputerService:
         if binding is None:
             return
         if binding.provider == "local-browser":
-            state = self.state_dir() / f"browser-{-binding.computer_id}"
-            with screen.driver_lock(state):
-                owner_path = state / "screen-owner.json"
-                if screen.read_state(owner_path).get("turn_id") == str(binding.grants_dir):
-                    owner_path.unlink(missing_ok=True)
-            shutil.rmtree(binding.grants_dir, ignore_errors=True)
+            await asyncio.to_thread(self._release_browser_grant, binding)
             return
         if binding.provider == "native":
             from app.computers import native
@@ -787,6 +782,14 @@ class ComputerService:
             await self._save(binding.computer_id, last_used_at=_utcnow())
         except ComputerNotFound:
             pass
+
+    def _release_browser_grant(self, binding: TurnComputer) -> None:
+        state = self.state_dir() / f"browser-{-binding.computer_id}"
+        with screen.driver_lock(state):
+            owner_path = state / "screen-owner.json"
+            if screen.read_state(owner_path).get("turn_id") == str(binding.grants_dir):
+                owner_path.unlink(missing_ok=True)
+        shutil.rmtree(binding.grants_dir, ignore_errors=True)
 
     def _release_screen_grant(self, binding: TurnComputer) -> None:
         with screen.driver_lock(self.state_dir() / str(binding.computer_id)):
