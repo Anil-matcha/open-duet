@@ -9,6 +9,9 @@ import { migrateLegacyIdentity, type SessionInfo } from "@/lib/session";
 import { DesktopAccountLogin, type DesktopAccountStatus } from "./DesktopAccountLogin";
 import { onboarding } from "@/lib/onboarding";
 import { isSetupPage } from "@/lib/settings-nav";
+import { Banner } from "./ui/Banner";
+import { Button } from "./ui/Button";
+import { Spinner } from "./ui/Spinner";
 
 type SessionContextValue = {
   // null when the server could not say (unreachable, or the desktop app's page
@@ -81,8 +84,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setSession((previous) => (previous ? { ...previous, user_id: userId } : previous));
   }, []);
 
-  if (problem) return <main className="mx-auto max-w-md space-y-4 p-6"><h1 className="text-lg font-semibold">Could not open your workspace</h1><p role="alert" className="text-sm">{problem}</p><button className="rounded border border-line px-3 py-2" onClick={() => { setProblem(null); setReady(false); setRetry(value => value + 1); }}>Try again</button>{session && <button className="ml-3 text-sm underline" onClick={() => { setProblem(null); setContinueWithoutSetup(true); }}>Continue without the setup guide</button>}</main>;
-  if (!ready) return <p className="p-6 text-center text-sm text-muted">Loading…</p>;
+  if (problem) {
+    return (
+      <main className="mx-auto max-w-md space-y-4 p-6">
+        <h1 className="text-title font-semibold">Could not open your workspace</h1>
+        <Banner tone="danger">{problem}</Banner>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" onClick={() => { setProblem(null); setReady(false); setRetry((value) => value + 1); }}>Try again</Button>
+          {session && <Button variant="ghost" onClick={() => { setProblem(null); setContinueWithoutSetup(true); }}>Continue without the setup guide</Button>}
+        </div>
+      </main>
+    );
+  }
+  if (!ready) return <div className="flex justify-center p-10 text-sm text-muted"><Spinner label="Loading…" /></div>;
   if (account && !account.signed_in) return <DesktopAccountLogin status={account} onSignedIn={() => { setReady(false); setRetry(value => value + 1); }} />;
   return <SessionContext.Provider value={{ session, setUserId }}>{children}</SessionContext.Provider>;
 }
