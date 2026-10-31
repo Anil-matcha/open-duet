@@ -1,3 +1,6 @@
+import { Banner } from "@/components/ui/Banner";
+import { Button as UiButton, type ButtonProps } from "@/components/ui/Button";
+
 export function Card({
   step,
   title,
@@ -38,19 +41,10 @@ export function Card({
 
 export function ErrorText({ message }: { message: string | null }) {
   if (!message) return null;
-  return <p className="mt-2 text-sm text-danger">{message}</p>;
+  return <Banner tone="danger" className="mt-2">{message}</Banner>;
 }
 
-export function Button({
-  children,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      className="rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 bg-accent text-accent-fg hover:opacity-90"
-    >
-      {children}
-    </button>
-  );
+// Primary action. Defaults to type="submit" like the plain button it replaces, so callers inside forms keep working.
+export function Button({ type = "submit", ...props }: ButtonProps) {
+  return <UiButton variant="primary" type={type} {...props} />;
 }

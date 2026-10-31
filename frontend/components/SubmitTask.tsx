@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, PermissionAsk, Schedule, Task } from "@/lib/api";
 import { Button, Card, ErrorText } from "./Card";
+import { Button as UiButton } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 const POLL_INTERVAL_MS = 3000;
 const HISTORY_REFRESH_INTERVAL_MS = 30_000;
@@ -267,7 +270,7 @@ export function SubmitTask({
     } catch (err) {
       setComposerError(
         err instanceof ApiError
-          ? err.message
+          ? `Could not ${scheduleEnabled ? "create the schedule" : "submit the task"}. ${err.message}`
           : `Could not ${scheduleEnabled ? "create schedule" : "submit task"}.`
       );
     } finally {
@@ -320,7 +323,7 @@ export function SubmitTask({
     } catch (err) {
       setReplyErrors((prev) => ({
         ...prev,
-        [parent.id]: err instanceof ApiError ? err.message : "Could not send reply.",
+        [parent.id]: err instanceof ApiError ? `Could not send reply. ${err.message}` : "Could not send reply.",
       }));
     } finally {
       listVersion.current += 1;
@@ -356,62 +359,58 @@ export function SubmitTask({
         )}
         {showComposer && (
         <>
-        <textarea
+        <Textarea
           value={composer}
           onChange={(e) => setComposer(e.target.value)}
           placeholder='e.g. "create a webpage that says hello"'
           aria-label="New task"
           rows={3}
           disabled={!canSubmit}
-          className="w-full rounded-md border border-line px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={scheduleEnabled}
-            disabled={!canSubmit}
-            onChange={(e) => setScheduleEnabled(e.target.checked)}
-          />
-          Repeat this on a schedule
-        </label>
+        <Checkbox
+          label="Repeat this on a schedule"
+          checked={scheduleEnabled}
+          disabled={!canSubmit}
+          onChange={(e) => setScheduleEnabled(e.target.checked)}
+        />
 
         {scheduleEnabled && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-line p-3">
-            <select
+            <Select
+              className="w-auto"
               aria-label="How often"
               value={frequency}
               onChange={(e) => setFrequency(e.target.value as Frequency)}
-              className="rounded-md border border-line px-2 py-1.5 text-sm"
             >
               {FREQUENCIES.map((f) => (
                 <option key={f} value={f}>
                   {FREQUENCY_LABELS[f]}
                 </option>
               ))}
-            </select>
+            </Select>
 
             {frequency === "weekly" && (
-              <select
+              <Select
+                className="w-auto"
                 aria-label="Day of the week"
                 value={scheduleWeekday}
                 onChange={(e) => setScheduleWeekday(Number(e.target.value))}
-                className="rounded-md border border-line px-2 py-1.5 text-sm"
               >
                 {WEEKDAYS.map((d) => (
                   <option key={d.value} value={d.value}>
                     {d.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
 
             {frequency !== "hourly" && (
-              <input
+              <Input
+                className="w-auto"
                 type="time"
                 aria-label={`Time (${timezone})`}
                 value={scheduleTime}
                 onChange={(e) => setScheduleTime(e.target.value)}
-                className="rounded-md border border-line px-2 py-1.5 text-sm"
               />
             )}
 
@@ -460,20 +459,23 @@ export function SubmitTask({
                     )}
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <button
+                    <UiButton
+                      variant="ghost"
+                      size="sm"
                       onClick={() => toggleSchedule(schedule)}
                       disabled={scheduleBusy[schedule.id]}
-                      className="text-xs text-muted underline disabled:opacity-50"
                     >
                       {schedule.is_active ? "Pause" : "Resume"}
-                    </button>
-                    <button
+                    </UiButton>
+                    <UiButton
+                      variant="ghost"
+                      size="sm"
+                      className="text-danger"
                       onClick={() => removeSchedule(schedule)}
                       disabled={scheduleBusy[schedule.id]}
-                      className="text-xs text-danger underline disabled:opacity-50"
                     >
                       Delete
-                    </button>
+                    </UiButton>
                   </div>
                 </div>
               </li>
@@ -538,13 +540,14 @@ export function SubmitTask({
                               >
                                 Always allow
                               </Button>
-                              <button
+                              <UiButton
+                                variant="secondary"
+                                className="border-danger/50 text-danger"
                                 onClick={() => answerAsk(task, "deny", false)}
                                 disabled={askBusy[ask.id]}
-                                className="rounded-md border border-danger/50 px-4 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Deny
-                              </button>
+                              </UiButton>
                             </div>
                           )}
                         </div>
@@ -556,7 +559,7 @@ export function SubmitTask({
 
                       {!active && showComposer && (
                         <div className="mt-3 space-y-2">
-                          <textarea
+                          <Textarea
                             value={replyDrafts[task.id] ?? ""}
                             onChange={(e) =>
                               setReplyDrafts((prev) => ({ ...prev, [task.id]: e.target.value }))
@@ -564,7 +567,6 @@ export function SubmitTask({
                             placeholder="Reply in this conversation…"
                             rows={2}
                             disabled={!canSubmit}
-                            className="w-full rounded-md border border-line px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                           />
                           <Button
                             onClick={() => submitReply(task)}
