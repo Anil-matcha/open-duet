@@ -45,7 +45,7 @@ def _secret_path(path: str) -> str | None:
     """The refusal text when `path` names a credential file or folder, else None.
     Absolute paths are read relative to the guest workspace; anything else keeps
     its whole path so a secret directory anywhere in it is still caught."""
-    from app.services.workspace_files import is_secret
+    from app.core.secret_names import is_secret
 
     text = (path or "").strip()
     if text.startswith(docker_cli.GUEST_WORKSPACE):
