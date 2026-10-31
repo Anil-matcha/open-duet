@@ -6,6 +6,9 @@ import { ApiError, type Agent } from "@/lib/api";
 import { collaboration, type TeamState, type TeamJob } from "@/lib/collaboration";
 import { useSession } from "@/components/AuthGate";
 import { Dialog } from "@/components/ui/Dialog";
+import { Badge } from "@/components/ui/Badge";
+import { Select } from "@/components/ui/Input";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 import { SharedApproval } from "./SharedApproval";
 
 const BUTTON = "rounded-field border border-line px-3 py-1.5 text-sm hover:bg-hover disabled:opacity-50";
@@ -46,15 +49,15 @@ export function TeamPanel({ agents, onClose, onChanged }: { agents: Agent[]; onC
   const act = async (action: () => Promise<unknown>) => { setBusy(true); setError(null); try { await action(); await refresh(); onChanged(); } catch (err) { setError(err instanceof ApiError ? err.message : "Could not update the team."); } finally { setBusy(false); } };
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }} title={data?.team?.name ?? "Team"} description="A lead can create specialists and hand them work. Each agent keeps its own approvals." size="lg">
     <div className="space-y-4"><div className="flex gap-2" role="tablist" aria-label="Team view">{["agents", "activity"].map(value => <button key={value} role="tab" aria-selected={tab === value} className={BUTTON} onClick={() => setTab(value)}>{value === "agents" ? "Agents" : "Activity"}</button>)}</div>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {!data && !error && <p role="status">Loading team…</p>}
-      {data && tab === "agents" && <div className="space-y-3">{!data.team && <p className="text-sm text-muted">Choose a lead from your agents to start a team.</p>}{data.team && !data.lead_ready.ok && <p className="text-sm text-warning">{data.lead_ready.reason}</p>}
-        {data.agents.map(agent => <article key={agent.id} className="space-y-2 rounded-field border border-line p-3"><div><strong>{agent.name}</strong>{agent.is_lead && <span className="ml-2 rounded bg-accent/15 px-2 py-0.5 text-xs">Lead</span>}<span className="ml-2 text-xs text-muted">{agent.state}</span></div><p className="text-xs text-muted">{agent.created_by_agent_id ? `Instructions written by agent ${agent.created_by_agent_id}${agent.instructions_reviewed ? " · reviewed" : " · review in Agents"}` : "Added by you"}</p>
+      {error && <ErrorState message={error} onRetry={() => { setError(null); void refresh(); }} />}
+      {!data && !error && <LoadingState rows={3} />}
+      {data && tab === "agents" && <div className="space-y-3">{!data.team && <EmptyPanel title="No team yet" description="Choose a lead from your agents to start a team." />}{data.team && !data.lead_ready.ok && <p className="text-sm text-warning">{data.lead_ready.reason}</p>}
+        {data.agents.map(agent => <article key={agent.id} className="space-y-2 rounded-field border border-line p-3"><div><strong>{agent.name}</strong>{agent.is_lead && <Badge tone="accent" className="ml-2">Lead</Badge>}<span className="ml-2 text-xs text-muted">{agent.state}</span></div><p className="text-xs text-muted">{agent.created_by_agent_id ? `Instructions written by agent ${agent.created_by_agent_id}${agent.instructions_reviewed ? " · reviewed" : " · review in Agents"}` : "Added by you"}</p>
           {admin && <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={busy} checked={agent.delegation_enabled} onChange={event => void act(() => collaboration.delegation(agent.id, event.target.checked))} />Can delegate</label>{!agent.is_lead && <><button className={BUTTON} disabled={busy} onClick={() => void act(() => collaboration.lead(agent.id))}>Make lead</button><button className={BUTTON} disabled={busy} onClick={() => void act(() => collaboration.removeMember(agent.id))}>Remove from team</button></>}{agent.created_by_agent_id && <button className={BUTTON} disabled={busy} onClick={() => void act(() => collaboration.undoCreate(agent.id))}>Undo creation</button>}</div>}
         </article>)}
-        {admin && <label className="block text-sm">{data.team ? "Add an agent" : "Choose team lead"}<select className="mt-1 w-full rounded-field border border-line bg-raised p-2" value="" disabled={busy} onChange={event => { const id = Number(event.target.value); if (id) void act(() => data.team ? collaboration.addMember(id) : collaboration.lead(id)); }}><option value="">Select an agent…</option>{agents.filter(agent => !data.agents.some(member => member.id === agent.id) && !agent.archived_at).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>}
+        {admin && <label className="block text-sm">{data.team ? "Add an agent" : "Choose team lead"}<Select className="mt-1" value="" disabled={busy} onChange={event => { const id = Number(event.target.value); if (id) void act(() => data.team ? collaboration.addMember(id) : collaboration.lead(id)); }}><option value="">Select an agent…</option>{agents.filter(agent => !data.agents.some(member => member.id === agent.id) && !agent.archived_at).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</Select></label>}
       </div>}
-      {tab === "activity" && <div className="space-y-3">{jobs.length === 0 && <p className="text-sm text-muted">No delegated jobs yet.</p>}{jobs.map(job => <JobCard key={job.id} job={job} />)}{activity.length > 0 && <details><summary className="cursor-pointer text-sm">Team activity</summary><ol className="mt-2 space-y-1 text-xs text-muted">{activity.map(item => <li key={item.id}>{item.kind.replaceAll("_", " ")} · {new Date(item.created_at).toLocaleString()}</li>)}</ol></details>}</div>}
+      {tab === "activity" && <div className="space-y-3">{jobs.length === 0 && <EmptyPanel title="No delegated jobs yet" description="Jobs the lead hands to specialists show up here." />}{jobs.map(job => <JobCard key={job.id} job={job} />)}{activity.length > 0 && <details><summary className="cursor-pointer text-sm">Team activity</summary><ol className="mt-2 space-y-1 text-xs text-muted">{activity.map(item => <li key={item.id}>{item.kind.replaceAll("_", " ")} · {new Date(item.created_at).toLocaleString()}</li>)}</ol></details>}</div>}
     </div>
   </Dialog>;
 }

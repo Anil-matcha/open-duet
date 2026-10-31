@@ -17,13 +17,13 @@ export function SettingsShell({ children }: { children: ReactNode }) {
         <ul className="flex gap-1 overflow-x-auto md:flex-col">
           {SETTINGS_PAGES.map((page) => <li key={page.href} className="shrink-0">
             <Link href={page.href} aria-current={page.href === active.href ? "page" : undefined}
-              className={cn("block rounded-md px-3 py-2 text-sm hover:bg-hover", page.href === active.href ? "bg-hover font-medium" : "text-muted")}>{page.label}</Link>
+              className={cn("block rounded-field px-3 py-2 text-sm hover:bg-hover touch:py-3", page.href === active.href ? "bg-hover font-medium" : "text-muted")}>{page.label}</Link>
           </li>)}
-          <li className="shrink-0"><Link href="/apps/" className="block rounded-md px-3 py-2 text-sm text-muted hover:bg-hover">Apps ↗</Link></li>
+          <li className="shrink-0"><Link href="/apps/" className="block rounded-field px-3 py-2 text-sm text-muted hover:bg-hover touch:py-3">Apps ↗</Link></li>
         </ul>
       </nav>
       <main className="min-w-0 flex-1 space-y-6">
-        <div><h2 className="text-xl font-semibold">{active.label}</h2><p className="mt-2 text-sm text-muted">{active.summary}</p></div>
+        <div><h2 className="text-heading font-semibold">{active.label}</h2><p className="mt-1.5 text-body text-muted">{active.summary}</p></div>
         {children}
       </main>
     </div>

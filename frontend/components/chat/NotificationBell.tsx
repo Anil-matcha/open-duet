@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell } from "lucide-react";
+import { EmptyPanel, LoadingState } from "./PanelState";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AppNotification } from "@/lib/api";
@@ -94,9 +95,9 @@ export function NotificationBell({
           </div>
           <ul className="max-h-96 overflow-y-auto">
             {items === null ? (
-              <li className="p-3 text-xs text-muted">{t("common.loading")}</li>
+              <li className="p-3"><LoadingState rows={3} /></li>
             ) : items.length === 0 ? (
-              <li className="p-3 text-xs text-muted">{t("notifications.empty")}</li>
+              <li><EmptyPanel title={t("notifications.empty")} /></li>
             ) : (
               items.map((item) => (
                 <li key={item.id}>

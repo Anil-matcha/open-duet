@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { Input } from "@/components/ui/Input";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 import {
   categoryLabel,
   filterTemplates,
@@ -11,7 +13,6 @@ import {
   type TemplateSkill,
 } from "@/lib/templates";
 
-const FIELD = "w-full rounded-md border border-line bg-transparent px-3 py-1.5 text-sm placeholder:text-muted";
 const CHIP = "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium";
 
 // Ready-made agents: browse and search a bundled list, then Add one. Add only
@@ -21,6 +22,7 @@ export function TemplatesGallery({ onAdd }: { onAdd: (template: AgentTemplate) =
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,22 +31,21 @@ export function TemplatesGallery({ onAdd }: { onAdd: (template: AgentTemplate) =
       .then((value) => { if (!cancelled) setCatalog(value); })
       .catch(() => { if (!cancelled) setError("Could not load the templates."); });
     return () => { cancelled = true; };
-  }, []);
+  }, [reload]);
 
   const shown = useMemo(() => filterTemplates(catalog?.templates ?? [], query, category), [catalog, query, category]);
 
-  if (error) return <p role="alert" className="text-sm text-danger">{error}</p>;
-  if (!catalog) return <p className="text-sm text-muted">Loading templates…</p>;
+  if (error) return <ErrorState message={error} onRetry={() => { setError(null); setReload((n) => n + 1); }} />;
+  if (!catalog) return <LoadingState rows={4} />;
 
   return (
     <div className="space-y-3">
-      <input
+      <Input
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search templates"
         aria-label="Search templates"
-        className={FIELD}
       />
       <div className="flex flex-wrap gap-2" role="group" aria-label="Category">
         {[null, ...catalog.categories].map((value) => (
@@ -60,7 +61,7 @@ export function TemplatesGallery({ onAdd }: { onAdd: (template: AgentTemplate) =
         ))}
       </div>
       {shown.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted">No templates match. Try another word or category.</p>
+        <EmptyPanel title="No templates match" description="Try another word or category." />
       ) : (
         <ul className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((template) => (
@@ -68,7 +69,7 @@ export function TemplatesGallery({ onAdd }: { onAdd: (template: AgentTemplate) =
               <div className="flex items-center gap-2">
                 <span
                   aria-hidden
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-accent-fg"
                   style={{ backgroundColor: template.color }}
                 >
                   {template.name.charAt(0).toUpperCase()}

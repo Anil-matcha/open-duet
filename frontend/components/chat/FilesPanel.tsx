@@ -1,6 +1,8 @@
 "use client";
 
 import { Dialog } from "@/components/ui/Dialog";
+import { Button } from "@/components/ui/Button";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 import { useEffect, useState } from "react";
 import { api, ApiError, type FilePreview, type FolderListing } from "@/lib/api";
 import { formatBytes, parentPath } from "@/lib/everyday";
@@ -21,6 +23,7 @@ export function FilesPanel({ threadId, workspace, onClose }: { threadId: number;
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [zipping, setZipping] = useState(false);
+  const [reload, setReload] = useState(0);
   // The folder a failed zip was for, so the message goes away on another folder.
   const [zipError, setZipError] = useState<{ path: string; text: string } | null>(null);
 
@@ -37,7 +40,7 @@ export function FilesPanel({ threadId, workspace, onClose }: { threadId: number;
     return () => {
       alive = false;
     };
-  }, [threadId, path]);
+  }, [threadId, path, reload]);
 
   useEffect(() => () => {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
@@ -109,12 +112,12 @@ export function FilesPanel({ threadId, workspace, onClose }: { threadId: number;
                 onClick={() => void downloadFolder()}
                 disabled={zipping || listError !== null}
                 title="Download this folder as a zip (secret files are left out)"
-                className="ml-auto cursor-pointer rounded-md border border-zinc-300 px-2 py-0.5 disabled:opacity-50 dark:border-zinc-700"
+                className="ml-auto cursor-pointer rounded-field border border-line px-2 py-0.5 hover:bg-hover disabled:opacity-50"
               >
                 {zipping ? "Zipping…" : "Download zip"}
               </button>
             </nav>
-            {zipError?.path === path && <p role="alert" className="px-3 pb-2 text-xs text-red-600 dark:text-red-400">{zipError.text}</p>}
+            {zipError?.path === path && <p role="alert" className="px-3 pb-2 text-xs text-danger">{zipError.text}</p>}
             <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 text-sm">
               {path && (
                 <li>
@@ -123,11 +126,15 @@ export function FilesPanel({ threadId, workspace, onClose }: { threadId: number;
                   </button>
                 </li>
               )}
-              {listError && <li className="px-2 py-2 text-xs text-danger">{listError}</li>}
-              {!listError && listing === null && <li className="px-2 py-2 text-xs text-muted">Loading…</li>}
+              {listError && <li className="px-1 py-2"><ErrorState message={listError} onRetry={() => { setListError(null); setListing(null); setReload((n) => n + 1); }} /></li>}
+              {!listError && listing === null && <li className="px-1 py-2"><LoadingState rows={5} /></li>}
               {!listError && listing?.entries.length === 0 && (
-                <li className="px-2 py-2 text-xs text-muted">
-                  {path ? "This folder is empty." : "The workspace is empty. Files the agent writes appear here."}
+                <li>
+                  <EmptyPanel
+                    title={path ? "This folder is empty" : "The workspace is empty"}
+                    description={path ? undefined : "Files the agent writes appear here."}
+                    action={path ? <Button size="sm" onClick={() => setPath(parentPath(path))}>Go up</Button> : undefined}
+                  />
                 </li>
               )}
               {!listError &&
@@ -156,8 +163,8 @@ export function FilesPanel({ threadId, workspace, onClose }: { threadId: number;
             </ul>
           </section>
           <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {previewError && <p role="alert" className="px-4 py-3 text-sm text-danger">{previewError}</p>}
-            {!preview && !previewError && <p className="px-4 py-6 text-sm text-muted">Choose a file to preview it.</p>}
+            {previewError && <div className="p-4"><ErrorState message={previewError} /></div>}
+            {!preview && !previewError && <EmptyPanel title="Choose a file to preview it" description="Text and images show here. Other files can be downloaded." />}
             {preview && (
               <>
                 <div className="flex items-center gap-3 border-b border-line px-4 py-2 text-xs">
@@ -183,7 +190,7 @@ export function FilesPanel({ threadId, workspace, onClose }: { threadId: number;
                       // eslint-disable-next-line @next/next/no-img-element -- a local object URL
                       <img src={imageUrl} alt={preview.name} className="max-h-full max-w-full" />
                     ) : (
-                      <p className="text-sm text-muted">Loading image…</p>
+                      <LoadingState rows={2} />
                     ))}
                   {preview.kind === "binary" && <p className="text-sm text-muted">This file can&apos;t be previewed. Download it to open it.</p>}
                 </div>
