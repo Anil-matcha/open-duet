@@ -36,8 +36,10 @@ function SectionHeader({ title, children }: { title: string; children?: React.Re
 
 // How many conversations Recent lists before "Show all"; anything needing attention is always listed.
 const RECENT_LIMIT = 8;
+// Agents listed before "Show all"; the open, lead and busy agents are always listed.
+const AGENT_LIMIT = 3;
 
-const ROW = "flex w-full cursor-pointer items-center gap-2.5 rounded-field py-2 pl-2 pr-2 text-left text-sm transition-colors duration-(--dur-fast) touch:py-2.5";
+const ROW = "flex w-full cursor-pointer items-center gap-2.5 rounded-field py-1.5 pl-2 pr-2 text-left text-sm transition-colors duration-(--dur-fast) touch:py-2.5";
 
 // The app's left column: start a chat, search, the agents, every recent conversation, and the
 // places that are not conversations. Agents and Recent are separate views of the same
@@ -94,9 +96,13 @@ export function Sidebar({
 }) {
   const [searching, setSearching] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [showAllAgents, setShowAllAgents] = useState(false);
   const unread = useUnread(threads, selectedThreadId);
   const names = new Map((agents ?? []).map((agent) => [agent.id, agent.name]));
   const listed = sidebarAgents(agents);
+  const shownAgents = showAllAgents
+    ? listed
+    : listed.filter((agent, index) => index < AGENT_LIMIT || agent.id === selectedAgentId || agent.id === leadAgentId || agent.id === live.agentId);
   const shownThreads = recentVisible(
     threads ?? [],
     RECENT_LIMIT,
@@ -146,7 +152,7 @@ export function Sidebar({
               />
             )}
             <ul className="space-y-0.5">
-              {listed.map((agent) => {
+              {shownAgents.map((agent) => {
                 const target = agentTarget(threads, agent.id);
                 return (
                   <AgentRow
@@ -165,6 +171,16 @@ export function Sidebar({
                 );
               })}
             </ul>
+            {listed.length > AGENT_LIMIT ? (
+              <button
+                type="button"
+                aria-expanded={showAllAgents}
+                onClick={() => setShowAllAgents((on) => !on)}
+                className="mt-1 w-full cursor-pointer rounded-field px-3 py-2 text-left text-xs font-medium text-muted hover:bg-hover/60 hover:text-ink touch:py-3"
+              >
+                {showAllAgents ? t("sidebar.showFewerAgents") : t("sidebar.showAllAgents", { n: listed.length })}
+              </button>
+            ) : null}
           </section>
         )}
 

@@ -42,6 +42,8 @@ export const en = {
   "sidebar.archivedTag": "archived",
   "sidebar.showAll": "Show all conversations",
   "sidebar.showFewer": "Show fewer",
+  "sidebar.showAllAgents": "Show all {n} agents",
+  "sidebar.showFewerAgents": "Show fewer agents",
   "sidebar.agentActions": "Actions for {name}",
   "sidebar.agentSettings": "Agent settings",
   "sidebar.makeLead": "Make lead",
