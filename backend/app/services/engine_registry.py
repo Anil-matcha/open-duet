@@ -82,7 +82,7 @@ def hosted_adapters() -> dict:
 
     labels = {"codex": "Codex", "cursor": "Cursor", "gemini": "Gemini CLI",
               "antigravity": "Google Gemini (Antigravity)", "opencode": "OpenCode (experimental)",
-              "openrouter": "OpenRouter", "acp": "ACP agent", "openai_compat": "OpenAI-compatible"}
+              "openrouter": "OpenRouter", "minimax": "MiniMax", "acp": "ACP agent", "openai_compat": "OpenAI-compatible"}
     adapters: dict = {"claude": BoatClaudeAdapter(SdkBoatBoxes())}
     for key, label in labels.items():
         adapters[key] = UnavailableAdapter(key, label, HOSTED_REASON)
@@ -100,7 +100,7 @@ def default_adapters() -> dict:
     from app.services.acp_presets import GeminiAdapter, CursorAdapter, OpenCodeAdapter
     from app.services.claude_adapter import ClaudeAdapter
     from app.services.codex_adapter import CodexAdapter
-    from app.services.openai_chat_adapter import OpenAIChatAdapter, OpenRouterAdapter
+    from app.services.openai_chat_adapter import MiniMaxAdapter, OpenAIChatAdapter, OpenRouterAdapter
 
     adapters: dict = {}
     for key, label, factory in (
@@ -111,6 +111,7 @@ def default_adapters() -> dict:
         ("antigravity", "Google Gemini (Antigravity)", AntigravityAdapter),
         ("opencode", "OpenCode (experimental)", OpenCodeAdapter),
         ("openrouter", "OpenRouter", OpenRouterAdapter),
+        ("minimax", "MiniMax", MiniMaxAdapter),
         ("acp", "ACP agent", AcpAdapter),
         ("openai_compat", "OpenAI-compatible", OpenAIChatAdapter),
     ):

@@ -16,6 +16,7 @@ from app.db.models.user_credential import UserCredential
 from app.services import agent_store, engine_config, local_claude_runner
 from app.services.openai_chat_adapter import (
     InvalidConfig,
+    MiniMaxAdapter,
     OpenAIChatAdapter,
     chat_messages,
     check_base_url,
@@ -26,6 +27,20 @@ from tests.services.thread_harness import cleanup, events_of, finished, owner, s
 
 KEY = "sk-SECRET-1234567890abcdef"
 BASE = "http://llm.test/v1"
+
+
+def test_minimax_preset_validates_regional_endpoints_and_models():
+    adapter = MiniMaxAdapter()
+    config = adapter.validate_config({"base_url": "https://api.minimax.io/v1", "api_key": "key"}, None)
+    assert config["base_url"] == "https://api.minimax.io/v1"
+    assert config["model"] == "MiniMax-M3.1-Flash"
+    assert config["context_tokens"] == 1_000_000
+    china = adapter.validate_config({"base_url": "https://api.minimaxi.com/v1", "api_key": "key", "model": "MiniMax-M3"}, None)
+    assert china["base_url"] == "https://api.minimaxi.com/v1" and china["model"] == "MiniMax-M3"
+    with pytest.raises(InvalidConfig):
+        adapter.validate_config({"base_url": "https://api.example.test/v1", "api_key": "key"}, None)
+    with pytest.raises(InvalidConfig):
+        adapter.validate_config({"base_url": "https://api.minimax.io/v1", "api_key": "key", "model": "other"}, None)
 
 
 def sse(*chunks, done=True) -> bytes:

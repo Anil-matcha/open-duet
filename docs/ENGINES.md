@@ -16,6 +16,7 @@ UI do not know which engine they are talking to.
 | `acp` | ACP agent | acp | any agent CLI that speaks the Agent Client Protocol, from a saved command |
 | `openai_compat` | OpenAI-compatible | api | `POST {base_url}/chat/completions`, streamed (Ollama, LM Studio, vLLM, hosted APIs) |
 | `openrouter` | OpenRouter | api | the OpenAI-compatible engine preset for `https://openrouter.ai/api/v1` |
+| `minimax` | MiniMax | api | MiniMax's OpenAI-compatible API at the global or China endpoint |
 
 ## Choose and configure an engine
 
@@ -43,7 +44,7 @@ endpoint, save its base URL (including `/v1` when required), optional default
 model and optional API key. Configuration is encrypted at rest. A blank key
 keeps the saved key for the same URL; changing the URL drops it unless you
 enter a key again. **Forget settings** deletes the configuration and credential.
-For OpenRouter, save an API key. The address is fixed to OpenRouter over HTTPS; configure a proxy with the generic OpenAI-compatible engine.
+For OpenRouter, save an API key. The address is fixed to OpenRouter over HTTPS; configure a proxy with the generic OpenAI-compatible engine. MiniMax is a first-class preset with the global (`https://api.minimax.io/v1`) and China (`https://api.minimaxi.com/v1`) endpoints and the `MiniMax-M3.1-Flash` and `MiniMax-M3` model choices.
 
 
 Settings forms come from each adapter's `config_fields` and `setup` descriptors.
@@ -150,7 +151,7 @@ the engine default. Changing an agent's engine affects new conversations.
 Every one of these except the turn API is optional; the registry fills in safe
 defaults (no capabilities, any model, a probe derived from `status()`).
 
-|  | Claude | Codex | ACP agent | OpenAI-compatible (and OpenRouter) |
+|  | Claude | Codex | ACP agent | OpenAI-compatible (and OpenRouter, MiniMax) |
 |---|---|---|---|---|
 | tools | yes | yes | yes | no |
 | approvals | yes | yes | yes | no |
