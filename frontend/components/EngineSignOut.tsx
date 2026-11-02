@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { ApiError } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Banner } from "@/components/ui/Banner";
 
-const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:opacity-50";
 
 export function EngineSignOut({ label, disabled, onSignOut, onChanged, onPendingChange }: {
   label: string;
@@ -35,13 +36,13 @@ export function EngineSignOut({ label, disabled, onSignOut, onChanged, onPending
   };
 
   return <div className="space-y-2">
-    {!confirming ? <button type="button" className={BUTTON} disabled={disabled || busy} onClick={() => { setError(null); setConfirming(true); onPendingChange(true); }}>Sign out of {label}</button> : <div className="space-y-2 rounded-md border border-warning/50 p-3 text-sm">
+    {!confirming ? <Button type="button" disabled={disabled || busy} onClick={() => { setError(null); setConfirming(true); onPendingChange(true); }}>Sign out of {label}</Button> : <div className="space-y-2 rounded-md border border-warning/50 p-3 text-sm">
       <p>This signs {label} out of the shared server CLI account. It can also affect CLI use outside this app. To switch accounts, sign out here, then use the existing sign-in flow.</p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={BUTTON} disabled={disabled || busy} onClick={() => void signOut()}>{busy ? "Signing out…" : `Sign out of ${label}`}</button>
-        <button type="button" className={BUTTON} disabled={busy} onClick={() => { setConfirming(false); onPendingChange(false); }}>Keep signed in</button>
+        <Button type="button" disabled={disabled || busy} onClick={() => void signOut()}>{busy ? "Signing out…" : `Sign out of ${label}`}</Button>
+        <Button type="button" disabled={busy} onClick={() => { setConfirming(false); onPendingChange(false); }}>Keep signed in</Button>
       </div>
     </div>}
-    {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+    {error && <Banner tone="danger">{error}</Banner>}
   </div>;
 }

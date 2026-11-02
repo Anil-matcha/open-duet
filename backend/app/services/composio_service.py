@@ -278,7 +278,8 @@ DONE_UNREADABLE = {
 
 
 async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments: dict, alias: str | None, *,
-                   account_id: str | None = None, allowed_account_ids: list[str] | None = None) -> dict:
+                   account_id: str | None = None, allowed_account_ids: list[str] | None = None,
+                   before_execute=None) -> dict:
     """Run one allowed tool as one connected account and return what the agent may see.
     Never raises for a Composio problem: the agent gets a short error instead.
 
@@ -309,6 +310,10 @@ async def run_tool(db: AsyncSession, owner_id: str, make_client, tool, arguments
             account, problem = _choose(active, alias, tool.app)
         if problem:
             return problem
+        if before_execute is not None:
+            refusal = await before_execute(account.id)
+            if refusal is not None:
+                return refusal
         session_id, record = await _session(db, owner_id, client, record)
     except ComposioError as exc:  # nothing was sent for the tool yet
         return _agent_error(exc)

@@ -73,6 +73,26 @@ test('answerLocalApproval posts the decision to that one approval and nothing el
   assert.deepEqual(JSON.parse(request.init.body), { decision: 'deny' });
 });
 
+test('routine create and update preserve the per-routine uninterrupted-access choice', async () => {
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init });
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const input = {
+    agent_id: 4, name: 'Daily browser check', prompt: 'Check the site',
+    schedule_kind: 'manual', schedule_spec: {}, timezone: 'UTC', run_limit_minutes: 30,
+    approval_mode: 'ask', approval_timeout_minutes: 30, catch_up_minutes: 60,
+    retry_limit: 0, retry_delay_minutes: 5, connected_app_grants: [],
+    uninterrupted_access: false,
+  };
+  await api.createRoutine(input);
+  await api.updateRoutine(17, { agent_id: 4, uninterrupted_access: true });
+  assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), ['/api/v1/routines', '/api/v1/routines/17']);
+  assert.equal(JSON.parse(requests[0].init.body).uninterrupted_access, false);
+  assert.deepEqual(JSON.parse(requests[1].init.body), { agent_id: 4, uninterrupted_access: true });
+});
+
 test('a question that is no longer waiting surfaces as a 404 ApiError', async () => {
   rejectWith({ detail: 'That request is no longer waiting for an answer' }, 404, 'Not Found');
   await assert.rejects(api.answerLocalApproval(1, 'x', 'allow'), error => {

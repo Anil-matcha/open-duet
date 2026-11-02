@@ -10,6 +10,8 @@ export function Menu({
   children,
   align = "end",
   onCloseAutoFocus,
+  open,
+  onOpenChange,
 }: {
   trigger: ReactNode;
   children: ReactNode;
@@ -17,9 +19,12 @@ export function Menu({
   // Called when the menu closes and focus is about to return to the trigger. preventDefault()
   // keeps focus where it is, for an item that moves focus itself (an inline rename field).
   onCloseAutoFocus?: (event: Event) => void;
+  // Optional control, for opening the menu from a right-click or the ContextMenu key.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <RadixMenu.Root>
+    <RadixMenu.Root open={open} onOpenChange={onOpenChange}>
       <RadixMenu.Trigger asChild>{trigger}</RadixMenu.Trigger>
       <RadixMenu.Portal>
         <RadixMenu.Content

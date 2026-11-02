@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Engine, type GoogleSetupOperation } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Banner } from "@/components/ui/Banner";
+import { Input } from "@/components/ui/Input";
 
-const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:opacity-50";
 
 export function GoogleEngineSetup({ engine, onChanged }: { engine: Engine; onChanged: () => void }) {
   const [operation, setOperation] = useState<GoogleSetupOperation | null>(null);
@@ -36,7 +38,7 @@ export function GoogleEngineSetup({ engine, onChanged }: { engine: Engine; onCha
         }
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : "Could not check Google setup.");
+        setError(err instanceof ApiError ? `Could not check Google setup. ${err.message}` : "Could not check Google setup.");
       }
       if (!cancelled) timer = setTimeout(() => void poll(), 1500);
     };
@@ -47,7 +49,7 @@ export function GoogleEngineSetup({ engine, onChanged }: { engine: Engine; onCha
   const act = async (work: () => Promise<void>) => {
     setBusy(true); setError(null);
     try { await work(); }
-    catch (err) { setError(err instanceof ApiError ? err.message : "Could not complete Google setup."); }
+    catch (err) { setError(err instanceof ApiError ? `Could not complete Google setup. ${err.message}` : "Could not complete Google setup."); }
     finally { setBusy(false); }
   };
   const running = operation?.phase === "running";
@@ -58,13 +60,13 @@ export function GoogleEngineSetup({ engine, onChanged }: { engine: Engine; onCha
 
   return <div className="space-y-3">
     <div className="flex flex-wrap gap-2">
-      {!engine.installed && <button type="button" className={BUTTON} disabled={busy || running} onClick={() => start("install")}>Install Antigravity</button>}
-      {engine.installed && <button type="button" className={BUTTON} disabled={busy || running} onClick={() => start("sign_in")}>{engine.signed_in ? "Switch Google account" : "Sign in with Google"}</button>}
+      {!engine.installed && <Button type="button" disabled={busy || running} onClick={() => start("install")}>Install Antigravity</Button>}
+      {engine.installed && <Button type="button" disabled={busy || running} onClick={() => start("sign_in")}>{engine.signed_in ? "Switch Google account" : "Sign in with Google"}</Button>}
       {engine.signed_in && <>
-        <button type="button" className={BUTTON} disabled={busy || running} onClick={() => start("models")}>Refresh models</button>
-        <button type="button" className={BUTTON} disabled={busy || running} onClick={() => void act(async () => { await api.deleteEngineConfig("antigravity"); setOperation(null); changed.current(); })}>Remove Google account</button>
+        <Button type="button" disabled={busy || running} onClick={() => start("models")}>Refresh models</Button>
+        <Button type="button" disabled={busy || running} onClick={() => void act(async () => { await api.deleteEngineConfig("antigravity"); setOperation(null); changed.current(); })}>Remove Google account</Button>
       </>}
-      {running && <button type="button" className={BUTTON} disabled={busy} onClick={() => void act(async () => { await api.cancelGoogleSetup(); setOperation(await api.googleSetupStatus()); setCallback(""); changed.current(); })}>Cancel setup</button>}
+      {running && <Button type="button" disabled={busy} onClick={() => void act(async () => { await api.cancelGoogleSetup(); setOperation(await api.googleSetupStatus()); setCallback(""); changed.current(); })}>Cancel setup</Button>}
     </div>
     {running && (
       <div className="space-y-2">
@@ -79,19 +81,19 @@ export function GoogleEngineSetup({ engine, onChanged }: { engine: Engine; onCha
       </div>
     )}
     {running && operation.authorization_url && <div className="space-y-2">
-      <button type="button" className={BUTTON} disabled={busy} onClick={() => void act(async () => {
+      <Button type="button"  disabled={busy} onClick={() => void act(async () => {
         if (!window.openDots?.openGoogleSignIn) throw new Error("Open this setup in the Open Duet desktop app to continue.");
         await window.openDots.openGoogleSignIn(operation.authorization_url!);
-      })}>Continue to Google sign-in</button>
+      })}>Continue to Google sign-in</Button>
       <details><summary className="cursor-pointer text-xs">Signing in from another computer?</summary>
         <p className="mt-2 text-xs text-muted">After signing in, copy the complete localhost redirect URL from your browser and paste it below.</p>
         <form className="mt-2 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void act(async () => { const value = callback; setCallback(""); await api.completeGoogleSetup(operation.id, value); }); }}>
-          <input aria-label="Google redirect URL" type="password" autoComplete="off" value={callback} onChange={(event) => setCallback(event.target.value)} className="min-w-0 flex-1 rounded-md border border-line bg-transparent px-3 py-2 text-sm" />
-          <button className={BUTTON} disabled={busy || !callback.trim()}>Complete sign-in</button>
+          <Input aria-label="Google redirect URL" type="password" autoComplete="off" value={callback} onChange={(event) => setCallback(event.target.value)} className="min-w-0 flex-1" />
+          <Button type="submit" disabled={busy || !callback.trim()}>Complete sign-in</Button>
         </form>
       </details>
     </div>}
-    {operation?.phase === "succeeded" && <p role="status" className="text-xs text-success">{operation.kind === "install" ? "Antigravity installed. Sign in with Google to continue." : "Google account models refreshed."}</p>}
-    {(error || operation?.error) && <p role="alert" className="text-xs text-danger">{error || operation?.error}</p>}
+    {operation?.phase === "succeeded" && <Banner tone="success">{operation.kind === "install" ? "Antigravity installed. Sign in with Google to continue." : "Google account models refreshed."}</Banner>}
+    {(error || operation?.error) && <Banner tone="danger">{error || operation?.error}</Banner>}
   </div>;
 }

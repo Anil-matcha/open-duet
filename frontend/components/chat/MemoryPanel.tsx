@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Agent, type MemoryJournalRow, type MemoryProposal, type TopicDoc, type TopicList } from "@/lib/api";
 import { journalLabel, topicFileName } from "@/lib/memory";
 import { AboutMeTab, UpkeepCard } from "./MemoryUpkeep";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 
 const FIELD =
   "w-full rounded-md border border-line bg-transparent px-3 py-1.5 text-sm placeholder:text-muted";
@@ -68,7 +69,7 @@ export function MemoryPanel({
           </button>
         ))}
       </div>
-      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+      {error && <ErrorState message={error} />}
       {tab === "topics" && <Topics agentId={agentId} onError={setError} />}
       {tab === "proposed" && (
         <Proposed
@@ -216,9 +217,9 @@ function Topics({ agentId, onError }: { agentId: number; onError: (e: string | n
         conversation; passages that match a message are recalled in front of it.
       </p>
       {list === null ? (
-        <p className="text-xs text-muted">Loading…</p>
+        <LoadingState rows={3} />
       ) : list.topics.length === 0 ? (
-        <p className="text-xs text-muted">No topic notes yet.</p>
+        <EmptyPanel title="No topic notes yet" description="The agent saves longer notes here as it learns about a subject." />
       ) : (
         <ul className="space-y-1">
           {list.topics.map((t) => (
@@ -276,7 +277,7 @@ function Proposed({
       setBusy(null);
     }
   };
-  if (items === null) return <p className="text-xs text-muted">Loading…</p>;
+  if (items === null) return <LoadingState rows={3} />;
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">
@@ -349,7 +350,7 @@ function History({
     }
   };
 
-  if (rows === null) return <p className="text-xs text-muted">Loading…</p>;
+  if (rows === null) return <LoadingState rows={3} />;
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">
@@ -357,7 +358,7 @@ function History({
         Edits the agent makes with its own file tools are not listed.
       </p>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted">No changes yet.</p>
+        <EmptyPanel title="No changes yet" description="Accepted proposals and undo actions are listed here." />
       ) : (
         <ul className="space-y-1">
           {rows.map((row) => (

@@ -12,9 +12,13 @@ import {
   type ComposioAccount, type TabWindow,
 } from "@/lib/connected-apps";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Banner } from "@/components/ui/Banner";
+import { SkeletonList } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
+import { EmptyState } from "@/components/ui/EmptyState";
 
-const BUTTON = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50";
-const FIELD = "block w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm disabled:opacity-50";
 const CHIP = "cursor-pointer rounded-full border border-line px-3 py-1 text-sm hover:bg-hover";
 const CHIP_ON = "cursor-pointer rounded-full border border-ink bg-ink px-3 py-1 text-sm text-surface";
 const CHIPS_SHOWN = 10;
@@ -23,7 +27,8 @@ type Waiting = { accountId: string; toolkit: string; expiresIn: number };
 // Pages of one search: tagged with what was asked, so "loading" is simply "the answer is not for this question yet".
 type Loaded = { key: string; apps: CatalogApp[]; page: CatalogPage } | { key: string; error: string };
 
-const message = (err: unknown, fallback: string) => err instanceof Error ? err.message : fallback;
+// Always leads with what failed, then the reason when there is one.
+const message = (err: unknown, fallback: string) => err instanceof Error && err.message ? `${fallback} ${err.message}` : fallback;
 
 const STATE_BADGE: Record<CardState, { tone: "neutral" | "success" | "warning" | "danger"; label: string }> = {
   no_key: { tone: "neutral", label: "Needs your Composio key" },
@@ -70,6 +75,7 @@ function AppsBrowser() {
   const [status, setStatus] = useState<ComposioStatus | null>(null);
   const [accounts, setAccounts] = useState<ComposioAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
@@ -141,7 +147,7 @@ function AppsBrowser() {
         if (cancelled) return;
         setAccounts(latest);
         const outcome = outcomeFor(latest, accountId);
-        if (outcome === "connected") { setWaiting(null); setNotice("App connected."); return; }
+        if (outcome === "connected") { setWaiting(null); toast("App connected."); return; }
         if (outcome === "failed") { setWaiting(null); setError("The connection did not complete. Remove it below and try again."); return; }
         if (outcome === "gone") { setWaiting(null); setError("That connection is no longer there."); return; }
       } catch (err) {
@@ -153,7 +159,7 @@ function AppsBrowser() {
     };
     timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [accountId, expiresIn]);
+  }, [accountId, expiresIn, toast]);
 
   const saveKey = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -161,7 +167,7 @@ function AppsBrowser() {
     try {
       const saved = await api.saveComposioKey(keyDraft.trim());
       setKeyDraft(""); setReplacing(false); setStatus(saved); setAccounts(null); setWaiting(null); setMore(null);
-      setNotice("Key saved.");
+      toast("Key saved.");
       setTick((n) => n + 1);
       await loadAccounts();
     } catch (err) { setError(message(err, "Could not save the key.")); }
@@ -200,7 +206,7 @@ function AppsBrowser() {
       await api.disconnectComposioAccount(account.id);
       setConfirming(null);
       if (waiting?.accountId === account.id) setWaiting(null);
-      setNotice("Disconnected.");
+      toast("Disconnected.");
       await loadAccounts();
     } catch (err) { setError(message(err, "Could not disconnect. Try again.")); }
     finally { setBusy(null); }
@@ -220,9 +226,9 @@ function AppsBrowser() {
     <span>{account.alias ?? account.id} <span className="text-xs text-muted">· {statusLabel(account.status)}</span></span>
     {confirming === account.id
       ? <span className="flex items-center gap-2 text-xs">Disconnect this account?
-          <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => void disconnect(account)}>{busy === `remove:${account.id}` ? "Working…" : "Disconnect"}</button>
-          <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => setConfirming(null)}>Keep</button></span>
-      : <button type="button" className={BUTTON} disabled={busy !== null} aria-label={`Disconnect ${account.alias ?? account.id}`} onClick={() => setConfirming(account.id)}>Disconnect</button>}
+          <Button type="button" disabled={busy !== null} onClick={() => void disconnect(account)}>{busy === `remove:${account.id}` ? "Working…" : "Disconnect"}</Button>
+          <Button type="button" disabled={busy !== null} onClick={() => setConfirming(null)}>Keep</Button></span>
+      : <Button type="button" disabled={busy !== null} aria-label={`Disconnect ${account.alias ?? account.id}`} onClick={() => setConfirming(account.id)}>Disconnect</Button>}
   </li>;
 
   const details = (app: CatalogApp, detailsId: string) => <div id={detailsId} className="mt-3 space-y-3">
@@ -269,55 +275,51 @@ function AppsBrowser() {
         </div>
         {offered && <div className="flex items-center gap-2">
           <label className="sr-only" htmlFor={`name-${app.app}`}>Name for a new {app.name} account (optional)</label>
-          <input id={`name-${app.app}`} className="w-36 rounded-md border border-line bg-transparent px-2 py-1 text-sm disabled:opacity-50" placeholder="Name (optional)" maxLength={40}
+          <Input id={`name-${app.app}`} className="w-36" placeholder="Name (optional)" maxLength={40}
             value={names[app.app] ?? ""} disabled={busy !== null || waiting !== null || !configured} autoComplete="off"
             onChange={(event) => setNames((previous) => ({ ...previous, [app.app]: event.target.value }))} />
-          <button type="button" className={BUTTON} title={configured ? undefined : "Save your Composio key first"}
+          <Button type="button"  title={configured ? undefined : "Save your Composio key first"}
             disabled={busy !== null || waiting !== null || !configured || accounts === null} onClick={() => void connect(app)}>
             {busy === `connect:${app.app}` ? "Opening…" : mine.length ? "Add another" : "Connect"}
-          </button>
+          </Button>
         </div>}
       </div>
-      {connecting && <p role="status" className="text-xs text-muted">
+      {connecting && <Banner action={<Button size="sm" type="button" onClick={() => { setWaiting(null); setNotice("Stopped waiting. A pending connection can be removed below; nothing was revoked."); }}>Stop waiting</Button>}>
         Finish connecting {app.name} in your browser. This page notices when you are done.{" "}
-        <button type="button" className="underline" onClick={() => { setWaiting(null); setNotice("Stopped waiting. A pending connection can be removed below; nothing was revoked."); }}>Stop waiting</button>
-      </p>}
+      </Banner>}
       {mine.length > 0 && <ul className="divide-y divide-line text-sm">{mine.map(accountRow)}</ul>}
       <div>
-        <button type="button" className="cursor-pointer text-sm underline" aria-expanded={open === app.app} aria-controls={detailsId}
-          onClick={() => setOpen(open === app.app ? null : app.app)}>{open === app.app ? "Hide details" : "What agents can do"}</button>
+        <Button variant="ghost" type="button" aria-expanded={open === app.app} aria-controls={detailsId}
+ onClick={() => setOpen(open === app.app ? null : app.app)}>{open === app.app ? "Hide details" : "What agents can do"}</Button>
         {open === app.app && details(app, detailsId)}
       </div>
     </li>;
   };
 
   return <div className="space-y-6">
-    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/50 p-3 text-sm text-danger">
-      <span>{error}</span>
-      {configured && accounts === null && <button type="button" className={BUTTON} onClick={() => void loadAccounts()}>Try again</button>}
-    </div>}
-    {notice && <p role="status" className="rounded-md border border-line p-3 text-sm">{notice}</p>}
-    {!status && !error && <p role="status" className="text-sm text-muted">Loading…</p>}
+    {error && <Banner tone="danger" action={configured && accounts === null ? <Button type="button" onClick={() => void loadAccounts()}>Try again</Button> : undefined}>{error}</Banner>}
+    {notice && <Banner>{notice}</Banner>}
+    {!status && !error && <SkeletonList rows={3} />}
 
     {showKeyForm && <section aria-labelledby="composio-key-title" className="rounded-lg border border-line p-5">
       <form onSubmit={saveKey} className="space-y-2">
         <h3 id="composio-key-title" className="font-semibold">{configured ? "New Composio project key" : "Connect your Composio account"}</h3>
         {!configured && <p className="text-sm text-muted">Add your own Composio project key to browse all of Composio&apos;s apps and connect them. It is stored encrypted on this computer and never shown again.</p>}
         <label htmlFor="composio-key" className="sr-only">Composio project key</label>
-        <input id="composio-key" type="password" className={FIELD} value={keyDraft} disabled={busy !== null} required minLength={11}
-          onChange={(event) => setKeyDraft(event.target.value)} autoComplete="off" spellCheck={false} placeholder="ak_…" />
+        <Input id="composio-key" type="password" value={keyDraft} disabled={busy !== null} required minLength={11}
+ onChange={(event) => setKeyDraft(event.target.value)} autoComplete="off" spellCheck={false} placeholder="ak_…" />
         <p className="text-xs text-muted">Create a project key in your Composio dashboard (it starts with <code>ak_</code>). The key is checked with Composio before it is saved. A scoped key needs Connected accounts: Read, Session management: Write, Session tool execution: Write, and Toolkits: Read to list apps and their actions. Add Connected accounts: Write to disconnect accounts. Composio fixes scopes when you create a key, so make a new key after changing them.</p>
         <div className="flex gap-2">
-          <button type="submit" className={BUTTON} disabled={busy !== null || keyDraft.trim().length < 11}>{busy === "key" ? "Checking…" : "Save key"}</button>
-          {replacing && <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => { setReplacing(false); setKeyDraft(""); }}>Cancel</button>}
+          <Button type="submit" disabled={busy !== null || keyDraft.trim().length < 11}>{busy === "key" ? "Checking…" : "Save key"}</Button>
+          {replacing && <Button type="button" disabled={busy !== null} onClick={() => { setReplacing(false); setKeyDraft(""); }}>Cancel</Button>}
         </div>
       </form>
     </section>}
 
     <div className="space-y-3">
       <label htmlFor="apps-search" className="sr-only">Search apps</label>
-      <input id="apps-search" type="search" className={FIELD} placeholder="Search apps" value={searchInput} autoComplete="off"
-        onChange={(event) => setSearchInput(event.target.value)} />
+      <Input id="apps-search" type="search" placeholder="Search apps" value={searchInput} autoComplete="off"
+ onChange={(event) => setSearchInput(event.target.value)} />
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter apps">
         <button type="button" className={!filter.category && !filter.connectedOnly ? CHIP_ON : CHIP} aria-pressed={!filter.category && !filter.connectedOnly}
           onClick={() => { setFilter({ ...filter, category: null, connectedOnly: false }); setMore(null); }}>All</button>
@@ -329,18 +331,17 @@ function AppsBrowser() {
       </div>
     </div>
 
-    {loaded !== null && "error" in loaded && loaded.key === key && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/50 p-3 text-sm text-danger">
-      <span>{loaded.error}</span><button type="button" className={BUTTON} onClick={() => setTick((n) => n + 1)}>Try again</button>
-    </div>}
-    {!ready && <p role="status" className="text-sm text-muted">Loading apps…</p>}
-    {banner && <p role="status" className={`rounded-md border p-3 text-sm ${banner.tone === "warning" ? "border-warning/50" : "border-line text-muted"}`}>{banner.text}</p>}
+    {loaded !== null && "error" in loaded && loaded.key === key && <Banner tone="danger" action={<Button type="button" onClick={() => setTick((n) => n + 1)}>Try again</Button>}>{loaded.error}</Banner>}
+    {!ready && <SkeletonList rows={3} />}
+    {banner && <Banner tone={banner.tone === "warning" ? "warning" : "info"}>{banner.text}</Banner>}
 
     {first && <>
-      {shownCount === 0 && <div className="rounded-md border border-line p-4 text-sm text-muted">
-        {filterActive(filter) ? "No apps match." : "No apps are available."}
-        {filterActive(filter) && <> <button type="button" className="underline" onClick={() => { setSearchInput(""); setFilter(NO_FILTER); setMore(null); }}>Reset filters</button></>}
-      </div>}
-      {configured && accounts === null && !error && <p role="status" className="text-sm text-muted">Loading your apps…</p>}
+      {shownCount === 0 && <EmptyState
+        title={filterActive(filter) ? "No apps match." : "No apps are available."}
+        description={filterActive(filter) ? "Try a different search or clear the filters." : "Check back after the catalog refreshes."}
+        action={filterActive(filter) ? <Button type="button" onClick={() => { setSearchInput(""); setFilter(NO_FILTER); setMore(null); }}>Reset filters</Button> : undefined}
+      />}
+      {configured && accounts === null && !error && <SkeletonList rows={3} />}
 
       {connected.length > 0 && <section aria-labelledby="apps-connected" className="space-y-3">
         <h3 id="apps-connected" className="font-semibold">Connected</h3>
@@ -351,18 +352,18 @@ function AppsBrowser() {
         <ul className="space-y-3">{group.apps.map(card)}</ul>
       </section>)}
       {nextCursor && !filter.connectedOnly && <div className="flex items-center gap-3">
-        <button type="button" className={BUTTON} disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Loading…" : "Show more apps"}</button>
+        <Button type="button" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Loading…" : "Show more apps"}</Button>
         <span className="text-xs text-muted">{first.page.total} apps match.</span>
       </div>}
     </>}
 
     {configured && <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-      {!replacing && <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => setReplacing(true)}>Replace key</button>}
+      {!replacing && <Button type="button" disabled={busy !== null} onClick={() => setReplacing(true)}>Replace key</Button>}
       {removingKey
         ? <span className="flex flex-wrap items-center gap-2 text-xs">Remove the key from this app? Connected accounts stay at Composio; disconnect them first to revoke them.
-            <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => void removeKey()}>Remove key</button>
-            <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => setRemovingKey(false)}>Keep</button></span>
-        : <button type="button" className={BUTTON} disabled={busy !== null} onClick={() => setRemovingKey(true)}>Remove key</button>}
+            <Button type="button" disabled={busy !== null} onClick={() => void removeKey()}>Remove key</Button>
+            <Button type="button" disabled={busy !== null} onClick={() => setRemovingKey(false)}>Keep</Button></span>
+        : <Button type="button" disabled={busy !== null} onClick={() => setRemovingKey(true)}>Remove key</Button>}
     </div>}
   </div>;
 }

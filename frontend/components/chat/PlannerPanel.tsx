@@ -7,6 +7,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { WorkItemEditor } from "./WorkItemEditor";
 import { WorkExecutionPanel } from "./WorkExecutionPanel";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 import { ApiError, type Agent, type Thread } from "@/lib/api";
 import { collaboration } from "@/lib/collaboration";
 import { browserTimezone } from "@/lib/routines";
@@ -220,8 +221,8 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
           </div>
         </div>
         <div aria-live="polite" className="px-4 text-sm">
-          {error && <p role="alert" className="py-2 text-danger">{error}</p>}
-          {!items && !error && <p className="py-4 text-muted">Loading tasks…</p>}
+          {error && <ErrorState className="my-2" message={error} onRetry={() => { setError(null); setTick(value => value + 1); }} />}
+          {!items && !error && <LoadingState className="py-4" rows={4} />}
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {items && board && view === "board" && <div className="grid min-h-[45dvh] grid-cols-1 gap-3 sm:grid-cols-[repeat(6,minmax(210px,1fr))]">
@@ -236,7 +237,7 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
           </div>}
           {items && view === "list" && <div className="space-y-3">
             <p className="text-xs text-muted">Deadlines first, followed by tasks without a due date. Completed tasks keep their workflow state.</p>
-            {upcoming.length === 0 ? <p className="py-10 text-center text-sm text-muted">No matching tasks. Create a task or adjust your filters.</p>
+            {upcoming.length === 0 ? <EmptyPanel title="No matching tasks" description="Create a task or adjust your filters." />
               : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{upcoming.map(item => taskCard(item))}</div>}
           </div>}
           {calendarMode && <div className="space-y-3">

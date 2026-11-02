@@ -855,6 +855,29 @@ async def mark_allow_delivered(db: AsyncSession, approval_id: str, owner_token: 
     return result.rowcount == 1
 
 
+async def deny_undelivered_allow(db: AsyncSession, approval_id: str, owner_token: str, *, source: str) -> bool:
+    """Withdraw an automatic Allow before it reaches the provider after revocation."""
+    await begin_write(db)
+    owned = exists().where(
+        Turn.id == Approval.turn_id, Turn.status == "running", Turn.owner_token == owner_token
+    )
+    updated = await db.execute(
+        update(Approval).where(Approval.id == approval_id, Approval.status == "allowed",
+                               Approval.delivered_at.is_(None), owned)
+        .values(status="denied", decided_at=utcnow())
+        .returning(Approval.thread_id, Approval.turn_id)
+        .execution_options(synchronize_session=False)
+    )
+    row = updated.one_or_none()
+    if row is None:
+        await db.rollback()
+        return False
+    await _add_event(db, row.thread_id, "approval.resolved",
+                     {"approval_id": approval_id, "status": "denied", "by": source}, row.turn_id)
+    await db.commit()
+    return True
+
+
 async def _cancel_open_approvals(db: AsyncSession, thread_id: int, turn_id: int) -> None:
     """Cancel the turn's approvals that authorize nothing yet: pending ones, and
     allowed ones that were never delivered. Part of the caller's transaction.

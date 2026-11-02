@@ -17,7 +17,8 @@ export type Block =
   | { type: "heading"; level: number; children: Inline[] }
   | { type: "code"; lang: string; text: string; closed: boolean }
   | { type: "quote"; blocks: Block[] }
-  | { type: "list"; ordered: boolean; start: number; items: Inline[][] }
+  // `sub[i]` holds the blocks nested under item i (usually one list); empty when it has none.
+  | { type: "list"; ordered: boolean; start: number; items: Inline[][]; sub: Block[][] }
   | { type: "table"; header: Inline[][]; rows: Inline[][][]; align: (string | null)[] }
   | { type: "rule" };
 
@@ -270,20 +271,35 @@ export function parseMarkdown(source: string): Block[] {
       const isOrdered = ordered !== null && bullet === null;
       const start = isOrdered ? Number(ordered![2]) : 1;
       const items: Inline[][] = [];
+      const sub: Block[][] = [];
+      const baseIndent = (bullet ?? ordered)![1].length;
       while (i < lines.length) {
         const b = BULLET.exec(lines[i]);
         const o = ORDERED.exec(lines[i]);
-        if (isOrdered ? o && !b : b && !RULE.test(lines[i])) {
+        const indent = (b ?? o)?.[1].length ?? 0;
+        if ((isOrdered ? o && !b : b && !RULE.test(lines[i])) && indent < baseIndent + 2) {
           items.push(parseInline(isOrdered ? o![3] : b![2]));
+          sub.push([]);
           i += 1;
-          // A continuation line is indented and belongs to the item above.
-          while (i < lines.length && /^ {2,}\S/.test(lines[i]) && !BULLET.test(lines[i]) && !ORDERED.test(lines[i])) {
-            items[items.length - 1].push({ type: "text", text: " " }, ...parseInline(lines[i].trim()));
+          const nested: string[] = [];
+          while (i < lines.length && /^ {2,}\S/.test(lines[i])) {
+            const deep = /^ +([-*+]|\d{1,9}[.)])\s+\S/.test(lines[i]) && lines[i].length - lines[i].trimStart().length >= baseIndent + 2;
+            if (nested.length > 0 || deep) {
+              // Everything indented under a nested marker belongs to the nested list.
+              nested.push(lines[i]);
+            } else if (!BULLET.test(lines[i]) && !ORDERED.test(lines[i])) {
+              // A continuation line is indented and belongs to the item above.
+              items[items.length - 1].push({ type: "text", text: " " }, ...parseInline(lines[i].trim()));
+            } else break;
             i += 1;
+          }
+          if (nested.length > 0) {
+            const cut = Math.min(...nested.map((l) => l.length - l.trimStart().length));
+            sub[sub.length - 1] = parseMarkdown(nested.map((l) => l.slice(cut)).join("\n"));
           }
         } else break;
       }
-      blocks.push({ type: "list", ordered: isOrdered, start, items });
+      blocks.push({ type: "list", ordered: isOrdered, start, items, sub });
       continue;
     }
 

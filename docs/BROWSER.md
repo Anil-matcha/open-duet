@@ -42,10 +42,24 @@ handles, and refuse detached elements. Selectors must match exactly one element.
 Page text and accessibility labels are untrusted observations. They cannot
 grant permissions or override the person's request. The agent is instructed
 to stop at login, CAPTCHA or verification and request takeover. Password and
-one-time-code inputs are refused by semantic tools; other challenge detection
-depends on the page and the agent, so it is not a comprehensive detector.
+one-time-code inputs are refused by semantic tools. When a page shows a visible
+CAPTCHA frame (reCAPTCHA, hCaptcha, Cloudflare Turnstile, Arkose) or has a
+"Just a moment" or "Access denied" style title, `browser_open`,
+`browser_snapshot` and `browser_read` begin with a fixed notice telling the agent
+not to solve, bypass or loop on it and to ask the person to take control. The
+notice never repeats page text. Invisible CAPTCHAs are ignored, and other
+challenge pages are not detected, so this is not a comprehensive detector.
 Downloads are cancelled and reported for manual handling; uploads, arbitrary
 JavaScript execution and automatic challenge solving are not exposed.
+
+A headless Chromium names itself `HeadlessChrome` in its user agent and client
+hints, which many sites reject. The broker replaces that word with `Chrome`
+through one browser override, so the `User-Agent` header, `Sec-CH-UA` hints and
+`navigator.userAgentData` agree. Version, platform and architecture stay real.
+It does not hide `navigator.webdriver`, change the screen, canvas or fonts, or
+change the network address, and workers and service workers are not covered. A
+site that blocks data-centre addresses or automation still needs the person to
+take control.
 
 Each computer keeps its profile outside `/workspace`, under
 `/home/agent/browser-profile` with mode 0700. Cookies survive normal browser

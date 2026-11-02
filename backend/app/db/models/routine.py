@@ -64,6 +64,7 @@ class Routine(Base):
     )
     quiet_reporting: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
     connected_app_grants: Mapped[list] = mapped_column(JSONValue, nullable=False, default=list, server_default="[]")
+    uninterrupted_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
     # SHA-256 hex of the webhook secret; null means the webhook is off. The
     # secret itself is never stored.
     webhook_secret_hash: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -105,6 +106,8 @@ class RoutineRun(Base):
         BigInteger, ForeignKey("routine.id", name="fk_routine_run_routine_id_routine"), nullable=False
     )
     connected_app_grants: Mapped[list] = mapped_column(JSONValue, nullable=False, default=list, server_default="[]")
+    uninterrupted_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
+    capability_snapshot: Mapped[dict] = mapped_column(JSONValue, nullable=False, default=dict, server_default="{}")
     trigger: Mapped[str] = mapped_column(String, nullable=False)
     state: Mapped[str] = mapped_column(String, nullable=False, default="queued", server_default="queued")
     scheduled_for: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
 
 type Permissions = { supported: boolean; accessibility: boolean; screen_recording: boolean };
 
@@ -26,7 +28,7 @@ export function DesktopPermissions() {
   if (!permissions?.supported && !error) return null;
   return <section className="space-y-3 rounded-lg border border-line p-4 text-sm">
     <h3 className="font-semibold">Mac permissions (optional)</h3><p className="text-xs text-muted">These are only needed for native desktop control. Chat works without them. Enabling them here does not give any agent computer access.</p>
-    {permissions && <ul className="space-y-2"><li>Accessibility: {permissions.accessibility ? "Granted" : "Not granted"} <button className="ml-2 underline" disabled={busy} onClick={() => void check("accessibility")}>Open settings</button></li><li>Screen Recording: {permissions.screen_recording ? "Granted" : "Not granted"} <button className="ml-2 underline" disabled={busy} onClick={() => void check("screen_recording")}>Open settings</button></li></ul>}
-    {error && <p role="alert" className="text-danger">{error}</p>}<button className="underline" disabled={busy} onClick={() => void check("status")}>Check permissions again</button>
+    {permissions && <ul className="space-y-2"><li>Accessibility: {permissions.accessibility ? "Granted" : "Not granted"} <Button variant="ghost" size="sm" className="ml-2" disabled={busy} onClick={() => void check("accessibility")}>Open settings</Button></li><li>Screen Recording: {permissions.screen_recording ? "Granted" : "Not granted"} <Button variant="ghost" size="sm" className="ml-2" disabled={busy} onClick={() => void check("screen_recording")}>Open settings</Button></li></ul>}
+    {error && <Banner tone="danger">{error}</Banner>}<Button size="sm" disabled={busy} onClick={() => void check("status")}>Check permissions again</Button>
   </section>;
 }

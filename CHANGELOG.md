@@ -9,6 +9,32 @@
   a conversation's workspace, previews text and images, and shares or saves any file. A
   chat-only phone is unchanged and still cannot reach workspace files; the folder zip stays
   admin-only. Automated tests and lint pass; not yet run on a device.
+- Add an owner-selected Uninterrupted access setting for a routine. Scheduled
+  and manual runs can use the agent's configured app accounts, granted
+  marketplace tools and attached isolated computer without per-call approval.
+  Each run records its starting capability ceilings and rechecks current
+  permission before calls. Ordinary chats retain their own approval behavior.
+  Real AppSumo research and updated installed-package qualification remain open.
+
+### Changed
+
+- Stop the agent browser announcing itself as `HeadlessChrome`: its user agent,
+  client hints and `navigator.userAgentData` now agree and name Chrome, with the
+  real version and platform. Add a fixed notice when a page shows a visible
+  CAPTCHA frame or a "Just a moment" or "Access denied" page, so the agent stops
+  and asks the person to take control instead of retrying.
+- Remove the server-wide routine connected-app switch. Explicitly granted
+  scheduled and manual routine actions are eligible immediately, subject to
+  current agent permissions, active accounts and existing run restrictions.
+- Require Codex to initialize a routine's exact connected-app tools before its
+  turn starts, waiting up to 10 seconds so missing tools cannot be mistaken for
+  unchecked access. Name the authorized tools in turn instructions and direct
+  Codex to call a matching tool before reporting app access unavailable.
+
+## 0.7.0 - 2026-10-30
+
+### Added
+
 - Add a remote MCP Marketplace with Community and Tested by Open Dots sections,
   GitHub PR catalog validation, separately stored bearer credentials, exact
   per-agent tool grants and one-time call approvals. The source implementation

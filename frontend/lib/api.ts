@@ -878,6 +878,7 @@ export type Routine = {
   webhook_enabled: boolean;
   latest_run: RoutineRun | null;
   connected_app_grants: ConnectedAppGrant[];
+  uninterrupted_access: boolean;
 };
 
 export type RoutineInput = {
@@ -895,6 +896,7 @@ export type RoutineInput = {
   retry_limit: number;
   retry_delay_minutes: number;
   connected_app_grants: ConnectedAppGrant[];
+  uninterrupted_access: boolean;
 };
 
 export type SchedulePreview = { summary: string; next_dates: string[] };

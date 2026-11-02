@@ -105,8 +105,19 @@ class TurnComputer:
     browser_enabled: bool = False
     guest_workspace: str = docker_cli.GUEST_WORKSPACE
     capability_token: str | None = field(default=None, repr=False)
+    routine_uninterrupted: bool = False
 
     def prompt_note(self) -> str:
+        note = self._prompt_note()
+        if self.routine_uninterrupted:
+            note = note.replace("Screen input needs permission for this turn.", "The routine owner has granted uninterrupted access to this computer.")
+            note = note.replace("Browser input uses the screen permission for this turn.", "Browser input is covered by the routine owner's saved computer grant.")
+            note += (" This routine has the owner's saved authorization for screen, browser, command and file actions on this computer. "
+                     "Call its tools directly without requesting approval in chat text. The app checks the saved grant on every call; "
+                     "stop if a call is refused. Login, CAPTCHA, missing credentials or unavailable sources must be reported as incomplete.")
+        return note
+
+    def _prompt_note(self) -> str:
         if self.provider == "local-browser":
             return ("You also have a headless Chromium browser on this machine through browser_open, browser_snapshot, browser_read, browser_click, browser_fill, browser_type, browser_press, browser_tabs, browser_wait, browser_dialog, browser_screenshot, browser_close and browser_restart. "
                     "Browser input needs permission for this turn. Pages are reached through a filter that refuses this machine's own addresses and private networks, so local files and services cannot be opened with it. "

@@ -94,7 +94,7 @@ def blocked_action(slug: str) -> bool:
 
 # -- tool definitions (shown by the shim) -------------------------------------------
 
-def mcp_tools(searchable: list[str], runnable: list[str]) -> list[dict]:
+def mcp_tools(searchable: list[str], runnable: list[str], *, uninterrupted: bool = False) -> list[dict]:
     """The generic tools for the agent's apps that have no curated tools: search for each of them, run only for
     the ones the agent may change (every generic action is treated as a change). Empty when there are none."""
     if not searchable:
@@ -120,8 +120,9 @@ def mcp_tools(searchable: list[str], runnable: list[str]) -> list[dict]:
     return tools + [
         {
             "name": RUN,
-            "description": (f"Run one action of a connected app ({named}) found with {SEARCH}. Every call asks the person first, "
-                            "showing the app, account, action and exact arguments; nothing is added to them. "
+            "description": (f"Run one action of a connected app ({named}) found with {SEARCH}. "
+                            + ("The owner has authorized this routine to run actions within the listed app and account scopes. " if uninterrupted else
+                               "Every call asks the person first, showing the app, account, action and exact arguments; nothing is added to them. ") +
                             "Give the action's `revision` from the search."),
             "inputSchema": {"type": "object", "additionalProperties": False, "required": ["app", "action", "revision", "arguments"], "properties": {
                 "app": {"type": "string", "enum": sorted(apps), "description": "The connected app."},

@@ -208,7 +208,9 @@ async def _get_catalog_data() -> dict:
     try:
         async with asyncio.timeout(60):
             result = await _load_catalog(_raw_file)
-    except McpError:
+    except McpError as exc:
+        if exc.code not in ("catalog_unavailable", "catalog_too_large"):
+            raise  # an invalid upstream catalog must surface, not be hidden by stale bundled data
         result = await _load_catalog(_bundle_file)
     except TimeoutError:
         result = await _load_catalog(_bundle_file)
@@ -301,13 +303,17 @@ def safe_schema(value: object, depth: int = 0) -> dict:
     """Keep only a bounded, locally validated JSON Schema subset."""
     if depth > MAX_DEPTH or not isinstance(value, dict) or len(canonical(value).encode("utf-8")) > MAX_SCHEMA_BYTES:
         raise McpError("unsupported_schema", "This tool's input schema is too large or complex.", 422)
-    allowed = {"$schema", "type", "title", "description", "properties", "required", "additionalProperties", "items", "enum", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"}
+    allowed = {"$schema", "type", "title", "description", "properties", "required", "additionalProperties", "items", "enum", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems", "format", "default"}
     if set(value) - allowed:
         raise McpError("unsupported_schema", "This tool uses a schema feature Open Dots cannot validate safely.", 422)
     kind = value.get("type", "object")
     if kind not in ("object", "array", "string", "number", "integer", "boolean", "null"):
         raise McpError("unsupported_schema", "This tool uses an unsupported input type.", 422)
     result = {"type": kind}
+    if "format" in value:
+        if kind != "string" or value["format"] != "uri":
+            raise McpError("unsupported_schema", "This tool uses an unsupported string format.", 422)
+        result["format"] = "uri"
     for key in ("title", "description"):
         if key in value and isinstance(value[key], str):
             result[key] = value[key][:1000 if key == "title" else 4000]
@@ -315,7 +321,7 @@ def safe_schema(value: object, depth: int = 0) -> dict:
         result["$schema"] = value["$schema"]
     if "enum" in value:
         options = value["enum"]
-        if not isinstance(options, list) or len(options) > 200 or len(canonical(options).encode("utf-8")) > 8_000:
+        if not isinstance(options, list) or len(options) > 256 or len(canonical(options).encode("utf-8")) > 8_000:
             raise McpError("unsupported_schema", "This tool has an oversized enum.", 422)
         result["enum"] = options
     for key in ("minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"):
@@ -346,6 +352,12 @@ def safe_schema(value: object, depth: int = 0) -> dict:
         result["items"] = safe_schema(value["items"], depth + 1)
     if kind != "object" and any(key in value for key in ("properties", "required", "additionalProperties")):
         raise McpError("unsupported_schema", "This tool has schema fields that do not match its input type.", 422)
+    if "default" in value:
+        default = value["default"]
+        if isinstance(default, (dict, list)):
+            raise McpError("unsupported_schema", "This tool uses an unsupported compound default.", 422)
+        validate_arguments(result, default)
+        result["default"] = default
     return result
 
 
@@ -366,6 +378,11 @@ def validate_arguments(schema: dict, value: object, depth: int = 0) -> None:
         raise McpError("bad_arguments", f"Expected {kind} tool arguments.")
     if "enum" in schema and value not in schema["enum"]:
         raise McpError("bad_arguments", "Tool arguments are outside the listed choices.")
+    if schema.get("format") == "uri":
+        try:
+            _validate_public_url(value, "tool argument", max_length=MAX_REQUEST_BYTES)
+        except McpError:
+            raise McpError("bad_arguments", "Expected a public HTTPS URL.") from None
     if kind == "object":
         props = schema.get("properties", {})
         if len(value) > 100 or any(not isinstance(k, str) or len(k) > 128 for k in value):
@@ -546,7 +563,9 @@ class RemoteMcpSession:
             if not isinstance(value, dict) or value.get("jsonrpc") != "2.0":
                 continue
             if value.get("method") is not None:
-                raise McpError("unsupported_protocol", "The remote MCP server sent an unsupported request.", 502)
+                if "id" in value:
+                    raise McpError("unsupported_protocol", "The remote MCP server sent an unsupported request.", 502)
+                continue  # a notification (progress, logging) never carries the result
             if value.get("id") == expected_id:
                 if "error" in value:
                     raise McpError("remote_error", "The remote MCP server rejected the request.", 502)
@@ -660,7 +679,10 @@ class RemoteMcpSession:
             if not isinstance(page, list):
                 raise McpError("invalid_response", "The remote MCP server returned an invalid tool list.", 502)
             for raw in page:
-                tool = _normalize_tool(raw)
+                try:
+                    tool = _normalize_tool(raw)
+                except McpError:
+                    continue  # one tool Open Dots cannot validate must not hide the rest
                 total_bytes += len(canonical(tool).encode("utf-8"))
                 if total_bytes > MAX_TOOLSET_BYTES:
                     raise McpError("toolset_too_large", "This remote server exposes too much tool metadata.", 502)

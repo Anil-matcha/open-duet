@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, LinkCode } from "@/lib/api";
 import { Button, Card, ErrorText } from "./Card";
+import { Button as UiButton } from "@/components/ui/Button";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -74,12 +75,9 @@ export function ConnectTelegram({
             Linked as Telegram user <code className="font-mono">{userId}</code>.
           </p>
         )}
-        <button
-          onClick={onReset}
-          className="mt-2 text-sm text-muted underline hover:text-ink"
-        >
+        <UiButton variant="ghost" className="mt-2" onClick={onReset}>
           Start over
-        </button>
+        </UiButton>
       </Card>
     );
   }
@@ -99,12 +97,9 @@ export function ConnectTelegram({
           <Button onClick={() => onLinked({ guest: true })}>
             Continue without Telegram
           </Button>
-          <button
-            onClick={() => setMode("telegram")}
-            className="rounded-md border border-line px-4 py-2 text-sm font-medium hover:bg-hover"
-          >
+          <UiButton variant="secondary" onClick={() => setMode("telegram")}>
             Link Telegram instead
-          </button>
+          </UiButton>
         </div>
       </Card>
     );
@@ -122,12 +117,9 @@ export function ConnectTelegram({
           <Button onClick={generateCode} disabled={loading}>
             {loading ? "Generating…" : "Generate code"}
           </Button>
-          <button
-            onClick={() => setMode("choice")}
-            className="text-sm text-muted underline hover:text-ink"
-          >
+          <UiButton variant="ghost" onClick={() => setMode("choice")}>
             Back
-          </button>
+          </UiButton>
         </div>
       )}
 

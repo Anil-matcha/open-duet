@@ -6,9 +6,12 @@ import { APPROVAL_MODES, modelLabel } from "@/lib/agents";
 import { EngineSettings } from "./EngineSettings";
 import { EngineModelFields } from "./chat/EngineModelFields";
 import { firstReadyEngine } from "@/lib/engines";
+import { Banner } from "./ui/Banner";
+import { Button } from "./ui/Button";
+import { Checkbox } from "./ui/Checkbox";
+import { Field, Input, Select } from "./ui/Input";
+import { Stepper } from "./ui/Stepper";
 
-const BUTTON = "rounded-md border border-line px-3 py-2 text-sm disabled:opacity-50";
-const FIELD = "mt-1 w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm";
 const STEPS = ["Engine", "Workspace", "Approvals", "Ready"];
 
 export function DesktopSetup({ settings, onSaved, onFinished }: {
@@ -88,37 +91,111 @@ export function DesktopSetup({ settings, onSaved, onFinished }: {
     } finally { setBusy(false); }
   };
 
-  return <section aria-label="First-run setup" className="space-y-5 rounded-xl border border-line p-5">
-    <div><h2 className="text-xl font-semibold">Welcome to Open Duet</h2><p className="mt-2 text-sm text-muted">Choose how your agents work on this computer. You can change these choices in Settings and Agents.</p></div>
-    <ol className="flex flex-wrap gap-3 text-xs" aria-label="Setup progress">{STEPS.map((name, index) => <li key={name} aria-current={index === step ? "step" : undefined} className={index === step ? "font-semibold" : "text-muted"}>{index + 1}. {name}</li>)}</ol>
-    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {step === 0 && <div className="space-y-4">
-      <p className="text-sm text-muted">{engine?.available ? `${engine.label} is ready. Continue to choose a workspace.` : "Connect an AI"}</p>
-      {engine?.available && <details><summary className="cursor-pointer text-sm underline">Advanced: engine and model</summary><div className="mt-3"><EngineModelFields engines={engines} provider={provider} model={model} disabled={busy} onChange={(nextProvider, nextModel) => { setProvider(nextProvider); setModel(nextModel); }} /></div></details>}
-      <EngineSettings onEnginesChanged={enginesChanged} />
-      {!engines.length && <p role="status" className="text-sm text-muted">Checking installed engines…</p>}
-    </div>}
-    {step === 1 && <div className="space-y-3">
-      <label className="block text-sm">Default workspace root<input aria-label="Setup workspace root" className={FIELD} value={workspace} onChange={(event) => setWorkspace(event.target.value)} disabled={busy} placeholder="Use the app's own workspace" autoComplete="off" spellCheck={false} /></label>
-      <button type="button" className={BUTTON} disabled={busy} onClick={() => void browse()}>Choose folder</button>
-      <p className="break-all text-xs text-muted">App default: {String(row("LOCAL_WORKSPACE_ROOT")?.default ?? "")}</p>
-      <p className="text-sm text-muted">New agents get their own subfolders here. To work directly in an existing project, set that agent&apos;s workspace in Agents.</p>
-    </div>}
-    {step === 2 && <div className="space-y-4">
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={tools} disabled={busy} onChange={(event) => setTools(event.target.checked)} />Allow tools on this computer</label>
-      <p className="text-xs text-muted">When off, local CLIs stay read only. API endpoints are chat only. Tool-capable engines use their own permissions and the app&apos;s approval cards.</p>
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={createAgent === true} disabled={busy || createAgent === null} onChange={(event) => setCreateAgent(event.target.checked)} />Create a starter agent with the selected engine</label>
-      {createAgent && provider === "claude" && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={leadsTeam} disabled={busy} onChange={(event) => setLeadsTeam(event.target.checked)} />Leads a team: can create specialists and delegate with the team approval settings</label>}
-      {createAgent === false && existing.length > 0 && <label className="block text-sm">Team lead (optional)<select aria-label="Team lead" className={FIELD} value={leadPick} disabled={busy} onChange={(event) => setLeadPick(event.target.value)}><option value="">No lead yet</option>{existing.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><span className="mt-1 block text-xs text-muted">The lead can add specialists and hand work to them. You can change this later in Team.</span></label>}
-      {createAgent && <label className="block text-sm">Agent name<input aria-label="Starter agent name" className={FIELD} maxLength={80} value={agentName} disabled={busy} onChange={(event) => setAgentName(event.target.value)} /></label>}
-      <fieldset className="space-y-2" disabled={busy || !createAgent}><legend className="mb-2 text-sm font-medium">Starter agent approval mode</legend>{APPROVAL_MODES.map((option) => <label key={option.value} className="flex items-start gap-2 text-sm"><input type="radio" name="setup-approval" value={option.value} checked={mode === option.value} onChange={() => setMode(option.value)} /><span>{option.label}<span className="mt-1 block text-xs text-muted">{option.description}</span></span></label>)}</fieldset>
-      {!createAgent && <p className="text-xs text-muted">Your existing agents keep their approval modes. Change them in Agents.</p>}
-    </div>}
-    {step === 3 && <div className="space-y-3 text-sm"><h3 className="font-semibold">Ready to start</h3><p>{engine?.label ?? provider} · {modelLabel(model)}</p><p className="break-all">Workspace root: {workspace.trim() || "App default"}</p><p>Local tools: {tools ? "on" : "off"}</p><p>{createAgent ? `Create ${agentName.trim()} with ${APPROVAL_MODES.find((item) => item.value === mode)?.label}.` : "Use your existing agents, or start a plain chat."}</p></div>}
-    <div className="flex flex-wrap gap-2">
-      {step > 0 && <button type="button" className={BUTTON} disabled={busy} onClick={() => { setError(null); setStep((value) => value - 1); }}>Back</button>}
-      {step < STEPS.length - 1 ? <button type="button" className={BUTTON} disabled={busy || createAgent === null || (step === 0 && !engine?.available) || (step === 2 && createAgent === true && !agentName.trim())} onClick={() => { setError(null); setStep((value) => value + 1); }}>Continue</button> : <button type="button" className={BUTTON} disabled={busy} onClick={() => void complete()}>{busy ? "Saving…" : "Start chatting"}</button>}
-      <button type="button" className={`${BUTTON} ml-auto`} disabled={busy} onClick={() => void complete(true)}>Set up later</button>
+  const last = STEPS.length - 1;
+  const canContinue = !busy && createAgent !== null
+    && !(step === 0 && !engine?.available)
+    && !(step === 2 && createAgent === true && !agentName.trim());
+  const go = (delta: number) => { setError(null); setStep((value) => value + delta); };
+
+  return (
+    <section aria-label="First-run setup" className="space-y-5 rounded-card border border-line bg-raised p-5">
+      <div>
+        <h2 className="text-heading font-semibold">Welcome to Open Duet</h2>
+        <p className="mt-2 text-sm text-muted">Choose how your agents work on this computer. You can change these choices in Settings and Agents.</p>
+      </div>
+      <Stepper steps={STEPS} current={step} />
+      {error && <Banner tone="danger">{error}</Banner>}
+
+      {step === 0 && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">{engine?.available ? `${engine.label} is ready. Continue to choose a workspace.` : "Connect an AI"}</p>
+          {engine?.available && (
+            <details>
+              <summary className="cursor-pointer text-sm underline">Advanced: engine and model</summary>
+              <div className="mt-3">
+                <EngineModelFields engines={engines} provider={provider} model={model} disabled={busy} onChange={(nextProvider, nextModel) => { setProvider(nextProvider); setModel(nextModel); }} />
+              </div>
+            </details>
+          )}
+          <EngineSettings onEnginesChanged={enginesChanged} />
+          {!engines.length && <p role="status" className="text-sm text-muted">Checking installed engines…</p>}
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="space-y-3">
+          <Field label="Default workspace root">
+            {(p) => <Input {...p} aria-label="Setup workspace root" value={workspace} onChange={(event) => setWorkspace(event.target.value)} disabled={busy} placeholder="Use the app's own workspace" autoComplete="off" spellCheck={false} />}
+          </Field>
+          <Button disabled={busy} onClick={() => void browse()}>Choose folder</Button>
+          <p className="break-all text-xs text-muted">App default: {String(row("LOCAL_WORKSPACE_ROOT")?.default ?? "")}</p>
+          <p className="text-sm text-muted">New agents get their own subfolders here. To work directly in an existing project, set that agent&apos;s workspace in Agents.</p>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-4">
+          <Checkbox label="Allow tools on this computer" description="When off, local CLIs stay read only. API endpoints are chat only. Tool-capable engines use their own permissions and the app's approval cards." checked={tools} disabled={busy} onChange={(event) => setTools(event.target.checked)} />
+          <Checkbox label="Create a starter agent with the selected engine" checked={createAgent === true} disabled={busy || createAgent === null} onChange={(event) => setCreateAgent(event.target.checked)} />
+          {createAgent && provider === "claude" && (
+            <Checkbox label="Leads a team: can create specialists and delegate with the team approval settings" checked={leadsTeam} disabled={busy} onChange={(event) => setLeadsTeam(event.target.checked)} />
+          )}
+          {createAgent === false && existing.length > 0 && (
+            <Field label="Team lead (optional)" hint="The lead can add specialists and hand work to them. You can change this later in Team.">
+              {(p) => (
+                <Select {...p} aria-label="Team lead" value={leadPick} disabled={busy} onChange={(event) => setLeadPick(event.target.value)}>
+                  <option value="">No lead yet</option>
+                  {existing.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                </Select>
+              )}
+            </Field>
+          )}
+          {createAgent && (
+            <Field label="Agent name">
+              {(p) => <Input {...p} aria-label="Starter agent name" maxLength={80} value={agentName} disabled={busy} onChange={(event) => setAgentName(event.target.value)} />}
+            </Field>
+          )}
+          <fieldset className="space-y-2" disabled={busy || !createAgent}>
+            <legend className="mb-2 text-sm font-medium">Starter agent approval mode</legend>
+            {APPROVAL_MODES.map((option) => (
+              <label key={option.value} className="flex items-start gap-2 text-sm">
+                <input type="radio" name="setup-approval" value={option.value} checked={mode === option.value} onChange={() => setMode(option.value)} className="mt-0.5 accent-(--accent)" />
+                <span>{option.label}<span className="mt-1 block text-xs text-muted">{option.description}</span></span>
+              </label>
+            ))}
+          </fieldset>
+          {!createAgent && <p className="text-xs text-muted">Your existing agents keep their approval modes. Change them in Agents.</p>}
+        </div>
+      )}
+
+      {step === last && (
+        <div className="space-y-3 text-sm">
+          <h3 className="text-title font-semibold">Ready to start</h3>
+          <dl className="divide-y divide-line rounded-field border border-line bg-inset">
+            <SummaryRow label="Engine" value={`${engine?.label ?? provider} · ${modelLabel(model)}`} />
+            <SummaryRow label="Workspace root" value={workspace.trim() || "App default"} />
+            <SummaryRow label="Local tools" value={tools ? "on" : "off"} />
+            <SummaryRow label="Agent" value={createAgent ? `Create ${agentName.trim()} with ${APPROVAL_MODES.find((item) => item.value === mode)?.label}.` : "Use your existing agents, or start a plain chat."} />
+          </dl>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {step > 0 && <Button disabled={busy} onClick={() => go(-1)}>Back</Button>}
+        {step < last
+          ? <Button variant="primary" disabled={!canContinue} onClick={() => go(1)}>Continue</Button>
+          : <Button variant="primary" disabled={busy} loading={busy} onClick={() => void complete()}>{busy ? "Saving…" : "Start chatting"}</Button>}
+        <Button className="ml-auto" variant="ghost" disabled={busy} onClick={() => void complete(true)}>Set up later</Button>
+      </div>
+    </section>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap gap-x-3 px-3 py-2">
+      <dt className="w-32 shrink-0 text-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 break-all">{value}</dd>
     </div>
-  </section>;
+  );
 }

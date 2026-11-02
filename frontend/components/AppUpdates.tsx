@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/Button";
 
 export type UpdateState = {
   status: "idle" | "checking" | "available" | "downloading" | "downloaded" | "installing" | "error";
@@ -17,7 +18,6 @@ export type UpdatesBridge = {
   onState(listener: (state: UpdateState) => void): () => void;
 };
 
-const buttonClass = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50";
 
 function summary(state: UpdateState) {
   switch (state.status) {
@@ -51,11 +51,11 @@ export function AppUpdates() {
     <div><h3 id="app-updates" className="font-semibold">App updates</h3><p className="mt-1 text-xs text-muted">You have version {state.current}. Updates come from the project&apos;s GitHub releases; nothing installs without your click.</p></div>
     <p role={state.status === "error" ? "alert" : "status"} className={`text-sm ${state.status === "error" ? "text-danger" : ""}`}>{summary(state)}</p>
     <div className="flex flex-wrap gap-2">
-      {state.status === "available" && state.canDownload && <button className={buttonClass} onClick={() => act("download")}>Download version {state.version}</button>}
-      {state.status === "downloaded" && <button className={buttonClass} onClick={() => act("install")}>Open installer</button>}
-      {(state.status === "available" || state.status === "downloaded") && <button className={buttonClass} onClick={() => act("release-page")}>Release notes</button>}
-      {state.status === "error" && state.canDownload && <button className={buttonClass} onClick={() => act("download")}>Try the download again</button>}
-      <button className={buttonClass} disabled={working} onClick={() => act("check")}>{state.status === "checking" ? "Checking…" : "Check for updates"}</button>
+      {state.status === "available" && state.canDownload && <Button onClick={() => act("download")}>Download version {state.version}</Button>}
+      {state.status === "downloaded" && <Button onClick={() => act("install")}>Open installer</Button>}
+      {(state.status === "available" || state.status === "downloaded") && <Button onClick={() => act("release-page")}>Release notes</Button>}
+      {state.status === "error" && state.canDownload && <Button onClick={() => act("download")}>Try the download again</Button>}
+      <Button disabled={working} onClick={() => act("check")}>{state.status === "checking" ? "Checking…" : "Check for updates"}</Button>
     </div>
   </section>;
 }

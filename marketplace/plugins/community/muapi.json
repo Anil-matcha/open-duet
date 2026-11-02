@@ -1,0 +1,15 @@
+{
+  "slug": "muapi",
+  "name": "Muapi",
+  "version": "0.1.0",
+  "summary": "Hosted generative-media MCP: search models; generate and edit images and videos; create audio; and poll jobs. Uses a Muapi bearer API key. Generation can consume credits, and tools also include credit top-ups and API-key management. Grant only the individual tools you want.",
+  "publisher": "Muapi by Vadoo Internet Services Private Limited",
+  "source_repo": "https://github.com/Anil-matcha/muapiapp",
+  "endpoint": "https://api.muapi.ai/mcp",
+  "auth_mode": "bearer_token",
+  "privacy_url": "https://muapi.ai/api/app/pdf/privacy_policy.pdf",
+  "terms_url": "https://muapi.ai/terms",
+  "license": "Proprietary service; see Muapi Terms of Service",
+  "setup_instructions": "Create an API key at https://muapi.ai/access-keys. In Open Dots, connect this listing and save the key as its bearer token. Grant only the individual tools each agent needs. Generation can consume credits; the tool set also includes credit top-ups and API-key creation and deletion. Do not paste the key into chat or a tool argument.",
+  "test_instructions": "Grant search_models to an agent and call it once with a model keyword to verify the connection without starting a paid generation. Avoid generation during connection testing because it can consume credits. Remove the grant if the agent does not need the search tool."
+}

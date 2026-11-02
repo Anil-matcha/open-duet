@@ -63,6 +63,7 @@ type Draft = {
   retryLimit: string;
   retryDelay: string;
   connectedAppGrants: ConnectedAppGrant[];
+  uninterruptedAccess: boolean;
 };
 
 // These exact tool identifiers mirror the routine-safe read inventory and the
@@ -92,7 +93,7 @@ function newDraft(agents: Agent[]): Draft {
   return {
     id: null, name: "", agentId: agents[0]?.id ?? null, prompt: "", schedule: emptySchedule(),
     runLimit: "30", approvalMode: "ask", approvalWait: "30", catchUp: "60",
-    quietReporting: false, retryLimit: "0", retryDelay: "5", connectedAppGrants: [],
+    quietReporting: false, retryLimit: "0", retryDelay: "5", connectedAppGrants: [], uninterruptedAccess: false,
   };
 }
 
@@ -105,6 +106,7 @@ function draftOf(routine: Routine): Draft {
     quietReporting: routine.quiet_reporting ?? false,
     retryDelay: String(routine.retry_delay_minutes),
     connectedAppGrants: routine.connected_app_grants ?? [],
+    uninterruptedAccess: routine.uninterrupted_access ?? false,
   };
 }
 
@@ -124,6 +126,7 @@ function inputOf(draft: Draft): RoutineInput {
     retry_limit: Number(draft.retryLimit),
     retry_delay_minutes: Number(draft.retryDelay),
     connected_app_grants: draft.connectedAppGrants,
+    uninterrupted_access: draft.uninterruptedAccess,
   };
 }
 
@@ -397,7 +400,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
               <section className="space-y-3 rounded-md border border-line p-3" aria-labelledby="routine-app-access-title">
                 <div>
                   <h3 id="routine-app-access-title" className="text-sm font-medium">Connected app access</h3>
-                  <p className="mt-1 text-xs text-muted">Off by default. Choose exact read actions and the connected account each action uses. The agent must already be allowed to use that app and account. When routine app access is enabled on the server, these reads can run without an action-time approval. Draft replies, other writes, webhooks, and routines with a computer are not available here.</p>
+                  <p className="mt-1 text-xs text-muted">No actions are selected by default. Choose exact read actions and the connected account each action uses. The agent must already be allowed to use that app and account. Granted reads run without an action-time approval. Draft replies, other writes, webhooks, and routines with a computer are not available here.</p>
                 </div>
                 {connectedAccounts === null ? <p role="status" className="text-xs text-muted">Loading connected accounts…</p> : ROUTINE_READ_TOOLS.map((group) => {
                   const agent = agents.find((item) => item.id === draft.agentId);
@@ -426,7 +429,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                     })}</div>
                     {group.writes.length > 0 && <div className="space-y-2 border-t border-line pt-2">
                       <div><p className="text-xs font-semibold">Write actions · explicitly authorize each one</p>
-                        <p className="text-xs text-muted">Selecting an action is your one-time authorization for this exact action and account. Once authorized, it runs without an action-time approval. The agent must also have write access to this app. This is separate from the routine&apos;s approval mode and only takes effect when routine app access is enabled on the server.</p></div>
+                        <p className="text-xs text-muted">Selecting an action is your one-time authorization for this exact action and account. Once authorized, it runs without an action-time approval. The agent must also have write access to this app. This is separate from the routine&apos;s approval mode.</p></div>
                       {group.writes.map(([tool, label]) => {
                         const grant = draft.connectedAppGrants.find((item) => item.tool === tool);
                         const hasWriteScope = agent?.connector_scopes?.[group.app] === "write";
@@ -438,6 +441,20 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                     </div>}
                   </fieldset>;
                 })}
+              </section>
+              <section className="space-y-2 rounded-md border border-line p-3" aria-labelledby="routine-uninterrupted-access-title">
+                <div>
+                  <h3 id="routine-uninterrupted-access-title" className="text-sm font-medium">Uninterrupted access</h3>
+                  <p className="mt-1 text-xs text-muted">When enabled, this routine can use the selected agent&apos;s existing capabilities without action-time approvals: connected apps, accounts and configured marketplace tools eligible at run start, plus its attached computer (screen, browser, commands, and files). Access is limited to the agent&apos;s current app scopes intersected with the accounts and tools eligible when the run starts; this does not add agent permissions or connected accounts. The exact connected-app grants above configure a separate narrow mode; for eligible routine runs, Uninterrupted access supersedes those grants. This applies only to this routine and does not affect ordinary chats. Configured marketplace tools can have service-defined effects and may change external services; those changes may not be undoable. If the agent has write capabilities, this routine may use them; Plan mode still blocks writes. Unattended runs proceed without waiting for your approval, so enable this only if you want the routine to run on its own with those existing permissions.</p>
+                </div>
+                <label className="flex items-start gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={draft.uninterruptedAccess}
+                    onChange={(event) => setDraft({ ...draft, uninterruptedAccess: event.target.checked })}
+                  />
+                  <span>Allow this routine to use the selected agent&apos;s existing capabilities without action-time approval</span>
+                </label>
               </section>
               <details className="rounded-md border border-line p-3 text-xs">
                 <summary className="cursor-pointer font-medium text-muted">Limits and approvals</summary>

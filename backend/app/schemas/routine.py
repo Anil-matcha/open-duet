@@ -37,6 +37,7 @@ def validate_draft_grants(grants: list[ConnectedAppGrant]) -> None:
 
 class RoutineCreateRequest(BaseModel):
     agent_id: int
+    uninterrupted_access: bool = False
     connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list, max_length=50)
     name: str = Field(min_length=1, max_length=80)
     prompt: str = Field(min_length=1, max_length=20_000)
@@ -54,6 +55,7 @@ class RoutineCreateRequest(BaseModel):
 
 
 class RoutineUpdateRequest(BaseModel):
+    uninterrupted_access: bool | None = None
     connected_app_grants: list[ConnectedAppGrant] | None = Field(default=None, max_length=50)
     agent_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=80)
@@ -97,6 +99,7 @@ class RoutineRunResponse(BaseModel):
 
     id: int
     routine_id: int
+    uninterrupted_access: bool = False
     connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list)
     trigger: str
     state: str
@@ -121,6 +124,7 @@ class RoutineResponse(BaseModel):
 
     id: int
     agent_id: int
+    uninterrupted_access: bool = False
     connected_app_grants: list[ConnectedAppGrant] = Field(default_factory=list)
     name: str
     prompt: str

@@ -6,6 +6,10 @@ import type { Transcript, TranscriptItem } from "@/lib/transcript";
 import { announcement, groupToolRuns } from "@/lib/transcript-view";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { t } from "@/lib/i18n";
+import { workingPhase } from "@/lib/working-status";
+import { WorkingStatus } from "./WorkingStatus";
 import {
   ApprovalCard,
   AssistantMessage,
@@ -60,6 +64,7 @@ export function Conversation({
   emptyHint,
   emptyAction,
   agent = null,
+  loading = false,
 }: {
   // The conversation the transcript belongs to: attachments are fetched from it.
   threadId?: number | null;
@@ -69,6 +74,8 @@ export function Conversation({
   emptyAction?: { label: string; onClick: () => void };
   // Who the conversation is with, for the empty state; null for a plain chat.
   agent?: { id: number; name: string } | null;
+  // The conversation is still being fetched: show placeholders instead of the empty state.
+  loading?: boolean;
   transcript: Transcript;
   answering: string | null;
   approvalErrors: Record<string, string>;
@@ -103,13 +110,25 @@ export function Conversation({
 
   const working = transcript.runningTurnId !== null && !transcript.typing;
   const waitingOnYou = transcript.items.some((i) => i.kind === "approval" && i.status === "pending");
-  const empty = transcript.items.length === 0 && transcript.typing === null;
-
+  const empty = transcript.items.length === 0 && transcript.typing === null && !loading;
+  const showSkeleton = loading && transcript.items.length === 0 && transcript.typing === null;
   return (
     <div className="relative min-h-0 flex-1">
       <Announcer items={transcript.items} />
       <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto">
         <div role="log" aria-live="off" aria-label="Conversation" className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6 sm:px-6">
+          {showSkeleton && (
+            <div role="status" aria-busy="true" className="flex flex-col gap-5 py-2">
+              <span className="sr-only">{t("chat.loading")}</span>
+              <Skeleton className="ml-auto h-10 w-2/3 rounded-2xl" />
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-4 w-3/5" />
+              </div>
+              <Skeleton className="ml-auto h-10 w-1/2 rounded-2xl" />
+            </div>
+          )}
           {empty && (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Avatar agentId={agent?.id ?? null} name={agent?.name} size="lg" />
@@ -172,15 +191,8 @@ export function Conversation({
 
           {transcript.typing !== null && transcript.typing !== "" && <AssistantMessage text={transcript.typing} live />}
 
-          {working && !waitingOnYou && (
-            <p className="flex items-center gap-1.5 text-xs text-muted" aria-label="Working">
-              <span className="inline-flex gap-1" aria-hidden="true">
-                <span className="size-1.5 animate-pulse rounded-full bg-faint" />
-                <span className="size-1.5 animate-pulse rounded-full bg-faint [animation-delay:150ms]" />
-                <span className="size-1.5 animate-pulse rounded-full bg-faint [animation-delay:300ms]" />
-              </span>
-              Working…
-            </p>
+          {transcript.runningTurnId !== null && (working || waitingOnYou) && (
+            <WorkingStatus key={transcript.runningTurnId} phase={workingPhase(transcript.items)} turnId={transcript.runningTurnId} />
           )}
         </div>
       </div>

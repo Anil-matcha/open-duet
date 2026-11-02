@@ -68,7 +68,7 @@ export function ConnectGitHub({ boxId }: { boxId: string | null }) {
         }
       }, POLL_INTERVAL_MS);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not start GitHub login.");
+      setError(err instanceof ApiError ? `Could not start GitHub login. ${err.message}` : "Could not start GitHub login.");
     } finally {
       setStarting(false);
     }

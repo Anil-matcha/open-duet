@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Loader2, Square, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Loader2, Square, X } from "lucide-react";
 import { useState } from "react";
 import { canAlwaysAllow, isScreenInput } from "@/lib/approvals";
 import { isComputerTool, toolLabel } from "@/lib/computers";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { failureNextStep, interruptedText, turnUsageText } from "@/lib/everyday";
 import { compactedLabel, recalledLabel } from "@/lib/memory";
 import type { TranscriptItem } from "@/lib/transcript";
+import { t } from "@/lib/i18n";
 import { toolRunSummary } from "@/lib/transcript-view";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "./Markdown";
@@ -41,13 +42,46 @@ function LongText({ value }: { value: string }) {
   );
 }
 
+// Copies a message's text. Revealed on hover or keyboard focus, and always visible on touch screens.
+function CopyButton({ text, className }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard blocked: nothing to do
+    }
+  };
+  const label = copied ? t("chat.copied") : t("chat.copy");
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-faint opacity-0 transition-opacity duration-(--dur-fast) hover:bg-hover hover:text-ink focus-visible:opacity-100 group-hover/msg:opacity-100 touch:size-10 touch:opacity-100",
+        copied && "opacity-100 text-success",
+        className,
+      )}
+    >
+      {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+    </button>
+  );
+}
+
 export function UserMessage({ item, threadId = null }: { item: Item<"user">; threadId?: number | null }) {
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="group/msg flex flex-col items-end gap-2">
       <MessageAttachments threadId={threadId} items={item.attachments ?? []} />
-      <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-bubble px-4 py-2.5 text-[15px] leading-relaxed text-ink sm:max-w-[80%]">
-        {item.text}
-      </p>
+      <div className="flex max-w-[88%] items-end gap-1 sm:max-w-[80%]">
+        {item.text && <CopyButton text={item.text} />}
+        <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-bubble px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+          {item.text}
+        </p>
+      </div>
       {item.skills && item.skills.length > 0 && (
         <p className="max-w-[88%] break-words text-xs text-muted sm:max-w-[80%]">
           Skill: <span className="font-mono">{item.skills.map((name) => `/${name}`).join(" ")}</span>
@@ -67,9 +101,10 @@ export function AssistantMessage({
   live?: boolean;
 }) {
   return (
-    <div className="max-w-full text-[15px] leading-relaxed">
+    <div className="group/msg max-w-full text-[15px] leading-relaxed">
       <Markdown text={text} />
-      {live && <span aria-hidden="true" className="animate-pulse text-muted">▍</span>}
+      {live && <span aria-hidden="true" className="animate-pulse text-muted motion-reduce:animate-none">▍</span>}
+      {!live && text && <div className="-ml-1.5 mt-0.5 flex"><CopyButton text={text} /></div>}
       {incomplete && <p className="mt-1 text-xs text-muted">This message stopped before it was finished.</p>}
     </div>
   );
@@ -170,6 +205,8 @@ export function ApprovalCard({
   onUndo?: (ruleId: number) => void;
 }) {
   const pending = item.status === "pending";
+  // A decided card is one line; the input it was asked about is behind the arrow.
+  const [open, setOpen] = useState(false);
   const rememberable = canAlwaysAllow(item.tool, item.input);
   const screenInput = isScreenInput(item.tool);
   const byRule = item.resolvedBy === "saved_rule";
@@ -179,10 +216,11 @@ export function ApprovalCard({
     <div
       className={cn(
         "space-y-2.5 rounded-card border p-3.5 text-sm",
-        pending ? "border-warning/60 bg-warning/10" : "border-line bg-raised/40",
+        pending ? "border-warning/60 bg-warning/10" : "border-line bg-raised/40 py-2.5",
       )}
     >
-      <p className={cn("text-xs font-medium", pending ? "text-ink" : "text-muted")}>
+      {pending ? (
+        <p className="text-xs font-medium text-ink">
         {isComputerTool(item.tool) && <ComputerBadge />}
         {pending ? (
           isComputerTool(item.tool) ? (
@@ -211,8 +249,52 @@ export function ApprovalCard({
             {!pending && item.summary && <span className="font-mono text-faint"> · {item.summary}</span>}
           </>
         )}
-      </p>
-      {pending && (
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          title={open ? t("chat.approval.hide") : t("chat.approval.show")}
+          className="flex w-full cursor-pointer items-center gap-2 text-left text-xs font-medium text-muted touch:min-h-9"
+        >
+          <span aria-hidden="true" className={cn("inline-flex shrink-0", item.status === "allowed" ? "text-success" : item.status === "denied" ? "text-danger" : "text-faint")}>
+            {item.status === "allowed" ? <Check size={13} /> : <X size={13} />}
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+        {isComputerTool(item.tool) && <ComputerBadge />}
+            {pending ? (
+              isComputerTool(item.tool) ? (
+                <>
+                  {screenInput ? "Let your agent use this computer’s screen, keyboard and browser for this turn." : <>Your agent wants to {toolLabel(item.tool)}, an isolated machine, not this one.</>} It will not run
+                  until you allow it.
+                </>
+              ) : (
+                <>
+                  Your agent wants to use <span className="font-mono">{item.tool}</span>. It will not run
+                  until you allow it.
+                </>
+              )
+            ) : (
+              <>
+                <span className="font-mono">{item.tool}</span>:{" "}
+                {byRule && item.status === "allowed"
+                  ? "Allowed by a saved rule, without asking"
+                  : item.resolvedBy === "computer_read"
+                    ? "Allowed without asking: reading inside the agent's computer"
+                    : item.resolvedBy === "accept_edits"
+                      ? "Allowed without asking: edits are accepted"
+                      : item.resolvedBy === "plan_mode"
+                        ? "Refused: plan only changes nothing"
+                        : APPROVAL_LABEL[item.status]}
+                {!pending && item.summary && <span className="font-mono text-faint"> · {item.summary}</span>}
+              </>
+            )}
+              </span>
+          <ChevronRight size={14} aria-hidden="true" className={cn("shrink-0 text-faint transition-transform", open && "rotate-90")} />
+        </button>
+      )}
+      {(pending || open) && (
         <dl className="space-y-1.5">
           {Object.entries(item.input).map(([key, value]) => (
             <div key={key}>

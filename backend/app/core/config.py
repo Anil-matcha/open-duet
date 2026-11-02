@@ -77,8 +77,6 @@ class Settings(BaseSettings):
     # instead of a Boat sandbox. Off by default so existing deployments are
     # unaffected; see app/services/local_access_policy.py for who may use it.
     LOCAL_EXECUTION_ENABLED: bool = False
-    # Enable only after qualifying the unattended execution safety boundary.
-    ROUTINE_CONNECTED_APPS_ENABLED: bool = False
     # Host header values accepted for local execution requests (comma-separated).
     LOCAL_ALLOWED_HOSTS: str = "localhost,127.0.0.1,[::1]"
     # Full path to the real `claude` executable. Leave empty to auto-detect.

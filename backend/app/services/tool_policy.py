@@ -36,7 +36,9 @@ def automatic(tool, mode, run, arguments):
                 if mode == "plan":
                     return "denied", "plan_mode"
                 return "allowed", "routine_write_grant"
-        decision = composio_policy.automatic(tool, mode, run.ctx.composio_apps, arguments, getattr(run.ctx, "composio_first_use_hit", False))
+        decision = composio_policy.automatic(tool, mode, run.ctx.composio_apps, arguments,
+            getattr(run.ctx, "composio_first_use_hit", False),
+            uninterrupted=getattr(run, "uninterrupted_access", False))
         if tool == composio_policy.PREFIX + composio_generic.RUN:
             # A generic call decided without a card is remembered, so the bridge checks it again before it runs.
             key, calls = composio_generic.call_key(arguments), getattr(run.ctx, "composio_auto_calls", None)
