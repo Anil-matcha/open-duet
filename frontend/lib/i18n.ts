@@ -11,6 +11,9 @@ import { pt } from "./locales/pt.ts";
 import { ru } from "./locales/ru.ts";
 import { tr } from "./locales/tr.ts";
 import { zh } from "./locales/zh.ts";
+import { agentTeamMessages } from "./locales/agent-team-extra.ts";
+import { knowledgeRoutinesMessages } from "./locales/knowledge-routines-extra.ts";
+import { appSettingsMessages } from "./locales/app-settings-extra.ts";
 
 export const en = {
   "theme.label": "Theme",
@@ -945,6 +948,15 @@ const catalogs: Record<Locale, Partial<Record<MessageKey, string>>> = {
   zh,
 };
 
+type SupplementalCatalog = Record<Locale, Record<string, string>>;
+const supplementalCatalogs = [agentTeamMessages, knowledgeRoutinesMessages, appSettingsMessages] as unknown as SupplementalCatalog[];
+const writableCatalogs = catalogs as unknown as Record<Locale, Record<string, string>>;
+for (const locale of LOCALES) {
+  for (const supplemental of supplementalCatalogs) {
+    Object.assign(writableCatalogs[locale], supplemental[locale]);
+  }
+}
+
 function isLocale(value: string): value is Locale {
   return (LOCALES as readonly string[]).includes(value);
 }
@@ -998,7 +1010,7 @@ export const LANGUAGE_INIT_SCRIPT =
   'd.dataset.languageChoice=c;d.lang=c==="pt"?"pt-BR":c==="zh"?"zh-CN":c})();';
 
 export function translate(locale: Locale, key: string, params?: Record<string, string | number>): string {
-  const template: string = catalogs[locale][key as MessageKey] ?? en[key as EnglishKey] ?? key;
+  const template: string = catalogs[locale][key as MessageKey] ?? catalogs.en[key as MessageKey] ?? en[key as EnglishKey] ?? key;
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in params ? String(params[name]) : whole));
 }

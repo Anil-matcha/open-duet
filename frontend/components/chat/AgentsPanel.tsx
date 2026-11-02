@@ -646,13 +646,13 @@ export function AgentsPanel({
                     </section>
 
                     {admin && <fieldset className="space-y-2 rounded-field border border-line p-3">
-                      <legend className="px-1 text-sm font-medium">Team permissions</legend>
-                      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isLead} disabled={busy || !team || (!roleSupported && !isLead)} onChange={event => setRoleChoice({ id: draft.id, value: event.target.checked })} />Team lead (Chief of Staff)</label>
-                      <p className="text-xs text-muted">Can create and configure specialists, delegate work, and follow up with the agents selected below. Each agent keeps its own approvals. One lead per team; enabling this replaces the current lead.</p>
-                      {!team && <p className="text-xs text-warning">Team permissions could not be loaded yet. Reopen Agents to retry.</p>}
-                      {!roleSupported && <p className="text-xs text-warning">Choose Claude or Codex to use team tools.</p>}
-                      {team?.enabled === false && <p className="text-xs text-warning">Teams are disabled in settings. This role takes effect when Teams are enabled.</p>}
-                      {isLead && <div className="space-y-2"><p className="text-xs font-medium">Agents this lead can coordinate</p>{agents.filter(agent => !agent.archived_at && agent.id !== draft.id).map(agent => <label key={agent.id} className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={busy} checked={memberChoices[agent.id] ?? team?.agents.some(member => member.id === agent.id) ?? false} onChange={event => setMemberChoices({ ...memberChoices, [agent.id]: event.target.checked })} />{agent.name}</label>)}<p className="text-xs text-muted">Selection is saved with this agent. Removing the role keeps team membership and existing work.</p></div>}
+                      <legend className="px-1 text-sm font-medium">{t("agentTeam.teamPermissionsTitle")}</legend>
+                      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isLead} disabled={busy || !team || (!roleSupported && !isLead)} onChange={event => setRoleChoice({ id: draft.id, value: event.target.checked })} />{t("agentTeam.leadRole")}</label>
+                      <p className="text-xs text-muted">{t("agentTeam.leadRoleDescription")}</p>
+                      {!team && <p className="text-xs text-warning">{t("agentTeam.teamPermissionsRetry")}</p>}
+                      {!roleSupported && <p className="text-xs text-warning">{t("agentTeam.teamEngineChoice")}</p>}
+                      {team?.enabled === false && <p className="text-xs text-warning">{t("agentTeam.teamsDisabled")}</p>}
+                      {isLead && <div className="space-y-2"><p className="text-xs font-medium">{t("agentTeam.leadCoordinates")}</p>{agents.filter(agent => !agent.archived_at && agent.id !== draft.id).map(agent => <label key={agent.id} className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={busy} checked={memberChoices[agent.id] ?? team?.agents.some(member => member.id === agent.id) ?? false} onChange={event => setMemberChoices({ ...memberChoices, [agent.id]: event.target.checked })} />{agent.name}</label>)}<p className="text-xs text-muted">{t("agentTeam.memberSelectionSaved")}</p></div>}
                     </fieldset>}
 
                     <label className="block text-xs text-muted">
@@ -683,7 +683,7 @@ export function AgentsPanel({
                         />
                       </label>
                     )}
-                    <p className="text-xs text-muted">When the engine refuses a message for a usage or rate limit before starting on it, the message goes to the fallback, if it can do everything the turn needs. The conversation shows the switch.</p>
+                    <p className="text-xs text-muted">{t("agentTeam.fallbackEngineDescription")}</p>
                     <fieldset className="space-y-2 text-xs text-muted">
                       <legend>Approvals</legend>
                       <div className="mt-1 flex flex-wrap gap-2">
@@ -735,7 +735,7 @@ export function AgentsPanel({
                           placeholder={"- The project uses pnpm\n- Releases go out on Fridays"}
                           className={`${FIELD} mt-1 resize-y font-mono`}
                         />
-                        <span className="mt-1 block">The agent&apos;s first notes (MEMORY.md). It keeps them up to date itself.</span>
+                        <span className="mt-1 block">{t("agentTeam.firstNotesHelp")}</span>
                       </label>
                     )}
                     <label className="flex cursor-pointer items-center gap-2 rounded-md border border-line p-3 text-sm text-ink touch:min-h-11">
@@ -1007,6 +1007,7 @@ function NotesEditor({
   onReload: () => void;
   onBack: () => void;
 }) {
+  const t = useT();
   const { memory } = notes;
   if (!memory) return <p className="text-sm text-muted">Loading notes…</p>;
   const gauge = memoryGauge(memory);
@@ -1036,7 +1037,7 @@ function NotesEditor({
       />
       {notes.conflict && (
         <div role="alert" className="rounded-md border border-warning/60 p-3 text-xs">
-          <p>The agent changed these notes while you were editing. Load its version, or keep yours and overwrite it.</p>
+          <p>{t("agentTeam.agentNotesConflict")}</p>
           <div className="mt-2 flex gap-2">
             <button onClick={onLoadTheirs} disabled={busy} className={SMALL}>
               Load its version

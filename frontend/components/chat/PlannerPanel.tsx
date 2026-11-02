@@ -22,7 +22,7 @@ type Editor = { item: WorkItem | null; seedDate?: string; seedColumn?: number };
 const control = "rounded-field border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50";
 const dragType = "application/x-open-dots-work-item";
 const priorities = ["low", "normal", "high", "urgent"] as const;
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Could not load the planner.";
+const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId = null }: {
   agents: Agent[]; threads: Thread[]; onClose: () => void; onOpenRoutines: () => void; taskId?: number | null;
@@ -57,10 +57,10 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
 
   useEffect(() => {
     let cancelled = false;
-    planner.board().then(value => { if (!cancelled) setBoard(value); }).catch(error => { if (!cancelled) setError(errorMessage(error)); });
+    planner.board().then(value => { if (!cancelled) setBoard(value); }).catch(error => { if (!cancelled) setError(errorMessage(error, t("appSettings.planner.loadError"))); });
     collaboration.team().then(value => { if (!cancelled) setTeam(value.team); }).catch(() => { /* Assignment to agents remains available. */ });
     return () => { cancelled = true; };
-  }, [tick]);
+  }, [tick, t]);
 
   const refreshItems = useCallback(async () => {
     if (!board) return;
@@ -77,7 +77,7 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
       try {
         const values = await planner.items(board.id, archived);
         if (!cancelled && !saving.current && version === mutationVersion.current) { setItems(values); setError(null); }
-      } catch (error) { if (!cancelled) setError(errorMessage(error)); }
+      } catch (error) { if (!cancelled) setError(errorMessage(error, t("appSettings.planner.loadError"))); }
     };
     void load();
     const timer = setInterval(() => void load(), 30_000);
@@ -95,12 +95,12 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
       try {
         const value = await planner.calendar(start, end);
         if (!cancelled) { setCalendar(value); setCalendarError(null); }
-      } catch (error) { if (!cancelled) { setCalendar(null); setCalendarError(errorMessage(error)); } }
+      } catch (error) { if (!cancelled) { setCalendar(null); setCalendarError(errorMessage(error, t("appSettings.planner.loadError"))); } }
     };
     void load();
     const timer = setInterval(() => void load(), 60_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [start, end, view, showRoutines, tick]);
+  }, [start, end, view, showRoutines, tick, t]);
 
   const filtered = useMemo(() => (items ?? []).filter(item => {
     const matches = `${item.title} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase());
@@ -122,13 +122,13 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
       const saved = await planner.update(item, changes);
       setItems(current => (current ?? []).flatMap(value => value.id !== saved.id ? [value] : saved.archived === archived ? [saved] : []));
     } catch (error) {
-      setError(errorMessage(error));
+      setError(errorMessage(error, t("appSettings.planner.loadError")));
       await refreshItems().catch(() => {});
     } finally { saving.current = false; mutationVersion.current += 1; setBusy(false); }
   };
 
   const save = async (data: WorkInput) => {
-    if (saving.current) throw new Error("Another task is saving. Try again in a moment.");
+    if (saving.current) throw new Error(t("appSettings.planner.saveConflict"));
     saving.current = true; mutationVersion.current += 1;
     setBusy(true);
     try {
@@ -155,24 +155,24 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
     const item = items?.find(item => item.id === id);
     if (!item) return;
     try { void update(item, changes(item)); }
-    catch (error) { setError(errorMessage(error)); }
+    catch (error) { setError(errorMessage(error, t("appSettings.planner.loadError"))); }
   };
   const acceptDrop = (event: React.DragEvent) => { if (!busy && !archived && event.dataTransfer.types.includes(dragType)) event.preventDefault(); };
-  const assigneeLabel = (item: WorkItem) => item.agent_id ? agents.find(agent => agent.id === item.agent_id)?.name ?? "Agent unavailable"
-    : item.team_id ? (team?.id === item.team_id ? team.name : "Team unavailable") : "Unassigned";
+  const assigneeLabel = (item: WorkItem) => item.agent_id ? agents.find(agent => agent.id === item.agent_id)?.name ?? t("appSettings.planner.agentUnavailable")
+    : item.team_id ? (team?.id === item.team_id ? team.name : t("appSettings.planner.teamUnavailable")) : t("appSettings.planner.unassigned");
   const deadlineLabel = (item: WorkItem) => item.due_at ? new Date(item.due_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-    : item.due_date ? new Date(`${item.due_date}T12:00`).toLocaleDateString([], { month: "short", day: "numeric" }) : "No due date";
+    : item.due_date ? new Date(`${item.due_date}T12:00`).toLocaleDateString([], { month: "short", day: "numeric" }) : t("appSettings.planner.noDueDate");
 
   const taskCard = (item: WorkItem, compact = false) => (
     <article key={item.id} draggable={!busy && !archived} onDragStart={event => { event.dataTransfer.setData(dragType, String(item.id)); event.dataTransfer.effectAllowed = "move"; }}
       className={cn("rounded-field border border-line bg-raised p-2.5 text-sm shadow-sm", isOverdue(item) && "border-danger/60", compact && "p-1.5 text-xs")}>
       <button type="button" onClick={() => setEditor({ item })} className="w-full break-words text-left font-medium hover:underline">{item.title}</button>
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-        <span className={cn(item.priority === "urgent" ? "text-danger" : item.priority === "high" ? "text-warning" : "")}>{item.priority}</span>
-        <span className={isOverdue(item) ? "text-danger" : ""}>{isOverdue(item) ? "Overdue · " : ""}{deadlineLabel(item)}</span>
+        <span className={cn(item.priority === "urgent" ? "text-danger" : item.priority === "high" ? "text-warning" : "")}>{t(`appSettings.planner.priority.${item.priority}`)}</span>
+        <span className={isOverdue(item) ? "text-danger" : ""}>{isOverdue(item) ? `${t("appSettings.planner.overdue")} · ` : ""}{deadlineLabel(item)}</span>
       </div>
       <button type="button" className="mt-2 text-xs text-accent hover:underline" onClick={() => setExecutionItem(item)}>{t("planner.runHistory")}</button>
-      {item.execution_state && <p className="mt-1 text-xs text-muted">Attempt {item.execution_attempt} · {item.execution_state === "needs_input" ? "Waiting for approval" : item.execution_state}</p>}
+      {item.execution_state && <p className="mt-1 text-xs text-muted">{t("appSettings.planner.attempt", { count: item.execution_attempt ?? 1 })} · {item.execution_state === "needs_input" ? t("appSettings.planner.waitingApproval") : item.execution_state}</p>}
       {!compact && <>
         <p className="mt-2 truncate text-xs text-muted">{assigneeLabel(item)}</p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -188,7 +188,7 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
   const routineEntry = (event: CalendarEvent) => (
     <div key={event.id} className="rounded-field border border-accent/30 bg-accent/5 px-2 py-1 text-xs text-accent">
       {event.work_item_id ? <button className="block w-full truncate text-left hover:underline" onClick={() => {
-        void planner.item(event.work_item_id!).then(setExecutionItem).catch(error => setError(errorMessage(error)));
+        void planner.item(event.work_item_id!).then(setExecutionItem).catch(error => setError(errorMessage(error, t("appSettings.planner.loadError"))));
       }}>▶ {event.title}</button> : event.thread_id ? <Link className="block truncate hover:underline" href={`/chat?thread=${event.thread_id}`} onClick={onClose}>↻ {event.title}</Link>
         : <button className="block w-full truncate text-left hover:underline" onClick={onOpenRoutines}>↻ {event.title}</button>}
       <p className="text-muted">{new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {event.state}</p>
@@ -214,10 +214,10 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
             <Select aria-label={t("planner.assignment")} className={control} value={assignee} onChange={event => setAssignee(event.target.value)}>
               <option value="">{t("planner.allAssignments")}</option><option value="unassigned">{t("planner.unassigned")}</option>
               {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-              {team && <option value={`team:${team.id}`}>{team.name} (team)</option>}
+              {team && <option value={`team:${team.id}`}>{team.name} ({t("appSettings.planner.teamSuffix")})</option>}
             </Select>
             <Select aria-label={t("planner.priority")} className={control} value={priority} onChange={event => setPriority(event.target.value)}>
-              <option value="">{t("planner.allPriorities")}</option>{priorities.map(value => <option key={value} value={value}>{value}</option>)}
+              <option value="">{t("planner.allPriorities")}</option>{priorities.map(value => <option key={value} value={value}>{t(`appSettings.planner.priority.${value}`)}</option>)}
             </Select>
             <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyOverdue} onChange={event => setOnlyOverdue(event.target.checked)} />{t("planner.overdue")}</label>
             <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={archived} disabled={busy} onChange={event => { setItems(null); setArchived(event.target.checked); }} />{t("planner.archived")}</label>
@@ -257,7 +257,7 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
             <p className="text-xs text-muted">{t("planner.deadlinesRoutinesLegend")}. {t("planner.timesInTimezone", { timezone })}</p>
             <div className="overflow-x-auto rounded-field border border-line">
               <div className="min-w-[700px]">
-                <div className="grid grid-cols-7 border-b border-line bg-inset">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => <div key={day} className="p-2 text-center text-xs font-semibold text-muted">{day}</div>)}</div>
+                <div className="grid grid-cols-7 border-b border-line bg-inset">{[0, 1, 2, 3, 4, 5, 6].map(index => <div key={index} className="p-2 text-center text-xs font-semibold text-muted">{t(`appSettings.planner.weekday.${index}`)}</div>)}</div>
                 <div className="grid grid-cols-7">
                   {days.map(day => {
                     const key = dateKey(day);
@@ -287,7 +287,7 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
       onClose={() => { setExecutionItem(null); setTick(value => value + 1); }} onReview={async () => {
         const current = await planner.item(executionItem.id);
         const review = board?.columns.find(column => column.key === "review");
-        if (!review) throw new Error("Review column is unavailable.");
+        if (!review) throw new Error(t("appSettings.planner.reviewUnavailable"));
         const saved = await planner.update(current, { column_id: review.id });
         setExecutionItem(saved); await refreshItems();
       }} />}

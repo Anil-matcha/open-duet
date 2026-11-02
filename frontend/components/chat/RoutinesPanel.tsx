@@ -5,6 +5,8 @@ import { Select } from "@/components/ui/Select";
 import { Dialog } from "@/components/ui/Dialog";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useT, useLanguageChoice } from "@/lib/use-i18n";
+import { knowledgeRoutinesMessages } from "@/lib/locales/knowledge-routines-extra";
 import {
   api,
   ApiError,
@@ -38,6 +40,14 @@ import {
   webhookUrl,
   type ScheduleDraft,
 } from "@/lib/routines";
+
+
+type RoutineMessageKey = keyof typeof knowledgeRoutinesMessages.en;
+function useRoutineT() {
+  const fallback = useT();
+  const locale = useLanguageChoice();
+  return useCallback((key: RoutineMessageKey) => knowledgeRoutinesMessages[locale][key] ?? fallback(key), [fallback, locale]);
+}
 
 const REFRESH_MS = 5_000;
 const input = "w-full rounded-md border border-line bg-transparent px-2 py-1.5 text-sm";
@@ -277,6 +287,7 @@ function RunHistory({ routine, onClose, onOpen }: { routine: Routine; onClose: (
 }
 
 function RunAppActions({ routineId, runId }: { routineId: number; runId: number }) {
+  const t = useRoutineT();
   const [actions, setActions] = useState<RoutineAppAction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -287,7 +298,7 @@ function RunAppActions({ routineId, runId }: { routineId: number; runId: number 
     return () => { live = false; };
   }, [routineId, runId]);
   return <div className="mt-2 space-y-2 border-t border-line pt-2">
-    <p className="text-xs text-muted">External app actions cannot be undone with file Undo. If an action outcome is uncertain, check the connected account before running it again.</p>
+    <p className="text-xs text-muted">{t("knowledgeRoutines.appActionsUndoWarning")}</p>
     {error ? <p role="alert" className="text-xs text-danger">{error}</p> : actions === null ? <p role="status" className="text-xs text-muted">Loading app actions…</p> : actions.length === 0 ? <p className="text-xs text-muted">No recorded app actions.</p> : (
       <ul className="space-y-1">{actions.map((action) => <li key={action.id} className="rounded border border-line p-2 text-xs">
         <p className="font-medium">{action.tool} · {action.status}</p>
@@ -299,6 +310,7 @@ function RunAppActions({ routineId, runId }: { routineId: number; runId: number 
 }
 
 export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: Agent[]; onClose: () => void; routineId?: number | null }) {
+  const t = useRoutineT();
   const [routines, setRoutines] = useState<Routine[] | null>(null);
   const [connectedAccounts, setConnectedAccounts] = useState<ComposioAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -401,8 +413,8 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
               />
               <section className="space-y-3 rounded-md border border-line p-3" aria-labelledby="routine-app-access-title">
                 <div>
-                  <h3 id="routine-app-access-title" className="text-sm font-medium">Connected app access</h3>
-                  <p className="mt-1 text-xs text-muted">No actions are selected by default. Choose exact read actions and the connected account each action uses. The agent must already be allowed to use that app and account. Granted reads run without an action-time approval. Draft replies, other writes, webhooks, and routines with a computer are not available here.</p>
+                  <h3 id="routine-app-access-title" className="text-sm font-medium">{t("knowledgeRoutines.connectedAppAccess")}</h3>
+                  <p className="mt-1 text-xs text-muted">{t("knowledgeRoutines.connectedAppAccessHelp")}</p>
                 </div>
                 {connectedAccounts === null ? <p role="status" className="text-xs text-muted">Loading connected accounts…</p> : ROUTINE_READ_TOOLS.map((group) => {
                   const agent = agents.find((item) => item.id === draft.agentId);
@@ -416,8 +428,8 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                     ? current?.account_id : (available[0]?.id ?? current?.account_id)) ?? "";
                   return <fieldset key={group.app} className="space-y-2 border-t border-line pt-2">
                     <legend className="text-xs font-medium">{group.label}</legend>
-                    <label className="block text-xs text-muted">Connected account
-                      <Select aria-label={`${group.label} connected account`} value={selectedAccount} disabled={available.length === 0 || !draft.connectedAppGrants.some((grant) => allTools.some(([tool]) => tool === grant.tool))} onChange={(event) => setRoutineGrantAccount(group.app, event.target.value)} className={input}>
+                    <label className="block text-xs text-muted">{t("knowledgeRoutines.connectedAccount")}
+                      <Select aria-label={`${group.label} ${t("knowledgeRoutines.connectedAccount")}`} value={selectedAccount} disabled={available.length === 0 || !draft.connectedAppGrants.some((grant) => allTools.some(([tool]) => tool === grant.tool))} onChange={(event) => setRoutineGrantAccount(group.app, event.target.value)} className={input}>
                         {available.length === 0 ? <option value="">No account allowed for this agent</option> : available.map((account) => <option key={account.id} value={account.id}>{account.alias ?? account.id}</option>)}
                         {current && !available.some((account) => account.id === current.account_id) && <option value={current.account_id}>Unavailable account ({current.account_id})</option>}
                       </Select>
@@ -430,8 +442,8 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                       </label>;
                     })}</div>
                     {group.writes.length > 0 && <div className="space-y-2 border-t border-line pt-2">
-                      <div><p className="text-xs font-semibold">Write actions · explicitly authorize each one</p>
-                        <p className="text-xs text-muted">Selecting an action is your one-time authorization for this exact action and account. Once authorized, it runs without an action-time approval. The agent must also have write access to this app. This is separate from the routine&apos;s approval mode.</p></div>
+                      <div><p className="text-xs font-semibold">{t("knowledgeRoutines.writeActions")}</p>
+                        <p className="text-xs text-muted">{t("knowledgeRoutines.writeActionsHelp")}</p></div>
                       {group.writes.map(([tool, label]) => {
                         const grant = draft.connectedAppGrants.find((item) => item.tool === tool);
                         const hasWriteScope = agent?.connector_scopes?.[group.app] === "write";
@@ -446,8 +458,8 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
               </section>
               <section className="space-y-2 rounded-md border border-line p-3" aria-labelledby="routine-uninterrupted-access-title">
                 <div>
-                  <h3 id="routine-uninterrupted-access-title" className="text-sm font-medium">Uninterrupted access</h3>
-                  <p className="mt-1 text-xs text-muted">When enabled, this routine can use the selected agent&apos;s existing capabilities without action-time approvals: connected apps, accounts and configured marketplace tools eligible at run start, plus its attached computer (screen, browser, commands, and files). Access is limited to the agent&apos;s current app scopes intersected with the accounts and tools eligible when the run starts; this does not add agent permissions or connected accounts. The exact connected-app grants above configure a separate narrow mode; for eligible routine runs, Uninterrupted access supersedes those grants. This applies only to this routine and does not affect ordinary chats. Configured marketplace tools can have service-defined effects and may change external services; those changes may not be undoable. If the agent has write capabilities, this routine may use them; Plan mode still blocks writes. Unattended runs proceed without waiting for your approval, so enable this only if you want the routine to run on its own with those existing permissions.</p>
+                  <h3 id="routine-uninterrupted-access-title" className="text-sm font-medium">{t("knowledgeRoutines.uninterruptedAccess")}</h3>
+                  <p className="mt-1 text-xs text-muted">{t("knowledgeRoutines.uninterruptedAccessHelp")}</p>
                 </div>
                 <label className="flex items-start gap-2 text-xs">
                   <input
@@ -455,7 +467,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                     checked={draft.uninterruptedAccess}
                     onChange={(event) => setDraft({ ...draft, uninterruptedAccess: event.target.checked })}
                   />
-                  <span>Allow this routine to use the selected agent&apos;s existing capabilities without action-time approval</span>
+                  <span>{t("knowledgeRoutines.allowUninterruptedAccess")}</span>
                 </label>
               </section>
               <details className="rounded-md border border-line p-3 text-xs">
@@ -464,7 +476,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                   <label>Run limit (minutes)<input type="number" min={1} max={240} value={draft.runLimit} onChange={(e) => setDraft({ ...draft, runLimit: e.target.value })} className={input} /></label>
                   <label>Approval wait (minutes)<input type="number" min={1} max={1440} value={draft.approvalWait} onChange={(e) => setDraft({ ...draft, approvalWait: e.target.value })} className={input} /></label>
                   <label>May start late by (minutes)<input type="number" min={0} max={1440} value={draft.catchUp} onChange={(e) => setDraft({ ...draft, catchUp: e.target.value })} className={input} /></label>
-                  <label className="col-span-2 flex items-start gap-2"><input type="checkbox" checked={draft.quietReporting} onChange={(e) => setDraft({ ...draft, quietReporting: e.target.checked })} /><span>Quiet scheduled checks<span className="block text-xs text-muted">Skip completion alerts only for an explicitly verified no-change result. Reports, failures, questions and action receipts stay visible. Run now always reports.</span></span></label>
+                  <label className="col-span-2 flex items-start gap-2"><input type="checkbox" checked={draft.quietReporting} onChange={(e) => setDraft({ ...draft, quietReporting: e.target.checked })} /><span>{t("knowledgeRoutines.quietScheduledChecks")}<span className="block text-xs text-muted">{t("knowledgeRoutines.quietScheduledHelp")}</span></span></label>
                   <label>Retries after a failure<input type="number" min={0} max={3} value={draft.retryLimit} onChange={(e) => setDraft({ ...draft, retryLimit: e.target.value })} className={input} /></label>
                   <label>Retry after (minutes)<input type="number" min={1} max={1440} value={draft.retryDelay} onChange={(e) => setDraft({ ...draft, retryDelay: e.target.value })} className={input} /></label>
                   <label>Approval mode
@@ -474,10 +486,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                   </label>
                 </div>
                 <p className="mt-2 text-muted">
-                  A run uses the stricter of this mode and the agent&apos;s own. When it needs your approval it waits, tells you,
-                  and is denied if nobody answers within the approval wait. Time spent waiting does not count toward the run limit.
-                  A failed run is started again up to the number of retries (0 turns it off); a run you stopped, one that reached
-                  its run limit and one cut short by the app stopping are never retried.
+                  {t("knowledgeRoutines.approvalModeHelp")}
                 </p>
               </details>
               <div className="flex gap-2">
@@ -521,9 +530,9 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                         )}
                         {secret?.routineId === routine.id && (
                           <div className="mt-2 space-y-1 rounded-md border border-warning/50 bg-warning/10 p-2 text-xs">
-                            <p className="font-medium">Copy this secret now: it is shown once.</p>
-                            <p>URL: <code className="break-all">{secret.url}</code></p>
-                            <p>Secret: <code className="break-all">{secret.secret}</code></p>
+                            <p className="font-medium">{t("knowledgeRoutines.copySecretOnce")}</p>
+                            <p>{t("knowledgeRoutines.url")} <code className="break-all">{secret.url}</code></p>
+                            <p>{t("knowledgeRoutines.secret")} <code className="break-all">{secret.secret}</code></p>
                             <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-raised/60 p-1">{curlExample(secret.url, secret.secret)}</pre>
                             <button className={button} onClick={() => setSecret(null)}>I have copied it</button>
                           </div>
