@@ -98,7 +98,13 @@ def test_real_semantic_actions_frames_dialogs_tabs_and_ref_invalidation(machine)
     assert "Second page" in body(call(s, "browser_read"))
     call(s, "browser_tabs", {"action": "close", "tab": tabs[-1]["tab"]})
     call(s, "browser_click", {"selector": "a[download]"})
-    assert "fixture.html" in body(call(s, "browser_tabs", {"action": "list"}))
+    # The browser reports a download when Chromium's event arrives, a moment after the click returns.
+    deadline = time.monotonic() + 5
+    listing = body(call(s, "browser_tabs", {"action": "list"}))
+    while "fixture.html" not in listing and time.monotonic() < deadline:
+        time.sleep(0.2)
+        listing = body(call(s, "browser_tabs", {"action": "list"}))
+    assert "fixture.html" in listing
     snap = call(s, "browser_snapshot")
     ref = ref_for(snap, "Count 1")
     screen.write_state(s.state_dir / "browser-epoch.json", {"at": time.time_ns()})
