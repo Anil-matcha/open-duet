@@ -20,8 +20,6 @@ engine and provider account used for your work.
 [Guides](#guides) ·
 [Discord support](https://discord.com/invite/zpnuBRXhKg)
 
-<p align="center"><a href="https://youtu.be/vtFy94DfETE" title="Watch the Open Duet demo"><img src="https://i.ytimg.com/vi/vtFy94DfETE/maxresdefault.jpg" alt="Open Duet demo video thumbnail — click to watch on YouTube" width="720"></a></p>
-
 > **Status:** Open Duet is in active development. Desktop releases, self-hosting,
 > agent computers, and newer team features are still evolving. Review
 > [known limitations](#known-limitations) before relying on them for important work.
