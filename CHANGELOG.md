@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-11-03
+
 ### Added
 
 - Settings tabs on the Approvals page now work with the arrow, Home and End keys, and Cmd/Ctrl+K in chat opens the command palette instead of jumping to the sidebar conversation search.
