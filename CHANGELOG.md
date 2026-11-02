@@ -4,6 +4,7 @@
 
 ### Added
 
+- Make settings easier to reach and change: search every setting from the Settings page or Cmd/Ctrl+K and jump straight to it, open Settings with Cmd+, (Ctrl+, elsewhere) and from a new desktop application menu, group the settings pages under You, AI and Safety, add a "Find agent settings" card, collapse engine cards that are not in use, and show one Save, Saved and Applies pattern across settings pages.
 - Add English, Spanish, and System default language choices for text covered by the interface catalog. System default follows Spanish browser locales; unsupported languages and missing translations use English, and older untranslated text stays in English. Frontend lint, the Webpack production build, frontend .mjs checks, desktop tests, and the SQLite backend suite passed; the full PostgreSQL suite, live-browser, and packaged-app checks remain unqualified.
 - Add German, French, Italian, Japanese, Korean, Dutch, Polish, Brazilian Portuguese, Russian, Turkish, and Simplified Chinese language choices. System default follows any supported browser language; dates and numbers use browser locale formatting. Text outside the interface catalog remains in English. Live-browser and packaged-app behavior have not been run.
 - Open the files an agent made from the phone app. A pairing code can now be made with

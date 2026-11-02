@@ -5,7 +5,9 @@ import { Select } from "@/components/ui/Select";
 import { useEffect, useState } from "react";
 import { api, ApiError, type ApprovalRule } from "@/lib/api";
 import { ruleMatchLabel, ruleScopeLabel } from "@/lib/approvals";
-import { BUTTON, FIELD, FIELD_BOX, PRIMARY } from "./styles";
+import { BUTTON, FIELD, FIELD_BOX } from "./styles";
+import { SaveBar } from "@/components/settings/SaveBar";
+import { SavedConfirmation, useSavedConfirmation } from "@/components/settings/SavedConfirmation";
 
 // The saved "always allow" rules for shell commands: list, add and remove.
 // With a `workspace`, it starts on the rules that apply in that folder.
@@ -24,6 +26,9 @@ export function ApprovalRules({
   const [match, setMatch] = useState<"exact" | "prefix">("exact");
   const [command, setCommand] = useState("");
   const [folder, setFolder] = useState(workspace ?? "");
+  const [formBaseline, setFormBaseline] = useState<{ match: "exact" | "prefix"; folder: string }>({ match: "exact", folder: workspace ?? "" });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const confirmation = useSavedConfirmation();
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +54,7 @@ export function ApprovalRules({
     try {
       await action();
       then?.();
+      confirmation.showSaved("rules");
       setTick((n) => n + 1);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That did not work.");
@@ -59,10 +65,26 @@ export function ApprovalRules({
 
   const add = (event: React.FormEvent) => {
     event.preventDefault();
-    run(
-      () => api.addApprovalRule({ match, command: command.trim(), workspace: folder.trim() || null }),
-      () => setCommand("")
-    );
+    setBusy(true);
+    setError(null);
+    setSaveError(null);
+    void api.addApprovalRule({ match, command: command.trim(), workspace: folder.trim() || null })
+      .then(() => {
+        setCommand("");
+        setFormBaseline({ match, folder });
+        confirmation.showSaved("rules");
+        setTick((n) => n + 1);
+      })
+      .catch((err: unknown) => setSaveError(err instanceof ApiError ? err.message : "That did not work."))
+      .finally(() => setBusy(false));
+  };
+  const dirty = command.trim() !== "" || match !== formBaseline.match || folder !== formBaseline.folder;
+  const discard = () => {
+    setCommand("");
+    setMatch(formBaseline.match);
+    setFolder(formBaseline.folder);
+    setSaveError(null);
+    confirmation.clearSaved("rules");
   };
 
   return (
@@ -108,13 +130,13 @@ export function ApprovalRules({
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="space-y-2 rounded-md border border-line p-3">
+      <form id="approval-add-form" onSubmit={add} className="space-y-2 rounded-md border border-line p-3">
         <p className="text-xs font-medium">Add a rule</p>
         <div className="flex gap-2">
           <Select
             aria-label="How the command must match"
             value={match}
-            onChange={(e) => setMatch(e.target.value === "prefix" ? "prefix" : "exact")}
+            onChange={(e) => { setMatch(e.target.value === "prefix" ? "prefix" : "exact"); setSaveError(null); confirmation.clearSaved("rules"); }}
             className={`${FIELD_BOX} w-36 shrink-0`}
           >
             <option value="exact">Exactly</option>
@@ -125,7 +147,7 @@ export function ApprovalRules({
             className={`${FIELD} font-mono`}
             placeholder={match === "prefix" ? "git status" : "npm test"}
             value={command}
-            onChange={(e) => setCommand(e.target.value)}
+            onChange={(e) => { setCommand(e.target.value); setSaveError(null); confirmation.clearSaved("rules"); }}
             maxLength={1000}
             spellCheck={false}
             autoComplete="off"
@@ -136,14 +158,25 @@ export function ApprovalRules({
           className={`${FIELD} font-mono`}
           placeholder="Folder (empty: every folder)"
           value={folder}
-          onChange={(e) => setFolder(e.target.value)}
+          onChange={(e) => { setFolder(e.target.value); setSaveError(null); confirmation.clearSaved("rules"); }}
           spellCheck={false}
           autoComplete="off"
         />
-        <button type="submit" className={PRIMARY} disabled={busy || !command.trim()}>
-          {busy ? "Saving…" : "Add rule"}
-        </button>
+        <SaveBar
+          dirty={dirty}
+          saving={busy}
+          error={saveError}
+          saved={false}
+          canSave={Boolean(command.trim())}
+          saveLabel="Add rule"
+          onSave={() => {
+            const form = document.getElementById("approval-add-form");
+            if (form instanceof HTMLFormElement) form.requestSubmit();
+          }}
+          onDiscard={discard}
+        />
       </form>
+      <SavedConfirmation visible={confirmation.saved.has("rules")} />
     </div>
   );
 }

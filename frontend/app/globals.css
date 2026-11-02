@@ -181,3 +181,9 @@ body {
     scroll-behavior: auto !important;
   }
 }
+/* Leave a little breathing room when settings search or deep links jump to a row. */
+[data-setting-id],
+[data-setting-container] {
+  scroll-margin-top: 1.5rem;
+}
+

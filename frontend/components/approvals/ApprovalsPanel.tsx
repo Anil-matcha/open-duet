@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
+import { settingsTabForAnchor } from "@/lib/settings-registry";
 import { ApprovalRules } from "./ApprovalRules";
 import { DecisionLog } from "./DecisionLog";
 import { HealthScan } from "./HealthScan";
@@ -22,6 +23,17 @@ export function ApprovalsTabs({
   workspace?: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("rules");
+
+  useEffect(() => {
+    const syncTabToAnchor = () => {
+      const nextTab = settingsTabForAnchor(window.location.hash.slice(1));
+      setTab(TABS.some((candidate) => candidate.id === nextTab) ? nextTab as Tab : "rules");
+    };
+    syncTabToAnchor();
+    window.addEventListener("hashchange", syncTabToAnchor);
+    return () => window.removeEventListener("hashchange", syncTabToAnchor);
+  }, []);
+
   return (
     <div>
       <div role="tablist" className="mb-4 flex gap-1 border-b border-line">

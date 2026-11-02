@@ -28,6 +28,9 @@ import {
 } from "@/lib/profile";
 import { request } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
+import { Applies } from "./Applies";
+import { SaveBar } from "./SaveBar";
+import { SavedConfirmation, useSavedConfirmation } from "./SavedConfirmation";
 
 const PROVIDER_COLORS: Record<string, string> = {
   anthropic: "#D97706",
@@ -180,6 +183,7 @@ function defaultEmptyStats(): ProfileStats {
 
 /* ─── Main Profile Settings Component ─── */
 export function ProfileSettings() {
+  const confirmation = useSavedConfirmation();
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -260,12 +264,20 @@ export function ProfileSettings() {
   const displayStats = stats ?? (statsLoading ? null : defaultEmptyStats());
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-setting-root>
+      <span id="setting-profile-details" className="sr-only" />
+      <span id="setting-profile-summary" className="sr-only" />
+      <span id="setting-profile-activity" className="sr-only" />
+      <span id="setting-profile-insights" className="sr-only" />
+      <span id="setting-profile-teammates" className="sr-only" />
+      <span id="setting-profile-models" className="sr-only" />
+      <span id="setting-profile-account" className="sr-only" />
       {error && <Banner tone="danger">{error}</Banner>}
 
       {/* 1. Profile Hero Section */}
       <section
         aria-label="Profile Header"
+        data-setting-id="setting-profile-details"
         className="flex flex-col gap-4 rounded-xl border border-line bg-raised p-6 sm:flex-row sm:items-center sm:justify-between"
       >
         <div className="flex items-center gap-4 min-w-0">
@@ -277,6 +289,7 @@ export function ProfileSettings() {
             </div>
             {profile?.email && <p className="truncate text-sm text-muted">{profile.email}</p>}
             {profile?.bio && <p className="mt-1 text-xs text-muted/80">{profile.bio}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-3"><Applies when="now" /><SavedConfirmation visible={confirmation.saved.has("profile")} /></div>
           </div>
         </div>
 
@@ -294,13 +307,13 @@ export function ProfileSettings() {
 
       {/* 2. KPI Summary Tiles */}
       {statsLoading ? (
-        <section aria-label="Loading statistics" className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 animate-pulse">
+        <section aria-label="Loading statistics" data-setting-id="setting-profile-summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 animate-pulse">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="h-24 rounded-xl border border-line bg-raised/50 p-4" />
           ))}
         </section>
       ) : displayStats ? (
-        <section aria-label="Annual summary statistics">
+        <section aria-label="Annual summary statistics" data-setting-id="setting-profile-summary">
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             <div className="group rounded-xl border border-line bg-raised p-4 transition-colors hover:border-line/80">
               <dt className="flex items-center gap-1.5 text-xs font-medium text-muted">
@@ -382,6 +395,7 @@ export function ProfileSettings() {
       {displayStats && (
         <section
           aria-label="Activity on this computer"
+          data-setting-id="setting-profile-activity"
           className="space-y-3 rounded-xl border border-line bg-raised p-5"
         >
           <div className="flex items-center justify-between">
@@ -399,7 +413,7 @@ export function ProfileSettings() {
       {displayStats && (
         <div className="grid gap-6 md:grid-cols-2">
           {/* Insights Box */}
-          <section className="space-y-3 rounded-xl border border-line bg-raised p-5">
+          <section data-setting-id="setting-profile-insights" className="space-y-3 rounded-xl border border-line bg-raised p-5">
             <h3 className="text-sm font-semibold text-ink">Insights</h3>
             <dl className="divide-y divide-line/60 text-sm">
               <div className="flex items-center justify-between py-2.5">
@@ -446,7 +460,7 @@ export function ProfileSettings() {
           </section>
 
           {/* Most Active Teammates */}
-          <section className="space-y-3 rounded-xl border border-line bg-raised p-5">
+          <section data-setting-id="setting-profile-teammates" className="space-y-3 rounded-xl border border-line bg-raised p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-ink">Most active teammates</h3>
               <Bot size={16} className="text-muted" />
@@ -479,7 +493,7 @@ export function ProfileSettings() {
 
       {/* 5. Model Distribution Breakdown */}
       {displayStats && displayStats.models && displayStats.models.length > 0 && (
-        <section aria-label="Model usage distribution" className="space-y-3 rounded-xl border border-line bg-raised p-5">
+        <section aria-label="Model usage distribution" data-setting-id="setting-profile-models" className="space-y-3 rounded-xl border border-line bg-raised p-5">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ink">Model Distribution</h3>
             <Cpu size={16} className="text-muted" />
@@ -510,7 +524,7 @@ export function ProfileSettings() {
       )}
 
       {/* 6. Connected Account Section */}
-      <section className="space-y-3 rounded-xl border border-line bg-raised p-5">
+      <section data-setting-id="setting-profile-account" className="space-y-3 rounded-xl border border-line bg-raised p-5">
         <h3 className="text-sm font-semibold text-ink">Connected Account</h3>
         <p className="text-xs text-muted">
           Your profile, conversations, and engine credentials remain bound to your local device.
@@ -545,16 +559,19 @@ export function ProfileSettings() {
         onOpenChange={setEditOpen}
         profile={profile}
         onSaved={(updated) =>
-          setProfile((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  name: updated.name ?? prev.name,
-                  avatar_url: updated.avatar_url ?? prev.avatar_url,
-                  bio: updated.bio ?? prev.bio,
-                }
-              : null
-          )
+          {
+            setProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    name: updated.name ?? prev.name,
+                    avatar_url: updated.avatar_url ?? prev.avatar_url,
+                    bio: updated.bio ?? prev.bio,
+                  }
+                : null
+            );
+            confirmation.showSaved("profile");
+          }
         }
       />
 
@@ -724,7 +741,12 @@ function ProfileEditDialog({
   const [bio, setBio] = useState(profile?.bio || "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const originalName = profile?.name || "";
+  const originalBio = profile?.bio || "";
+  const originalAvatarUrl = profile?.avatar_url || null;
+  const dirty = name !== originalName || bio !== originalBio || avatarUrl !== originalAvatarUrl;
 
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
@@ -733,6 +755,7 @@ function ProfileEditDialog({
       setName(profile?.name || "");
       setBio(profile?.bio || "");
       setAvatarUrl(profile?.avatar_url || null);
+      setSaveError(null);
     }
   }
 
@@ -742,7 +765,7 @@ function ProfileEditDialog({
     const reader = new FileReader();
     reader.onload = (event) => {
       const result = event.target?.result as string;
-      if (result) setAvatarUrl(result);
+      if (result) { setAvatarUrl(result); setSaveError(null); }
     };
     reader.readAsDataURL(file);
   }
@@ -750,6 +773,7 @@ function ProfileEditDialog({
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await profileApi.updateProfile({
         name: name.trim() || null,
@@ -758,8 +782,8 @@ function ProfileEditDialog({
       });
       onSaved(res);
       onOpenChange(false);
-    } catch {
-      // Handle error gracefully
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Could not save your profile.");
     } finally {
       setSaving(false);
     }
@@ -773,7 +797,7 @@ function ProfileEditDialog({
       description="Update your display name, avatar, and personal bio."
       size="sm"
     >
-      <form onSubmit={handleSave} className="space-y-4">
+      <form id="profile-edit-form" onSubmit={handleSave} className="space-y-4">
         {/* Avatar Picker */}
         <div className="flex flex-col items-center gap-2 pb-2">
           <UserAvatar user={{ name, avatar_url: avatarUrl }} size={84} />
@@ -791,7 +815,7 @@ function ProfileEditDialog({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setAvatarUrl(null)}
+                onClick={() => { setAvatarUrl(null); setSaveError(null); }}
               >
                 Remove
               </Button>
@@ -811,7 +835,7 @@ function ProfileEditDialog({
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); setSaveError(null); }}
             placeholder="e.g. Alice Developer"
             maxLength={120}
             className="w-full rounded-field border border-line bg-raised px-3 py-1.5 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
@@ -822,7 +846,7 @@ function ProfileEditDialog({
           <label className="block text-xs font-medium text-muted mb-1">Bio / Role</label>
           <textarea
             value={bio}
-            onChange={(e) => setBio(e.target.value)}
+            onChange={(e) => { setBio(e.target.value); setSaveError(null); }}
             placeholder="What you're building with Open Duet…"
             rows={2}
             maxLength={500}
@@ -830,14 +854,25 @@ function ProfileEditDialog({
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={saving}>
-            Save changes
-          </Button>
-        </div>
+        <Applies when="now" />
+        <SaveBar
+          dirty={dirty}
+          saving={saving}
+          error={saveError}
+          saved={false}
+          saveLabel="Save changes"
+          onSave={() => {
+            const form = document.getElementById("profile-edit-form");
+            if (form instanceof HTMLFormElement) form.requestSubmit();
+          }}
+          onDiscard={() => {
+            setName(originalName);
+            setBio(originalBio);
+            setAvatarUrl(originalAvatarUrl);
+            setSaveError(null);
+            onOpenChange(false);
+          }}
+        />
       </form>
     </Dialog>
   );

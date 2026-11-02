@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
@@ -159,7 +159,16 @@ export function ChatApp() {
   // and the page behaves as before.
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [agentTick, setAgentTick] = useState(0);
-  const [agentsOpen, setAgentsOpen] = useState(false);
+  const [agentsShown, setAgentsShown] = useState(false);
+  const agentsOpen = agentsShown || params.get("view") === "agents";
+  const setAgentsOpen = useCallback((open: boolean) => {
+    setAgentsShown(open);
+    if (!open && params.get("view") === "agents") {
+      const query = new URLSearchParams(params.toString());
+      query.delete("view");
+      router.replace(query.toString() ? `/chat?${query.toString()}` : "/chat");
+    }
+  }, [params, router]);
   const [deleteAgentTarget, setDeleteAgentTarget] = useState<Agent | null>(null);
   // The Agents panel opened from New agent starts on the form.
   const [agentsCreate, setAgentsCreate] = useState(false);
@@ -380,7 +389,7 @@ export function ChatApp() {
     };
     window.addEventListener("open-dots:open-agent", openAgent);
     return () => window.removeEventListener("open-dots:open-agent", openAgent);
-  }, [agents, router]);
+  }, [agents, router, setAgentsOpen]);
 
   useEffect(() => {
     if (!ready) return;

@@ -364,6 +364,7 @@ export function Sidebar({
           <Link
             href="/settings/"
             onClick={onNavigate}
+            title={`${t("sidebar.settings")} (⌘+, / Ctrl+,)`}
             className="flex items-center gap-2 rounded-field px-2.5 py-1 text-sm font-medium text-muted transition-colors duration-(--dur-fast) hover:bg-hover/60 hover:text-ink"
           >
             <Settings size={16} aria-hidden="true" className="shrink-0 text-muted" />
