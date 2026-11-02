@@ -105,9 +105,8 @@ time. At the limit, it stops until the next billing period or a plan change;
 compute overages are not charged. The disk value is the selected machine's
 capacity, not a separate storage quota. A stopped sandbox's disk is subject to
 the provider's retention period, so export important files before a paid plan
-ends. Hosted plan checkout is rolling out; check the
-[pricing page](https://suparagent.ai/pricing/) for current prices and
-availability.
+ends. Paid checkout is enabled for hosted accounts; see the
+[Suparagent pricing page](https://suparagent.ai/pricing/) for current plans.
 
 ## Engines, data, and costs
 
