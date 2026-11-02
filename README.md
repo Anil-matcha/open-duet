@@ -216,6 +216,7 @@ details](backend/README.md#scheduling) and [environment settings](backend/.env.e
 **Tools and customization**
 
 - [Connected apps](docs/CONNECTED_APPS.md)
+- [App language settings](docs/LOCALIZATION.md)
 - [Skills](docs/SKILLS.md) and [templates](docs/TEMPLATES.md)
 - [Agent computers](docs/COMPUTERS.md), [native desktop](docs/NATIVE-DESKTOP.md),
   and [browser tools](docs/BROWSER.md)

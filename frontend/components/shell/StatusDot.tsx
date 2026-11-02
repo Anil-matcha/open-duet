@@ -1,10 +1,11 @@
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { showsUnreadDot, type RowStatus } from "@/lib/sidebar";
 
 // A row's state as a dot with a screen-reader label; never colour alone: waiting carries a "!"
 // and the label is also the tooltip.
 export function StatusDot({ status, unread = false, className }: { status: RowStatus; unread?: boolean; className?: string }) {
+  const t = useT();
   if (status === null) return null;
   const label = t(`status.${status}`);
   // Unread beside a louder state: a second, small accent dot with its own label.

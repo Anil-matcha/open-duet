@@ -3,7 +3,7 @@
 import { CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 
 type Tone = "success" | "info" | "danger";
 type ToastItem = { id: number; tone: Tone; message: string };
@@ -18,6 +18,7 @@ const ICONS = { success: CheckCircle2, info: Info, danger: XCircle } as const;
 const COLOR = { success: "text-success", info: "text-accent", danger: "text-danger" } as const;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const [items, setItems] = useState<ToastItem[]>([]);
   const next = useRef(1);
   const dismiss = useCallback((id: number) => setItems((all) => all.filter((x) => x.id !== id)), []);

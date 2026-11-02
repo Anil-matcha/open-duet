@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent, Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { sidebarAgents } from "@/lib/sidebar";
 import { Dialog } from "@/components/ui/Dialog";
 import { Kbd } from "@/components/ui/Kbd";
@@ -25,6 +25,7 @@ export function CommandPalette({
   threads: Thread[] | null;
   onNewChat: (agentId?: number) => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -67,7 +68,7 @@ export function CommandPalette({
       });
     }
     return list;
-  }, [agents, threads, onNewChat, router]);
+  }, [agents, threads, onNewChat, router, t]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();

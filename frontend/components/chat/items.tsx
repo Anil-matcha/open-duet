@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { failureNextStep, interruptedText, turnUsageText } from "@/lib/everyday";
 import { compactedLabel, recalledLabel } from "@/lib/memory";
 import type { TranscriptItem } from "@/lib/transcript";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { toolRunSummary } from "@/lib/transcript-view";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "./Markdown";
@@ -52,6 +52,7 @@ export function formatMessageTime(ts?: string | null): string | null {
 }
 
 function CopyButton({ text, className }: { text: string; className?: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -239,6 +240,7 @@ export function ApprovalCard({
   // Stop always allowing: removes the saved rule; the next such command asks.
   onUndo?: (ruleId: number) => void;
 }) {
+  const t = useT();
   const pending = item.status === "pending";
   // A decided card is one line; the input it was asked about is behind the arrow.
   const [open, setOpen] = useState(false);

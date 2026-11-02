@@ -31,7 +31,7 @@ import { CommandPalette } from "@/components/shell/CommandPalette";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Drawer } from "@/components/ui/Drawer";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { reportPresence } from "@/lib/presence";
 import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
@@ -118,6 +118,7 @@ function Notice({
 // API. The page keeps nothing that matters: every conversation lives in the
 // backend, and the open one is replayed from its stored events.
 export function ChatApp() {
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const threadId = parseThreadId(params.get("thread"));

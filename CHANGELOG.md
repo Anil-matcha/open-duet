@@ -4,6 +4,7 @@
 
 ### Added
 
+- Add English, Spanish, and System default language choices for text covered by the interface catalog. System default follows Spanish browser locales; unsupported languages and missing translations use English, and older untranslated text stays in English. Frontend lint, the Webpack production build, frontend .mjs checks, desktop tests, and the SQLite backend suite passed; The full PostgreSQL suite, live-browser, and packaged-app checks remain unqualified.
 - Open the files an agent made from the phone app. A pairing code can now be made with
   **Chat and files** access (a new `files` scope; `--scope files` on the CLI): the phone lists
   a conversation's workspace, previews text and images, and shares or saves any file. A

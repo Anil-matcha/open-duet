@@ -2,7 +2,7 @@
 
 import { Clock, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { formatElapsed, type WorkingPhase } from "@/lib/working-status";
 
 // When each turn was first seen working, so the timer survives this component unmounting
@@ -21,6 +21,7 @@ function startOf(turnId: number): number {
 // "Thinking · 12s", "Using Bash · 1m 05s" or "Waiting for you". The timer runs from when the turn
 // was first seen working and only ticks while visible. Motion stops for people who ask for less.
 export function WorkingStatus({ phase, turnId }: { phase: WorkingPhase; turnId: number }) {
+  const t = useT();
   const [startedAt] = useState(() => startOf(turnId));
   const [now, setNow] = useState(() => Date.now());
   const waiting = phase.kind === "waiting";

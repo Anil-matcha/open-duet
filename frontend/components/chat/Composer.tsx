@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { isLongPaste, isSendKey, livePastes, removePaste } from "@/lib/composer";
 import { loadDraft, saveDraft } from "@/lib/drafts";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { MAX_SKILLS_PER_MESSAGE, skillCompletions, type SkillSummary } from "@/lib/skills";
 import { Button } from "@/components/ui/Button";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -74,6 +74,7 @@ export function Composer({
   // conversation and put back when you return. Without it nothing is stored.
   draftKey?: string | null;
 }) {
+  const t = useT();
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);

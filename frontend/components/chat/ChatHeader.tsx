@@ -4,7 +4,7 @@ import { BarChart3, CalendarDays, Folder, Menu as MenuIcon, MoreHorizontal, Shie
 import type { ReactNode } from "react";
 import type { Agent } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu, MenuItem } from "@/components/ui/Menu";
@@ -52,6 +52,7 @@ export function ChatHeader({
   // Short text such as "Reconnecting…" or the engine's version.
   status?: { text: string; warn?: boolean } | null;
 }) {
+  const t = useT();
   type Action = { key: string; label: string; icon: ReactNode; run: () => void; hint?: string };
   const secondary: Action[] = [];
   if (onApprovals) secondary.push({ key: "approvals", label: t("header.approvals"), icon: <ShieldCheck size={18} />, run: onApprovals });

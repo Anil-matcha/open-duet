@@ -7,7 +7,7 @@ import { announcement, groupToolRuns } from "@/lib/transcript-view";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { workingPhase } from "@/lib/working-status";
 import { WorkingStatus } from "./WorkingStatus";
 import {
@@ -85,6 +85,7 @@ export function Conversation({
   undoneRules?: number[];
   onUndo?: (ruleId: number) => void;
 }) {
+  const t = useT();
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
   const [away, setAway] = useState(false);

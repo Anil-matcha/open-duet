@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Agent, Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { agentTarget, recentVisible, rowStatus, sidebarAgents } from "@/lib/sidebar";
 import { ConversationSearch } from "@/components/chat/ConversationSearch";
 import { Button } from "@/components/ui/Button";
@@ -119,6 +119,7 @@ export function Sidebar({
   onNavigate?: () => void;
   collaboration?: React.ReactNode;
 }) {
+  const t = useT();
   const [searching, setSearching] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showAllAgents, setShowAllAgents] = useState(false);

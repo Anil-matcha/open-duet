@@ -4,7 +4,7 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 
 type Size = "sm" | "md" | "wide" | "lg" | "xl";
 
@@ -33,6 +33,7 @@ export function Dialog({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const t = useT();
   // The dialog is controlled and has no Radix trigger, so Radix has nothing to hand focus
   // back to. Remember what had focus when it opened and restore it on close.
   const opener = useRef<HTMLElement | null>(null);
