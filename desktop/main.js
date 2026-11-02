@@ -29,6 +29,10 @@ const { createUpdater } = require("./src/updater");
 const { registerUpdates } = require("./src/updates-ipc");
 
 const mode = process.argv.includes("--mode=dev") ? "dev" : "start";
+// Running from source: use the app icon for the window and the dock. Installers carry the icon in the
+// executable (build/icon.icns and build/icon.ico), and build/ is not packed, so this is a no-op there.
+const iconPath = path.join(__dirname, "build", "icon.png");
+const hasIcon = fs.existsSync(iconPath);
 // An installed app carries its own frozen backend and page; a checkout uses its own folders.
 const paths = app.isPackaged ? packagedLayout(process.resourcesPath) : layout();
 
@@ -99,6 +103,7 @@ function createWindow() {
     minHeight: 480,
     title: mode === "dev" ? "Open Duet (dev)" : "Open Duet",
     backgroundColor: "#ffffff",
+    ...(hasIcon ? { icon: iconPath } : {}),
     webPreferences: {
       // The sandboxed preload exposes only the validated native path picker.
       preload: path.join(__dirname, "preload.js"),
@@ -138,6 +143,7 @@ async function main() {
   });
 
   await app.whenReady();
+  if (hasIcon && process.platform === "darwin" && app.dock) app.dock.setIcon(iconPath);
   const nativeControlRoot = app.isPackaged ? path.join(process.resourcesPath, "native-control") : path.join(__dirname, "native-control");
   nativeControl = new NativeControl({
     root: nativeControlRoot,

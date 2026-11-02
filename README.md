@@ -18,7 +18,7 @@ engine and provider account used for your work.
 - [Hosted app](https://suparagent.ai)
 - [Watch the demo](https://youtu.be/vtFy94DfETE)
 - [Quick start](#quick-start)
-- [Self-hosting guide](docs/SELF-HOSTING.md)
+- [Guides](#guides)
 - [Discord support](https://discord.com/invite/zpnuBRXhKg)
 
 <p align="center"><a href="https://youtu.be/vtFy94DfETE" title="Watch the Open Duet demo"><img src="https://i.ytimg.com/vi/vtFy94DfETE/maxresdefault.jpg" alt="Open Duet demo video thumbnail — click to watch on YouTube" width="720"></a></p>
@@ -33,9 +33,7 @@ engine and provider account used for your work.
 - [Ways to run Open Duet](#ways-to-run-open-duet)
 - [Hosted plans](#hosted-plans)
 - [Engines, data, and costs](#engines-data-and-costs)
-- [Quick start](#quick-start)
 - [Known limitations](#known-limitations)
-- [Guides](#guides)
 - [Support](#support)
 - [Contributing](#contributing)
 - [License](#license)
@@ -107,9 +105,8 @@ time. At the limit, it stops until the next billing period or a plan change;
 compute overages are not charged. The disk value is the selected machine's
 capacity, not a separate storage quota. A stopped sandbox's disk is subject to
 the provider's retention period, so export important files before a paid plan
-ends. Hosted plan checkout is rolling out; check the
-[pricing page](https://suparagent.ai/pricing/) for current prices and
-availability.
+ends. Paid checkout is enabled for hosted accounts; see the
+[Suparagent pricing page](https://suparagent.ai/pricing/) for current plans.
 
 ## Engines, data, and costs
 
