@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@/components/ui/Select";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, type SearchHit } from "@/lib/api";
@@ -93,26 +93,8 @@ export function ConversationSearch({
             onKeyDown={(e) => e.key === "Escape" && setQuery("")}
             placeholder="Search conversations…"
             aria-label="Search conversations"
-            className="w-full rounded-field border border-line bg-raised py-1.5 pl-8 pr-12 text-sm placeholder:text-faint transition-colors duration-(--dur-fast) focus:border-accent/60 focus:outline-none"
+            className="w-full rounded-field border border-line bg-raised py-1.5 pl-8 pr-3 text-sm placeholder:text-faint transition-colors duration-(--dur-fast) focus:border-accent/60 focus:outline-none"
           />
-          {query ? (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                setHits(null);
-                inputRef.current?.focus();
-              }}
-              aria-label="Clear search"
-              className="absolute right-2 inline-flex size-5 cursor-pointer items-center justify-center rounded text-muted hover:bg-hover hover:text-ink transition-colors"
-            >
-              <X size={13} aria-hidden="true" />
-            </button>
-          ) : (
-            <kbd className="pointer-events-none absolute right-2 select-none rounded border border-line/60 bg-inset px-1.5 py-0.5 text-[10px] font-medium text-muted">
-              ⌘K
-            </kbd>
-          )}
         </div>
       </div>
 
