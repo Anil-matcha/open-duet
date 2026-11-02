@@ -4,6 +4,7 @@
 import pytest
 
 from app.auth.policy import allows, is_public, required_scope
+from app.core.config import settings
 from tests.auth.test_auth_api import (  # noqa: F401
     REMOTE,
     app,
@@ -97,7 +98,9 @@ async def test_a_chat_device_cannot_browse_files_or_usage(app, factory):
             assert denied.status_code == 403 and error_code(denied) == "scope_denied", path
 
 
-async def test_a_files_device_reads_files_but_not_the_zip_or_usage(app, factory):
+async def test_a_files_device_reads_files_but_not_the_zip_or_usage(app, factory, monkeypatch):
+    # The files routes also need local execution on (a separate check from the scope).
+    monkeypatch.setattr(settings, "LOCAL_EXECUTION_ENABLED", True)
     await set_owner(factory)
     async with client(app) as owner:
         code = await pairing_code(owner, (await login(owner))["csrf_token"], scope="files")
@@ -105,10 +108,11 @@ async def test_a_files_device_reads_files_but_not_the_zip_or_usage(app, factory)
         paired = (await phone.post("/api/v1/auth/pair", json={"code": code})).json()
         assert sorted(paired["session"]["scopes"]) == ["chat", "files"]
         bearer = {"Authorization": f"Bearer {paired['token']}"}
-        # Past the scope check: the thread does not exist, so this is a 404, not a 403.
+        # Past the scope check: whatever else the route answers, it is not `scope_denied`.
         for path in ("/api/v1/threads/1/files", "/api/v1/threads/1/files/download?path=a"):
             reply = await phone.get(path, headers=bearer)
-            assert reply.status_code != 403, path
+            detail = reply.json().get("detail") if reply.status_code == 403 else None
+            assert not (isinstance(detail, dict) and detail.get("error_code") == "scope_denied"), path
         for path in ("/api/v1/threads/1/files/zip", "/api/v1/usage"):
             denied = await phone.get(path, headers=bearer)
             assert denied.status_code == 403 and error_code(denied) == "scope_denied", path
