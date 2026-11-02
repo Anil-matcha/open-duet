@@ -2,8 +2,9 @@
 
 import { Select } from "@/components/ui/Select";
 
+import { Search, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type SearchHit } from "@/lib/api";
 import { snippetSegments } from "@/lib/everyday";
 
@@ -32,6 +33,19 @@ export function ConversationSearch({
   const [agentId, setAgentId] = useState<number | null>(null);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
   const q = query.trim();
   const active = q.length >= MIN_CHARS;
 
@@ -59,18 +73,44 @@ export function ConversationSearch({
 
   return (
     <div className="px-3 pb-2">
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setHits(null);
-        }}
-        onKeyDown={(e) => e.key === "Escape" && setQuery("")}
-        placeholder="Search conversations"
-        aria-label="Search conversations"
-        className="w-full rounded-field border border-line bg-raised px-3 py-2 text-sm placeholder:text-faint"
-      />
+      <div className="relative flex items-center">
+        <Search
+          size={14}
+          aria-hidden="true"
+          className="pointer-events-none absolute left-2.5 text-muted"
+        />
+        <input
+          ref={inputRef}
+          type="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setHits(null);
+          }}
+          onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+          placeholder="Search conversations…"
+          aria-label="Search conversations"
+          className="w-full rounded-field border border-line bg-raised py-1.5 pl-8 pr-12 text-sm placeholder:text-faint transition-colors duration-(--dur-fast) focus:border-accent/60 focus:outline-none"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setHits(null);
+              inputRef.current?.focus();
+            }}
+            aria-label="Clear search"
+            className="absolute right-2 inline-flex size-5 cursor-pointer items-center justify-center rounded text-muted hover:bg-hover hover:text-ink"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        ) : (
+          <kbd className="pointer-events-none absolute right-2 select-none rounded border border-line/60 bg-inset px-1.5 py-0.5 text-[10px] font-medium text-muted">
+            ⌘K
+          </kbd>
+        )}
+      </div>
       {active && (
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
           <label className="flex items-center gap-1">

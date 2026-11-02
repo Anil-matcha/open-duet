@@ -1,6 +1,17 @@
 "use client";
 
-import { Archive, CalendarClock, Columns3, LayoutGrid, Plus, Send, Settings, SlidersHorizontal } from "lucide-react";
+import {
+  Archive,
+  CalendarClock,
+  ChevronDown,
+  ChevronRight,
+  Columns3,
+  LayoutGrid,
+  Plus,
+  Send,
+  Settings,
+  SlidersHorizontal,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { Agent, Thread } from "@/lib/api";
@@ -9,7 +20,6 @@ import { t } from "@/lib/i18n";
 import { agentTarget, recentVisible, rowStatus, sidebarAgents } from "@/lib/sidebar";
 import { ConversationSearch } from "@/components/chat/ConversationSearch";
 import { Button } from "@/components/ui/Button";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { IconButton } from "@/components/ui/IconButton";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -25,11 +35,34 @@ export type SidebarLive = {
   waiting: boolean;
 };
 
-function SectionHeader({ title, children }: { title: string; children?: React.ReactNode }) {
+function CollapsibleSectionHeader({
+  title,
+  count,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count?: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-between px-3 pb-1 pt-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
-      <div className="flex items-center">{children}</div>
+    <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted hover:text-ink cursor-pointer select-none transition-colors"
+      >
+        {collapsed ? <ChevronRight size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+        <span>{title}</span>
+        {count !== undefined && count > 0 && (
+          <span className="font-normal text-[11px] text-faint">({count})</span>
+        )}
+      </button>
+      <div className="flex items-center gap-0.5">{children}</div>
     </div>
   );
 }
@@ -39,11 +72,10 @@ const RECENT_LIMIT = 8;
 // Agents listed before "Show all"; the open, lead and busy agents are always listed.
 const AGENT_LIMIT = 3;
 
-const ROW = "flex w-full cursor-pointer items-center gap-2.5 rounded-field py-1.5 pl-2 pr-2 text-left text-sm transition-colors duration-(--dur-fast) touch:py-2.5";
+const ROW =
+  "flex w-full cursor-pointer items-center gap-2.5 rounded-field py-1.5 pl-2.5 pr-2 text-left text-sm transition-colors duration-(--dur-fast) touch:py-2.5";
 
-// The app's left column: start a chat, search, the agents, every recent conversation, and the
-// places that are not conversations. Agents and Recent are separate views of the same
-// conversations; nothing is nested under an agent.
+// The app's left column: start a chat, search, recent conversations, agents, and external tools.
 export function Sidebar({
   agents,
   threads,
@@ -66,48 +98,54 @@ export function Sidebar({
   onNavigate,
   collaboration,
 }: {
-  // null: the backend has no agents (an older one), so the section is left out.
   agents: Agent[] | null;
-  // null while the first load is under way.
   threads: Thread[] | null;
   selectedThreadId: number | null;
-  // The agent the open or about-to-start conversation belongs to.
   selectedAgentId: number | null;
   live: SidebarLive;
   showArchived: boolean;
   onToggleArchived: () => void;
   actions: RowActions;
-  // What went wrong with the last rename, archive or delete, if anything.
   error: string | null;
-  // Start a conversation: with the given agent, or (no argument) with whatever is chosen now.
   onNewChat: (agentId?: number) => void;
   onManageAgents?: () => void;
   onDeleteAgent?: (agent: Agent) => void;
   onEditAgent?: (agent: Agent) => void;
   onChangeLead?: (agent: Agent, remove: boolean) => Promise<void>;
   leadAgentId?: number | null;
-  // Open the new-agent form. Offered even when there are no agents yet.
   onNewAgent?: () => void;
   onOpenRoutines?: () => void;
   onOpenPlanner?: () => void;
-  // Lets a drawer close itself after a choice.
   onNavigate?: () => void;
   collaboration?: React.ReactNode;
 }) {
   const [searching, setSearching] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showAllAgents, setShowAllAgents] = useState(false);
-  const unread = useUnread(threads, selectedThreadId);
-  const names = new Map((agents ?? []).map((agent) => [agent.id, agent.name]));
+  const [recentCollapsed, setRecentCollapsed] = useState(false);
   const listed = sidebarAgents(agents);
+  const [agentsCollapsed, setAgentsCollapsed] = useState(() => listed.length === 0);
+  const unread = useUnread(threads, selectedThreadId);
+
+  const names = new Map((agents ?? []).map((agent) => [agent.id, agent.name]));
   const shownAgents = showAllAgents
     ? listed
-    : listed.filter((agent, index) => index < AGENT_LIMIT || agent.id === selectedAgentId || agent.id === leadAgentId || agent.id === live.agentId);
+    : listed.filter(
+        (agent, index) =>
+          index < AGENT_LIMIT ||
+          agent.id === selectedAgentId ||
+          agent.id === leadAgentId ||
+          agent.id === live.agentId
+      );
   const shownThreads = recentVisible(
     threads ?? [],
     RECENT_LIMIT,
-    (thread) => thread.id === selectedThreadId || thread.id === live.threadId || unread.has(thread.id) || thread.session_state === "broken",
-    showAll,
+    (thread) =>
+      thread.id === selectedThreadId ||
+      thread.id === live.threadId ||
+      unread.has(thread.id) ||
+      thread.session_state === "broken",
+    showAll
   );
 
   const newChat = (agentId?: number) => {
@@ -125,149 +163,216 @@ export function Sidebar({
       <ConversationSearch agentNames={names} onActive={setSearching} onNavigate={onNavigate} />
 
       <div className={cn("min-h-0 flex-1 overflow-y-auto px-2 pb-2", searching && "hidden")}>
-        {agents !== null && (
-          <section aria-label={t("sidebar.agents")}>
-            <SectionHeader title={t("sidebar.agents")}>
-              {onNewAgent && (
-                <IconButton label={t("sidebar.newAgent")} onClick={() => { onNewAgent(); onNavigate?.(); }} className="size-7 touch:size-10">
-                  <Plus size={14} />
-                </IconButton>
-              )}
-              {onManageAgents && listed.length > 0 && (
-                <IconButton label={t("sidebar.manageAgents")} onClick={() => { onManageAgents(); onNavigate?.(); }} className="size-7 touch:size-10">
-                  <SlidersHorizontal size={14} />
-                </IconButton>
-              )}
-            </SectionHeader>
-            {listed.length === 0 && (
-              <EmptyState
-                compact
-                title={t("sidebar.noAgentsTitle")}
-                description={t("sidebar.noAgents")}
-                action={onNewAgent ? (
-                  <Button size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => { onNewAgent(); onNavigate?.(); }}>
-                    {t("sidebar.newAgent")}
-                  </Button>
-                ) : undefined}
-              />
-            )}
-            <ul className="space-y-0.5">
-              {shownAgents.map((agent) => {
-                const target = agentTarget(threads, agent.id);
-                return (
-                  <AgentRow
-                    key={agent.id}
-                    agent={agent}
-                    href={target.kind === "thread" ? `/chat?thread=${target.id}` : null}
-                    selected={selectedAgentId === agent.id}
-                    status={live.agentId === agent.id ? rowStatus({ working: live.working, waiting: live.waiting }) : null}
-                    isLead={leadAgentId === agent.id}
-                    onOpenChat={() => newChat(agent.id)}
-                    onNavigate={onNavigate}
-                    onEdit={onEditAgent ? () => onEditAgent(agent) : undefined}
-                    onChangeLead={onChangeLead ? () => void onChangeLead(agent, leadAgentId === agent.id) : undefined}
-                    onDelete={onDeleteAgent ? () => onDeleteAgent(agent) : undefined}
-                  />
-                );
-              })}
-            </ul>
-            {listed.length > AGENT_LIMIT ? (
-              <button
-                type="button"
-                aria-expanded={showAllAgents}
-                onClick={() => setShowAllAgents((on) => !on)}
-                className="mt-1 w-full cursor-pointer rounded-field px-3 py-2 text-left text-xs font-medium text-muted hover:bg-hover/60 hover:text-ink touch:py-3"
-              >
-                {showAllAgents ? t("sidebar.showFewerAgents") : t("sidebar.showAllAgents", { n: listed.length })}
-              </button>
-            ) : null}
-          </section>
-        )}
-
-        {collaboration}
-
+        {/* 1. Recent Conversations - Front and Center */}
         <section aria-label={t("sidebar.recent")}>
-          <SectionHeader title={t("sidebar.recent")}>
+          <CollapsibleSectionHeader
+            title={t("sidebar.recent")}
+            count={threads?.length}
+            collapsed={recentCollapsed}
+            onToggle={() => setRecentCollapsed((c) => !c)}
+          >
             <IconButton
               label={showArchived ? t("sidebar.hideArchived") : t("sidebar.showArchived")}
               pressed={showArchived}
               onClick={onToggleArchived}
-              className="size-7 touch:size-10"
+              className="size-6 touch:size-9"
             >
-              <Archive size={14} />
+              <Archive size={13} />
             </IconButton>
-          </SectionHeader>
-          <ul className="space-y-0.5">
-            {threads === null && (
-              <li><SkeletonList rows={5} className="px-1 pt-1" /></li>
-            )}
-            {threads?.length === 0 && (
-              <li>
-                <EmptyState
-                  compact
-                  title={showArchived ? t("sidebar.emptyArchived") : t("sidebar.emptyTitle")}
-                  description={showArchived ? undefined : t("sidebar.empty")}
-                />
-              </li>
-            )}
-            {shownThreads.map((thread) => {
-              const open = thread.id === live.threadId;
-              return (
-                <ThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  selected={thread.id === selectedThreadId}
-                  agentName={thread.agent_id != null ? names.get(thread.agent_id) : undefined}
-                  status={open ? { working: live.working, waiting: live.waiting } : {}}
-                  unread={unread.has(thread.id)}
-                  actions={actions}
-                  onNavigate={onNavigate}
-                />
-              );
-            })}
-          </ul>
-          {threads !== null && threads.length > RECENT_LIMIT && (
-            <button
-              type="button"
-              aria-expanded={showAll}
-              onClick={() => setShowAll((on) => !on)}
-              className="mt-1 w-full cursor-pointer rounded-field px-3 py-2 text-left text-xs font-medium text-muted hover:bg-hover/60 hover:text-ink touch:py-3"
-            >
-              {showAll ? t("sidebar.showFewer") : t("sidebar.showAll")}
-            </button>
+          </CollapsibleSectionHeader>
+
+          {!recentCollapsed && (
+            <ul className="space-y-0.5 pt-0.5">
+              {threads === null && (
+                <li>
+                  <SkeletonList rows={4} className="px-1 pt-1" />
+                </li>
+              )}
+              {threads?.length === 0 && (
+                <li className="px-3 py-2 text-xs text-muted">
+                  {showArchived ? t("sidebar.emptyArchived") : "No conversations yet."}
+                </li>
+              )}
+              {shownThreads.map((thread) => {
+                const open = thread.id === live.threadId;
+                return (
+                  <ThreadRow
+                    key={thread.id}
+                    thread={thread}
+                    selected={thread.id === selectedThreadId}
+                    agentName={thread.agent_id != null ? names.get(thread.agent_id) : undefined}
+                    status={open ? { working: live.working, waiting: live.waiting } : {}}
+                    unread={unread.has(thread.id)}
+                    actions={actions}
+                    onNavigate={onNavigate}
+                  />
+                );
+              })}
+              {threads !== null && threads.length > RECENT_LIMIT && (
+                <button
+                  type="button"
+                  aria-expanded={showAll}
+                  onClick={() => setShowAll((on) => !on)}
+                  className="mt-1 w-full cursor-pointer rounded-field px-3 py-1.5 text-left text-xs font-medium text-muted hover:bg-hover/60 hover:text-ink touch:py-2.5"
+                >
+                  {showAll ? t("sidebar.showFewer") : t("sidebar.showAll")}
+                </button>
+              )}
+            </ul>
           )}
         </section>
+
+        {/* 2. Custom Agents - Collapsible */}
+        {agents !== null && (
+          <section aria-label={t("sidebar.agents")} className="mt-1">
+            <CollapsibleSectionHeader
+              title={t("sidebar.agents")}
+              count={listed.length}
+              collapsed={agentsCollapsed}
+              onToggle={() => setAgentsCollapsed((c) => !c)}
+            >
+              {onNewAgent && (
+                <IconButton
+                  label={t("sidebar.newAgent")}
+                  onClick={() => {
+                    onNewAgent();
+                    onNavigate?.();
+                  }}
+                  className="size-6 touch:size-9"
+                >
+                  <Plus size={13} />
+                </IconButton>
+              )}
+              {onManageAgents && listed.length > 0 && (
+                <IconButton
+                  label={t("sidebar.manageAgents")}
+                  onClick={() => {
+                    onManageAgents();
+                    onNavigate?.();
+                  }}
+                  className="size-6 touch:size-9"
+                >
+                  <SlidersHorizontal size={13} />
+                </IconButton>
+              )}
+            </CollapsibleSectionHeader>
+
+            {!agentsCollapsed && (
+              <div className="pt-0.5">
+                {listed.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNewAgent?.();
+                      onNavigate?.();
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
+                  >
+                    <Plus size={13} className="shrink-0 text-muted" />
+                    <span>Create an agent</span>
+                  </button>
+                )}
+                <ul className="space-y-0.5">
+                  {shownAgents.map((agent) => {
+                    const target = agentTarget(threads, agent.id);
+                    return (
+                      <AgentRow
+                        key={agent.id}
+                        agent={agent}
+                        href={target.kind === "thread" ? `/chat?thread=${target.id}` : null}
+                        selected={selectedAgentId === agent.id}
+                        status={
+                          live.agentId === agent.id
+                            ? rowStatus({ working: live.working, waiting: live.waiting })
+                            : null
+                        }
+                        isLead={leadAgentId === agent.id}
+                        onOpenChat={() => newChat(agent.id)}
+                        onNavigate={onNavigate}
+                        onEdit={onEditAgent ? () => onEditAgent(agent) : undefined}
+                        onChangeLead={
+                          onChangeLead ? () => void onChangeLead(agent, leadAgentId === agent.id) : undefined
+                        }
+                        onDelete={onDeleteAgent ? () => onDeleteAgent(agent) : undefined}
+                      />
+                    );
+                  })}
+                </ul>
+                {listed.length > AGENT_LIMIT ? (
+                  <button
+                    type="button"
+                    aria-expanded={showAllAgents}
+                    onClick={() => setShowAllAgents((on) => !on)}
+                    className="mt-1 w-full cursor-pointer rounded-field px-3 py-1.5 text-left text-xs font-medium text-muted hover:bg-hover/60 hover:text-ink touch:py-2.5"
+                  >
+                    {showAllAgents
+                      ? t("sidebar.showFewerAgents")
+                      : t("sidebar.showAllAgents", { n: listed.length })}
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 3. Rooms and Team Collaboration */}
+        {collaboration}
       </div>
 
       {error && <p role="alert" className="px-4 pb-2 text-xs text-danger">{error}</p>}
 
-      <div className="space-y-0.5 border-t border-line p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {onOpenPlanner && (
-          <button type="button" onClick={() => { onOpenPlanner(); onNavigate?.(); }} className={cn(ROW, "hover:bg-hover/60")}>
-            <Columns3 size={16} aria-hidden="true" />
-            <span className="font-medium">Tasks & calendar</span>
-          </button>
-        )}
-        {onOpenRoutines && (
-          <button type="button" onClick={() => { onOpenRoutines(); onNavigate?.(); }} className={cn(ROW, "hover:bg-hover/60")}>
-            <CalendarClock size={18} aria-hidden="true" className="shrink-0 text-muted" />
-            <span className="font-medium">{t("sidebar.routines")}</span>
-          </button>
-        )}
-        <Link href="/apps/" className={cn(ROW, "hover:bg-hover/60")}>
-          <LayoutGrid size={18} aria-hidden="true" className="shrink-0 text-muted" />
-          <span className="font-medium">{t("sidebar.apps")}</span>
-        </Link>
-        <Link href="/tasks/" className={cn(ROW, "hover:bg-hover/60")}>
-          <Send size={18} aria-hidden="true" className="shrink-0 text-muted" />
-          <span className="font-medium">{t("sidebar.legacyTasks")}</span>
-        </Link>
-        <div className="flex items-center gap-1">
-          <Link href="/settings/" className={cn(ROW, "flex-1 hover:bg-hover/60")}>
-            <Settings size={18} aria-hidden="true" className="shrink-0 text-muted" />
-            <span className="font-medium">{t("sidebar.settings")}</span>
+      {/* Navigation Tools & Footer */}
+      <div className="border-t border-line p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="space-y-0.5">
+          {onOpenPlanner && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenPlanner();
+                onNavigate?.();
+              }}
+              className={cn(ROW, "hover:bg-hover/60")}
+            >
+              <Columns3 size={16} aria-hidden="true" className="shrink-0 text-muted" />
+              <span className="font-medium">Tasks & calendar</span>
+            </button>
+          )}
+          {onOpenRoutines && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenRoutines();
+                onNavigate?.();
+              }}
+              className={cn(ROW, "hover:bg-hover/60")}
+            >
+              <CalendarClock size={16} aria-hidden="true" className="shrink-0 text-muted" />
+              <span className="font-medium">{t("sidebar.routines")}</span>
+            </button>
+          )}
+          <Link href="/apps/" className={cn(ROW, "hover:bg-hover/60")}>
+            <LayoutGrid size={16} aria-hidden="true" className="shrink-0 text-muted" />
+            <span className="font-medium">{t("sidebar.apps")}</span>
           </Link>
-          <ThemeToggle iconOnly />
+          <Link href="/tasks/" className={cn(ROW, "hover:bg-hover/60")}>
+            <Send size={16} aria-hidden="true" className="shrink-0 text-muted" />
+            <span className="font-medium">{t("sidebar.legacyTasks")}</span>
+          </Link>
+        </div>
+
+        {/* Bottom bar with Settings and Theme Toggle */}
+        <div className="mt-1.5 flex items-center justify-between border-t border-line/60 pt-1.5">
+          <Link
+            href="/settings/"
+            onClick={onNavigate}
+            className="flex items-center gap-2 rounded-field px-2.5 py-1 text-sm font-medium text-muted transition-colors duration-(--dur-fast) hover:bg-hover/60 hover:text-ink"
+          >
+            <Settings size={16} aria-hidden="true" className="shrink-0 text-muted" />
+            <span>{t("sidebar.settings")}</span>
+          </Link>
+          <div className="pr-1">
+            <ThemeToggle iconOnly />
+          </div>
         </div>
       </div>
     </nav>
