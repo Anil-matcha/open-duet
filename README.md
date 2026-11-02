@@ -18,7 +18,7 @@ engine and provider account used for your work.
 - [Hosted app](https://suparagent.ai)
 - [Watch the demo](https://youtu.be/vtFy94DfETE)
 - [Quick start](#quick-start)
-- [Self-hosting guide](docs/SELF-HOSTING.md)
+- [Guides](#guides)
 - [Discord support](https://discord.com/invite/zpnuBRXhKg)
 
 <p align="center"><a href="https://youtu.be/vtFy94DfETE" title="Watch the Open Duet demo"><img src="https://i.ytimg.com/vi/vtFy94DfETE/maxresdefault.jpg" alt="Open Duet demo video thumbnail — click to watch on YouTube" width="720"></a></p>
