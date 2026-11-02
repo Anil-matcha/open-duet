@@ -84,7 +84,9 @@ export function ConversationSearch({
           />
           <input
             ref={inputRef}
-            type="search"
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

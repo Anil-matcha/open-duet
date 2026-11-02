@@ -8,13 +8,15 @@ group reported one.
 
 import csv
 import io
+import os
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Thread, Turn
+from app.db.models import Agent, Thread, Turn
 from app.services import helper_usage
 
 TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
@@ -215,3 +217,242 @@ async def month_csv(db: AsyncSession, owner_id: str, month: str | None) -> tuple
             ]
         )
     return label, buffer.getvalue()
+
+
+async def annual_summary(db: AsyncSession, owner_id: str, days_count: int = 365) -> dict:
+    """The past year (default: 365 days) of usage and activity for the Profile tab,
+    matching OpenBot's ProfileStats: 365-day heatmap, streaks, peak day, model/provider shares,
+    and agent teammate ranking."""
+    now = datetime.now(UTC)
+    start_date = (now - timedelta(days=days_count)).date()
+    end_date = now.date()
+    start = datetime(start_date.year, start_date.month, start_date.day, tzinfo=UTC)
+
+    query = (
+        select(Turn, Thread)
+        .join(Thread, Thread.id == Turn.thread_id)
+        .where(
+            Thread.owner_id == owner_id,
+            Turn.status != "running",
+            Turn.started_at >= start,
+            Turn.started_at <= now,
+        )
+        .order_by(Turn.started_at, Turn.id)
+    )
+    rows = (await db.execute(query)).all()
+
+    # Pre-populate all days in the range (date, weekday [0=Sun..6=Sat], tokens, messages)
+    day_map: dict[str, dict] = {}
+    current_d = start_date
+    while current_d <= end_date:
+        iso = current_d.isoformat()
+        js_weekday = (current_d.weekday() + 1) % 7
+        day_map[iso] = {
+            "date": iso,
+            "weekday": js_weekday,
+            "tokens": 0,
+            "messages": 0,
+        }
+        current_d += timedelta(days=1)
+
+    total_tokens = 0
+    total_messages = 0
+    total_cost: float | None = None
+    engines: dict[str, dict] = {}
+    providers: dict[str, dict] = {}
+    agent_tokens: dict[int, int] = {}
+
+    for turn, thread in rows:
+        nums = reported(turn.usage)
+        turn_tokens = (
+            (nums["input_tokens"] or 0)
+            + (nums["output_tokens"] or 0)
+            + (nums["cache_read_input_tokens"] or 0)
+            + (nums["cache_creation_input_tokens"] or 0)
+        )
+        total_tokens += turn_tokens
+        total_messages += 1
+
+        if nums["cost_usd"] is not None:
+            total_cost = (total_cost or 0.0) + nums["cost_usd"]
+
+        day_iso = turn.started_at.astimezone(UTC).date().isoformat()
+        if day_iso in day_map:
+            day_map[day_iso]["tokens"] += turn_tokens
+            day_map[day_iso]["messages"] += 1
+
+        model = turn.model or thread.model or "default"
+        provider = thread.provider or "unknown"
+        engine_key = f"{provider}/{model}"
+
+        if engine_key not in engines:
+            engines[engine_key] = {"provider": provider, "model": model, "tokens": 0}
+        engines[engine_key]["tokens"] += turn_tokens
+
+        if provider not in providers:
+            providers[provider] = {"provider": provider, "tokens": 0}
+        providers[provider]["tokens"] += turn_tokens
+
+        if thread.agent_id is not None:
+            agent_tokens[thread.agent_id] = agent_tokens.get(thread.agent_id, 0) + turn_tokens
+
+    # Include OpenBot records on this machine to unify computer-level activity when present
+    agent_names_override: dict[Any, str] = {}
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        openbot_db = Path(appdata) / "OpenBot" / "openbot.db"
+        if openbot_db.exists():
+            try:
+                import json as _json
+                import sqlite3
+                conn = sqlite3.connect(str(openbot_db))
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT occurred_at, provider, model, tokens_json, estimated_cost_usd, agent_id FROM agent_usage_records WHERE occurred_at >= ?;",
+                    (start.isoformat(),),
+                )
+                ob_rows = cur.fetchall()
+                if ob_rows:
+                    # If OpenBot has turns, we can count OpenBot messages
+                    cur.execute("SELECT count(*) FROM projection_thread_messages WHERE author = 'user' OR turn_id != '';")
+                    ob_msg_count = cur.fetchone()[0]
+                    if ob_msg_count > total_messages:
+                        total_messages = ob_msg_count
+
+                    # Map OpenBot agent names
+                    cur.execute("SELECT thread_id, agent_id, title FROM projection_threads;")
+                    for _, ag_id, title in cur.fetchall():
+                        if ag_id and title:
+                            agent_names_override[ag_id] = title
+
+                    for ob_occ, ob_prov, ob_mod, ob_tok_json, ob_cost, ob_aid in ob_rows:
+                        try:
+                            t_data = _json.loads(ob_tok_json) if isinstance(ob_tok_json, str) else {}
+                        except Exception:
+                            t_data = {}
+                        t_toks = sum(v for v in t_data.values() if isinstance(v, (int, float)))
+                        if t_toks <= 0:
+                            continue
+
+                        # Add to day_map
+                        ob_date = str(ob_occ)[:10]
+                        if ob_date in day_map:
+                            day_map[ob_date]["tokens"] += t_toks
+                            day_map[ob_date]["messages"] = max(day_map[ob_date]["messages"], 1)
+
+                        total_tokens += t_toks
+                        if ob_cost is not None and isinstance(ob_cost, (int, float)) and ob_cost > 0:
+                            total_cost = (total_cost or 0.0) + float(ob_cost)
+
+                        prov_key = "Antigravity ACP server" if ob_prov == "antigravity" else (ob_prov or "local")
+                        eng_key = f"{prov_key}:{ob_mod}"
+                        if eng_key not in engines:
+                            engines[eng_key] = {"provider": prov_key, "model": ob_mod or "default", "tokens": 0}
+                        engines[eng_key]["tokens"] += t_toks
+
+                        if prov_key not in providers:
+                            providers[prov_key] = {"provider": prov_key, "tokens": 0}
+                        providers[prov_key]["tokens"] += t_toks
+
+                        if ob_aid:
+                            agent_tokens[ob_aid] = agent_tokens.get(ob_aid, 0) + t_toks
+                conn.close()
+            except Exception:
+                pass
+
+    days_list = [day_map[k] for k in sorted(day_map)]
+
+    longest_streak = 0
+    longest_streak_dates: dict[str, str] | None = None
+    current_run = 0
+    for idx, d in enumerate(days_list):
+        if d["tokens"] > 0 or d["messages"] > 0:
+            current_run += 1
+            if current_run > longest_streak:
+                longest_streak = current_run
+                start_idx = idx - current_run + 1
+                longest_streak_dates = {
+                    "start": days_list[start_idx]["date"],
+                    "end": d["date"],
+                }
+        else:
+            current_run = 0
+
+    active_days_count = sum(1 for d in days_list if d["tokens"] > 0 or d["messages"] > 0)
+    today_active = (days_list[-1]["tokens"] > 0 or days_list[-1]["messages"] > 0) if days_list else False
+    check_days = days_list if today_active else days_list[:-1]
+    current_streak = 0
+    for d in reversed(check_days):
+        if d["tokens"] > 0 or d["messages"] > 0:
+            current_streak += 1
+        else:
+            break
+
+    current_streak_start = None
+    if current_streak > 0 and len(check_days) >= current_streak:
+        current_streak_start = check_days[-current_streak]["date"]
+
+    peak = None
+    for d in days_list:
+        if d["tokens"] > 0:
+            if peak is None or d["tokens"] > peak["tokens"]:
+                peak = {"date": d["date"], "tokens": d["tokens"], "messages": d["messages"]}
+
+    weekday_tokens = [0] * 7
+    for d in days_list:
+        weekday_tokens[d["weekday"]] += d["tokens"]
+    max_wd = max(weekday_tokens)
+    busiest_weekday = weekday_tokens.index(max_wd) if max_wd > 0 else None
+
+    models_out = []
+    for eng in sorted(engines.values(), key=lambda e: -e["tokens"]):
+        share = (eng["tokens"] / total_tokens) if total_tokens > 0 else 0.0
+        models_out.append({
+            "provider": eng["provider"],
+            "model": eng["model"],
+            "tokens": eng["tokens"],
+            "share": round(share, 4),
+        })
+
+    providers_out = []
+    for prv in sorted(providers.values(), key=lambda p: -p["tokens"]):
+        share = (prv["tokens"] / total_tokens) if total_tokens > 0 else 0.0
+        providers_out.append({
+            "provider": prv["provider"],
+            "tokens": prv["tokens"],
+            "share": round(share, 4),
+        })
+
+    teammates_out = []
+    if agent_tokens:
+        int_agent_ids = [aid for aid in agent_tokens.keys() if isinstance(aid, int)]
+        agent_names: dict[Any, str] = dict(agent_names_override)
+        if int_agent_ids:
+            agent_rows = (await db.execute(select(Agent).where(Agent.id.in_(int_agent_ids)))).scalars().all()
+            for a in agent_rows:
+                agent_names[a.id] = a.name
+        for aid, tokens in sorted(agent_tokens.items(), key=lambda item: -item[1]):
+            teammates_out.append({
+                "agent": {
+                    "id": str(aid),
+                    "name": agent_names.get(aid, f"Agent {aid}"),
+                },
+                "tokens": tokens,
+            })
+
+    return {
+        "days": days_list,
+        "tokens": total_tokens,
+        "messages": total_messages,
+        "cost": round(total_cost, 4) if total_cost is not None else None,
+        "activeDays": active_days_count,
+        "peak": peak,
+        "currentStreak": current_streak,
+        "currentStreakStart": current_streak_start,
+        "longestStreak": longest_streak,
+        "longestStreakDates": longest_streak_dates,
+        "busiestWeekday": busiest_weekday,
+        "providers": providers_out,
+        "models": models_out,
+        "teammates": teammates_out,
+    }
