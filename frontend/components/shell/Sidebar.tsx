@@ -188,7 +188,7 @@ export function Sidebar({
               )}
               {threads?.length === 0 && (
                 <li className="px-3 py-2 text-xs text-muted">
-                  {showArchived ? t("sidebar.emptyArchived") : "No conversations yet."}
+                  {showArchived ? t("sidebar.emptyArchived") : t("sidebar.emptyTitle")}
                 </li>
               )}
               {shownThreads.map((thread) => {
@@ -267,7 +267,7 @@ export function Sidebar({
                     className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
                   >
                     <Plus size={13} className="shrink-0 text-muted" />
-                    <span>Create an agent</span>
+                    <span>{t("sidebar.createAgent")}</span>
                   </button>
                 )}
                 <ul className="space-y-0.5">
@@ -332,7 +332,7 @@ export function Sidebar({
               className={cn(ROW, "hover:bg-hover/60")}
             >
               <Columns3 size={16} aria-hidden="true" className="shrink-0 text-muted" />
-              <span className="font-medium">Tasks & calendar</span>
+              <span className="font-medium">{t("sidebar.planner")}</span>
             </button>
           )}
           {onOpenRoutines && (

@@ -163,7 +163,7 @@ export function Composer({
             </div>
           )}
           {chips.length > 0 && (
-            <ul aria-label="Pasted text" className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
+            <ul aria-label={t("composer.pastedList")} className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
               {chips.map((text, i) => (
                 <li key={`${i}-${text.length}`} className="inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-inset py-0.5 pl-2.5 pr-1 text-xs text-ink">
                   <span className="truncate" title={text.slice(0, 200)}>{t("composer.pasted", { count: text.length.toLocaleString() })}</span>
@@ -175,12 +175,12 @@ export function Composer({
             </ul>
           )}
           {chosenSkills.length > 0 && onToggleSkill && (
-            <ul aria-label="Skills for this message" className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
+            <ul aria-label={t("composer.skillsForMessage")} className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
               {chosenSkills.map((name) => (
                 <li key={name} className="inline-flex max-w-full items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pl-2.5 pr-1 text-xs text-ink">
                   <Sparkles size={12} aria-hidden="true" className="shrink-0 text-accent" />
                   <span className="truncate font-mono">{name}</span>
-                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onToggleSkill(name)} aria-label={`Remove skill ${name}`} className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-hover hover:text-ink">
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onToggleSkill(name)} aria-label={t("composer.removeSkill", { name })} className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-hover hover:text-ink">
                     <X size={12} aria-hidden="true" />
                   </button>
                 </li>
@@ -188,7 +188,7 @@ export function Composer({
             </ul>
           )}
           {slashOpen && completions.length > 0 && (
-            <ul id={menuId} role="listbox" aria-label="Skills" className="mx-2 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm shadow-md">
+            <ul id={menuId} role="listbox" aria-label={t("composer.skills")} className="mx-2 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm shadow-md">
               {completions.map((s, i) => (
                 <li key={s.name} role="presentation">
                   <button id={`${menuId}-${i}`} type="button" role="option" aria-selected={i === activeIndex}
@@ -207,16 +207,16 @@ export function Composer({
           {slashOpen && completions.length === 0 && (
             <p role="status" className="px-3 py-2 text-xs text-muted">
               {chosenSkills.length >= MAX_SKILLS_PER_MESSAGE
-                ? `Up to ${MAX_SKILLS_PER_MESSAGE} skills per message. Remove one to choose another.`
+                ? t("composer.skillsLimitReached", { max: MAX_SKILLS_PER_MESSAGE })
                 : enabledSkills.length === 0
-                  ? "No skills are switched on for this agent. Add one in the agent's settings."
-                  : "No matching skills available. Try another name or open the skill picker."}
+                  ? t("composer.noEnabledSkills")
+                  : t("composer.noMatchingSkills")}
             </p>
           )}
           {pickerOpen && onToggleSkill && (
-            <div role="group" aria-label="Pick skills" className="mx-2 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm shadow-md">
+            <div role="group" aria-label={t("composer.pickSkillsButton")} className="mx-2 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm shadow-md">
               {enabledSkills.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-muted">No skills are switched on for this agent. Add one in the agent&apos;s settings.</p>
+                <p className="px-3 py-2 text-xs text-muted">{t("composer.noEnabledSkills")}</p>
               ) : (
                 enabledSkills.map((s) => {
                   const on = chosenSkills.includes(s.name);
@@ -232,10 +232,10 @@ export function Composer({
                   );
                 })
               )}
-              {enabledSkills.length > 0 && <p className="px-3 py-1 text-xs text-faint">Up to {MAX_SKILLS_PER_MESSAGE} per message, used for the next message only.</p>}
+              {enabledSkills.length > 0 && <p className="px-3 py-1 text-xs text-faint">{t("composer.skillsLimit", { max: MAX_SKILLS_PER_MESSAGE })}</p>}
             </div>
           )}
-          {dragging && <p className="px-3 pb-1 text-xs text-accent">Drop to attach</p>}
+          {dragging && <p className="px-3 pb-1 text-xs text-accent">{t("composer.dropAttach")}</p>}
 
           {/* Full-width textarea */}
           <div className="relative w-full">
@@ -301,8 +301,8 @@ export function Composer({
                 }
               }}
               rows={1}
-              placeholder={blockedReason ?? "Message your agent"}
-              aria-label="Message"
+              placeholder={blockedReason ?? t("composer.placeholder")}
+              aria-label={t("composer.label")}
               className="block w-full max-h-52 min-h-11 resize-none bg-transparent px-2.5 pt-1.5 pb-1 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint focus-visible:outline-none"
             />
           </div>
@@ -325,12 +325,12 @@ export function Composer({
                       e.target.value = "";
                     }}
                   />
-                  <Tooltip content="Attach files or media">
+                  <Tooltip content={t("composer.attach")}>
                     <button
                       type="button"
                       onClick={() => picker.current?.click()}
                       disabled={sending}
-                      aria-label="Attach files"
+                      aria-label={t("composer.attachButton")}
                       className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
                     >
                       <Paperclip size={18} aria-hidden="true" />
@@ -339,12 +339,12 @@ export function Composer({
                 </>
               )}
               {onToggleSkill && (
-                <Tooltip content="Pick skills (/name)">
+                <Tooltip content={t("composer.pickSkills")}>
                   <button
                     type="button"
                     onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
                     disabled={sending}
-                    aria-label="Pick skills"
+                    aria-label={t("composer.pickSkillsButton")}
                     aria-expanded={pickerOpen}
                     className={cn(
                       "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10",
@@ -359,25 +359,25 @@ export function Composer({
 
             <div className="flex items-center gap-2">
               {running ? (
-                <Tooltip content={stopping ? "Stopping answer…" : "Stop generating"}>
+                <Tooltip content={stopping ? t("composer.stopping") : t("composer.stopGenerating")}>
                   <button
                     type="button"
                     onClick={onStop}
                     disabled={stopping}
-                    aria-label={stopping ? "Stopping answer" : "Stop generating"}
+                    aria-label={stopping ? t("composer.stoppingLabel") : t("composer.stopGenerating")}
                     className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger shadow-xs transition-colors duration-(--dur-fast) hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
                   >
                     <Square size={13} aria-hidden="true" />
                   </button>
                 </Tooltip>
               ) : (
-                <Tooltip content={sending ? "Sending…" : canSend ? "Send message (Enter)" : (blockedReason ?? "Enter a message to send")}>
+                <Tooltip content={sending ? t("composer.sending") : canSend ? t("composer.sendHint") : (blockedReason ?? t("composer.enterMessageHint"))}>
                   <span>
                     <button
                       type="button"
                       onClick={onSend}
                       disabled={!canSend}
-                      aria-label="Send message"
+                      aria-label={t("composer.sendMessage")}
                       className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-accent-fg shadow-xs transition-all duration-(--dur-fast) hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 touch:size-10"
                     >
                       <ArrowUp size={16} aria-hidden="true" />
@@ -391,7 +391,7 @@ export function Composer({
         {onSaveAsSkill && (
           <div className="mt-1 flex justify-end px-3">
             <button type="button" onClick={onSaveAsSkill} className="cursor-pointer text-xs text-muted underline-offset-2 hover:text-ink hover:underline">
-              Save as skill
+              {t("composer.saveSkill")}
             </button>
           </div>
         )}

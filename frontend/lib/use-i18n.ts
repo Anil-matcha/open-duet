@@ -23,7 +23,7 @@ function notify() {
 
 function currentChoice(): LanguageChoice {
   if (fallbackChoice !== null) return fallbackChoice;
-  if (typeof document === "undefined") return "system";
+  if (typeof document === "undefined") return "en";
   try {
     return parseLanguageChoice(window.localStorage.getItem(LANGUAGE_KEY));
   } catch {
@@ -33,12 +33,12 @@ function currentChoice(): LanguageChoice {
 
 function currentLocale(): Locale {
   if (typeof document === "undefined") return "en";
-  return resolveLocale(currentChoice(), navigator.language || "en");
+  return resolveLocale(currentChoice());
 }
 
 function refreshLanguage() {
   if (typeof document === "undefined") return;
-  applyLanguage(document, currentChoice(), navigator.language || "en");
+  applyLanguage(document, currentChoice());
   notify();
 }
 
@@ -52,21 +52,19 @@ function subscribe(listener: () => void) {
   listeners.add(listener);
   if (!listening && typeof window !== "undefined") {
     window.addEventListener("storage", onStorage);
-    window.addEventListener("languagechange", refreshLanguage);
     listening = true;
   }
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0 && listening && typeof window !== "undefined") {
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener("languagechange", refreshLanguage);
       listening = false;
     }
   };
 }
 
 export function useLanguageChoice(): LanguageChoice {
-  return useSyncExternalStore(subscribe, currentChoice, () => "system");
+  return useSyncExternalStore(subscribe, currentChoice, () => "en");
 }
 
 export function useT() {
@@ -80,7 +78,7 @@ export function useT() {
 export function setLanguageChoice(choice: LanguageChoice): void {
   fallbackChoice = writeLanguage(() => window.localStorage, choice) ? null : choice;
   if (typeof document !== "undefined") {
-    applyLanguage(document, choice, navigator.language || "en");
+    applyLanguage(document, choice);
     notify();
   }
 }

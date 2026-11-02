@@ -8,6 +8,7 @@ import { ruleMatchLabel, ruleScopeLabel } from "@/lib/approvals";
 import { BUTTON, FIELD, FIELD_BOX } from "./styles";
 import { SaveBar } from "@/components/settings/SaveBar";
 import { SavedConfirmation, useSavedConfirmation } from "@/components/settings/SavedConfirmation";
+import { useT } from "@/lib/use-i18n";
 
 // The saved "always allow" rules for shell commands: list, add and remove.
 // With a `workspace`, it starts on the rules that apply in that folder.
@@ -18,6 +19,7 @@ export function ApprovalRules({
   workspace?: string | null;
   threadId?: number | null;
 }) {
+  const t = useT();
   const [rules, setRules] = useState<ApprovalRule[] | null>(null);
   const [onlyHere, setOnlyHere] = useState(workspace !== null);
   const [tick, setTick] = useState(0);
@@ -41,12 +43,12 @@ export function ApprovalRules({
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load the saved rules.");
+        if (!cancelled) setError(err instanceof ApiError ? err.message : t("approvals.loadError"));
       });
     return () => {
       cancelled = true;
     };
-  }, [onlyHere, workspace, tick]);
+  }, [onlyHere, workspace, tick, t]);
 
   const run = async (action: () => Promise<unknown>, then?: () => void) => {
     setBusy(true);
@@ -57,7 +59,7 @@ export function ApprovalRules({
       confirmation.showSaved("rules");
       setTick((n) => n + 1);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "That did not work.");
+      setError(err instanceof ApiError ? err.message : t("common.operationError"));
     } finally {
       setBusy(false);
     }
@@ -75,7 +77,7 @@ export function ApprovalRules({
         confirmation.showSaved("rules");
         setTick((n) => n + 1);
       })
-      .catch((err: unknown) => setSaveError(err instanceof ApiError ? err.message : "That did not work."))
+      .catch((err: unknown) => setSaveError(err instanceof ApiError ? err.message : t("common.operationError")))
       .finally(() => setBusy(false));
   };
   const dirty = command.trim() !== "" || match !== formBaseline.match || folder !== formBaseline.folder;
@@ -89,24 +91,17 @@ export function ApprovalRules({
 
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-xs text-muted">
-        A saved rule lets a shell command run without asking. Anything else still asks, and a command on the
-        safety floor (deleting your home folder, formatting a disk, a force push…) always asks, whatever a rule
-        says. A rule that starts with some words never matches a command that chains another one.
-      </p>
+      <p className="text-xs text-muted">{t("approvals.explanation")}</p>
       {workspace !== null && (
         <label className="flex items-center gap-2 text-xs">
           <input type="checkbox" checked={onlyHere} onChange={(e) => setOnlyHere(e.target.checked)} />
-          Only rules that apply in this conversation&apos;s folder
+          {t("approvals.onlyThisFolder")}
         </label>
       )}
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
-      {rules === null && !error && <p className="text-xs text-muted">Loading…</p>}
+      {rules === null && !error && <p className="text-xs text-muted">{t("approvals.loading")}</p>}
       {rules !== null && rules.length === 0 && (
-        <p className="rounded-md bg-inset px-3 py-3 text-xs text-muted">
-          No saved rules{onlyHere ? " for this folder" : ""}. Choose &ldquo;Always allow this command&rdquo; on a
-          request, or add one below.
-        </p>
+        <p className="rounded-md bg-inset px-3 py-3 text-xs text-muted">{onlyHere ? t("approvals.emptyFolder") : t("approvals.empty")}</p>
       )}
       {rules !== null && rules.length > 0 && (
         <ul className="divide-y divide-line rounded-md border border-line">
@@ -121,29 +116,29 @@ export function ApprovalRules({
               <button
                 className={BUTTON}
                 disabled={busy}
-                aria-label={`Remove the rule for ${rule.command}`}
+                aria-label={t("approvals.removeRule", { command: rule.command })}
                 onClick={() => run(() => api.deleteApprovalRule(rule.id, threadId))}
               >
-                Remove
+                {t("approvals.remove")}
               </button>
             </li>
           ))}
         </ul>
       )}
       <form id="approval-add-form" onSubmit={add} className="space-y-2 rounded-md border border-line p-3">
-        <p className="text-xs font-medium">Add a rule</p>
+        <p className="text-xs font-medium">{t("approvals.addRule")}</p>
         <div className="flex gap-2">
           <Select
-            aria-label="How the command must match"
+            aria-label={t("approvals.matchLabel")}
             value={match}
             onChange={(e) => { setMatch(e.target.value === "prefix" ? "prefix" : "exact"); setSaveError(null); confirmation.clearSaved("rules"); }}
             className={`${FIELD_BOX} w-36 shrink-0`}
           >
-            <option value="exact">Exactly</option>
-            <option value="prefix">Starts with</option>
+            <option value="exact">{t("approvals.exactly")}</option>
+            <option value="prefix">{t("approvals.startsWith")}</option>
           </Select>
           <input
-            aria-label="Command"
+            aria-label={t("approvals.command")}
             className={`${FIELD} font-mono`}
             placeholder={match === "prefix" ? "git status" : "npm test"}
             value={command}
@@ -154,9 +149,9 @@ export function ApprovalRules({
           />
         </div>
         <input
-          aria-label="Folder"
+          aria-label={t("approvals.folder")}
           className={`${FIELD} font-mono`}
-          placeholder="Folder (empty: every folder)"
+          placeholder={t("approvals.folderPlaceholder")}
           value={folder}
           onChange={(e) => { setFolder(e.target.value); setSaveError(null); confirmation.clearSaved("rules"); }}
           spellCheck={false}
@@ -168,7 +163,7 @@ export function ApprovalRules({
           error={saveError}
           saved={false}
           canSave={Boolean(command.trim())}
-          saveLabel="Add rule"
+          saveLabel={t("approvals.addRule")}
           onSave={() => {
             const form = document.getElementById("approval-add-form");
             if (form instanceof HTMLFormElement) form.requestSubmit();

@@ -15,6 +15,7 @@ import { browserTimezone } from "@/lib/routines";
 import { addDays, calendarDays, dateKey, deadlineDay, isOverdue, rescheduleDeadline } from "@/lib/planner";
 import { planner, type CalendarEvent, type RoutineCalendar, type WorkBoard, type WorkChanges, type WorkInput, type WorkItem } from "@/lib/planner-api";
 import { cn } from "@/lib/cn";
+import { useT } from "@/lib/use-i18n";
 
 type View = "board" | "month" | "week" | "list";
 type Editor = { item: WorkItem | null; seedDate?: string; seedColumn?: number };
@@ -26,6 +27,7 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId = null }: {
   agents: Agent[]; threads: Thread[]; onClose: () => void; onOpenRoutines: () => void; taskId?: number | null;
 }) {
+  const t = useT();
   const [board, setBoard] = useState<WorkBoard | null>(null);
   const [items, setItems] = useState<WorkItem[] | null>(null);
   const [team, setTeam] = useState<{ id: number; name: string } | null>(null);
@@ -169,15 +171,15 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
         <span className={cn(item.priority === "urgent" ? "text-danger" : item.priority === "high" ? "text-warning" : "")}>{item.priority}</span>
         <span className={isOverdue(item) ? "text-danger" : ""}>{isOverdue(item) ? "Overdue · " : ""}{deadlineLabel(item)}</span>
       </div>
-      <button type="button" className="mt-2 text-xs text-accent hover:underline" onClick={() => setExecutionItem(item)}>Run & history</button>
+      <button type="button" className="mt-2 text-xs text-accent hover:underline" onClick={() => setExecutionItem(item)}>{t("planner.runHistory")}</button>
       {item.execution_state && <p className="mt-1 text-xs text-muted">Attempt {item.execution_attempt} · {item.execution_state === "needs_input" ? "Waiting for approval" : item.execution_state}</p>}
       {!compact && <>
         <p className="mt-2 truncate text-xs text-muted">{assigneeLabel(item)}</p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <Select aria-label={`Move ${item.title}`} className={`${control} min-w-0 max-w-full text-xs`} value={item.column_id} disabled={busy || archived} onChange={event => void update(item, { column_id: Number(event.target.value) })}>
+          <Select aria-label={t("planner.moveItem", { title: item.title })} className={`${control} min-w-0 max-w-full text-xs`} value={item.column_id} disabled={busy || archived} onChange={event => void update(item, { column_id: Number(event.target.value) })}>
             {board?.columns.map(column => <option key={column.id} value={column.id}>{column.name}</option>)}
           </Select>
-          <button type="button" className="text-xs text-muted hover:underline disabled:opacity-50" disabled={busy} onClick={() => void update(item, { archived: !item.archived })}>{archived ? "Restore" : "Archive"}</button>
+          <button type="button" className="text-xs text-muted hover:underline disabled:opacity-50" disabled={busy} onClick={() => void update(item, { archived: !item.archived })}>{archived ? t("planner.restore") : t("planner.archive")}</button>
         </div>
       </>}
     </article>
@@ -195,30 +197,30 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
 
   const calendarMode = view === "month" || view === "week";
   return <>
-    <Dialog open onOpenChange={open => { if (!open) onClose(); }} title="Tasks & calendar" description="Plan your work, track deadlines, and see scheduled routines." size="xl" flush>
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }} title={t("planner.title")} description={t("planner.description")} size="xl" flush>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="space-y-3 border-b border-line p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-field border border-line p-0.5" aria-label="Planner views">
-              {([["board", "Board", Columns3], ["month", "Month", CalendarDays], ["week", "Week", CalendarDays], ["list", "Upcoming", List]] as const).map(([value, label, Icon]) =>
+            <div className="flex rounded-field border border-line p-0.5" aria-label={t("planner.views")}>
+              {([["board", t("planner.viewBoard"), Columns3], ["month", t("planner.viewMonth"), CalendarDays], ["week", t("planner.viewWeek"), CalendarDays], ["list", t("planner.viewUpcoming"), List]] as const).map(([value, label, Icon]) =>
                 <button key={value} type="button" aria-pressed={view === value} onClick={() => setView(value)} className={cn("flex items-center gap-1.5 rounded px-2 py-1.5 text-sm", view === value ? "bg-accent text-accent-fg" : "text-muted hover:bg-hover")}><Icon size={14} aria-hidden="true" />{label}</button>)}
             </div>
-            <span className="mr-auto text-xs text-muted">{filtered.length} task{filtered.length === 1 ? "" : "s"} · {timezone}</span>
-            <Button disabled={busy} onClick={() => { setTick(value => value + 1); }} icon={<RefreshCw size={14} aria-hidden="true" />}>Refresh</Button>
-            <Button variant="primary" disabled={!board || busy} onClick={() => setEditor({ item: null })} icon={<Plus size={14} aria-hidden="true" />}>New task</Button>
+            <span className="mr-auto text-xs text-muted">{t("planner.taskCount", { count: filtered.length })} · {timezone}</span>
+            <Button disabled={busy} onClick={() => { setTick(value => value + 1); }} icon={<RefreshCw size={14} aria-hidden="true" />}>{t("planner.refresh")}</Button>
+            <Button variant="primary" disabled={!board || busy} onClick={() => setEditor({ item: null })} icon={<Plus size={14} aria-hidden="true" />}>{t("planner.newTask")}</Button>
           </div>
           <div className="flex flex-wrap gap-2">
-            <input aria-label="Search tasks" type="search" placeholder="Search tasks…" value={query} onChange={event => setQuery(event.target.value)} className={`${control} min-w-32 flex-1`} />
-            <Select aria-label="Filter by assignment" className={control} value={assignee} onChange={event => setAssignee(event.target.value)}>
-              <option value="">All assignments</option><option value="unassigned">Unassigned</option>
+            <input aria-label={t("planner.searchTasks")} type="search" placeholder={t("planner.searchTasks")} value={query} onChange={event => setQuery(event.target.value)} className={`${control} min-w-32 flex-1`} />
+            <Select aria-label={t("planner.assignment")} className={control} value={assignee} onChange={event => setAssignee(event.target.value)}>
+              <option value="">{t("planner.allAssignments")}</option><option value="unassigned">{t("planner.unassigned")}</option>
               {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
               {team && <option value={`team:${team.id}`}>{team.name} (team)</option>}
             </Select>
-            <Select aria-label="Filter by priority" className={control} value={priority} onChange={event => setPriority(event.target.value)}>
-              <option value="">All priorities</option>{priorities.map(value => <option key={value} value={value}>{value}</option>)}
+            <Select aria-label={t("planner.priority")} className={control} value={priority} onChange={event => setPriority(event.target.value)}>
+              <option value="">{t("planner.allPriorities")}</option>{priorities.map(value => <option key={value} value={value}>{value}</option>)}
             </Select>
-            <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyOverdue} onChange={event => setOnlyOverdue(event.target.checked)} />Overdue</label>
-            <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={archived} disabled={busy} onChange={event => { setItems(null); setArchived(event.target.checked); }} />Archived</label>
+            <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyOverdue} onChange={event => setOnlyOverdue(event.target.checked)} />{t("planner.overdue")}</label>
+            <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={archived} disabled={busy} onChange={event => { setItems(null); setArchived(event.target.checked); }} />{t("planner.archived")}</label>
           </div>
         </div>
         <div aria-live="polite" className="px-4 text-sm">
@@ -231,28 +233,28 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
               const cards = filtered.filter(item => item.column_id === column.id).sort((a, b) => a.position - b.position || a.id - b.id);
               return <section key={column.id} aria-label={column.name} onDragOver={acceptDrop} onDrop={event => drop(event, () => ({ column_id: column.id }))} className="min-w-0 rounded-card border border-line bg-inset p-2">
                 <div className="mb-3 flex items-center gap-2 px-1"><h3 className="text-sm font-semibold">{column.name}</h3><span className="text-xs text-muted">{cards.length}</span>
-                  <button type="button" aria-label={`Add task to ${column.name}`} disabled={busy} onClick={() => setEditor({ item: null, seedColumn: column.id })} className="ml-auto rounded p-1 hover:bg-hover"><Plus size={15} aria-hidden="true" /></button></div>
-                <div className="space-y-2">{cards.map(item => taskCard(item))}{cards.length === 0 && <p className="p-3 text-xs text-muted">No tasks here.</p>}</div>
+                  <button type="button" aria-label={t("planner.addToColumn", { name: column.name })} disabled={busy} onClick={() => setEditor({ item: null, seedColumn: column.id })} className="ml-auto rounded p-1 hover:bg-hover"><Plus size={15} aria-hidden="true" /></button></div>
+                <div className="space-y-2">{cards.map(item => taskCard(item))}{cards.length === 0 && <p className="p-3 text-xs text-muted">{t("planner.noTasksHere")}</p>}</div>
               </section>;
             })}
           </div>}
           {items && view === "list" && <div className="space-y-3">
-            <p className="text-xs text-muted">Deadlines first, followed by tasks without a due date. Completed tasks keep their workflow state.</p>
-            {upcoming.length === 0 ? <EmptyPanel title="No matching tasks" description="Create a task or adjust your filters." />
+            <p className="text-xs text-muted">{t("planner.deadlinesFirst")}</p>
+            {upcoming.length === 0 ? <EmptyPanel title={t("planner.noMatchingTasks")} description={t("planner.createOrAdjust")} />
               : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{upcoming.map(item => taskCard(item))}</div>}
           </div>}
           {calendarMode && <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <button className={control} aria-label="Previous period" onClick={() => setAnchor(value => view === "week" ? addDays(value, -7) : new Date(value.getFullYear(), value.getMonth() - 1, 1))}><ChevronLeft size={16} aria-hidden="true" /></button>
-              <button className={control} onClick={() => setAnchor(new Date())}>Today</button>
-              <button className={control} aria-label="Next period" onClick={() => setAnchor(value => view === "week" ? addDays(value, 7) : new Date(value.getFullYear(), value.getMonth() + 1, 1))}><ChevronRight size={16} aria-hidden="true" /></button>
+              <button className={control} aria-label={t("planner.previousPeriod")} onClick={() => setAnchor(value => view === "week" ? addDays(value, -7) : new Date(value.getFullYear(), value.getMonth() - 1, 1))}><ChevronLeft size={16} aria-hidden="true" /></button>
+              <button className={control} onClick={() => setAnchor(new Date())}>{t("planner.today")}</button>
+              <button className={control} aria-label={t("planner.nextPeriod")} onClick={() => setAnchor(value => view === "week" ? addDays(value, 7) : new Date(value.getFullYear(), value.getMonth() + 1, 1))}><ChevronRight size={16} aria-hidden="true" /></button>
               <h3 className="mr-auto text-sm font-semibold">{view === "month" ? anchor.toLocaleDateString([], { month: "long", year: "numeric" }) : `${days[0].toLocaleDateString([], { month: "short", day: "numeric" })} – ${days[6].toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`}</h3>
-              <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={showRoutines} onChange={event => setShowRoutines(event.target.checked)} />Routines & runs</label>
-              <button className={`${control} text-xs`} onClick={onOpenRoutines}>Manage routines</button>
+              <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={showRoutines} onChange={event => setShowRoutines(event.target.checked)} />{t("planner.routinesAndRuns")}</label>
+              <button className={`${control} text-xs`} onClick={onOpenRoutines}>{t("planner.manageRoutines")}</button>
             </div>
-            {showRoutines && calendarError && <p role="alert" className="text-sm text-danger">Routine calendar: {calendarError}</p>}
+            {showRoutines && calendarError && <p role="alert" className="text-sm text-danger">{t("planner.routineCalendar")}: {calendarError}</p>}
             {showRoutines && calendar?.warnings.map(warning => <p key={warning} className="text-xs text-warning">{warning}</p>)}
-            <p className="text-xs text-muted">Task deadlines · <span className="text-accent">↻ Routines and run history</span>. All times are in {timezone}. Use + on a date to add a task.</p>
+            <p className="text-xs text-muted">{t("planner.deadlinesRoutinesLegend")}. {t("planner.timesInTimezone", { timezone })}</p>
             <div className="overflow-x-auto rounded-field border border-line">
               <div className="min-w-[700px]">
                 <div className="grid grid-cols-7 border-b border-line bg-inset">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => <div key={day} className="p-2 text-center text-xs font-semibold text-muted">{day}</div>)}</div>
@@ -264,16 +266,16 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
                     return <section key={key} aria-label={day.toLocaleDateString([], { dateStyle: "full" })} onDragOver={acceptDrop} onDrop={event => drop(event, item => rescheduleDeadline(item, key, timezone))}
                       className={cn("min-h-28 border-b border-r border-line p-1.5", view === "week" && "min-h-[40dvh]", view === "month" && day.getMonth() !== anchor.getMonth() && "bg-inset/50")}>
                       <div className="mb-1 flex items-center justify-between gap-1"><span className={cn("inline-flex size-6 items-center justify-center rounded-full text-xs", key === dateKey(new Date()) && "bg-accent font-semibold text-accent-fg")}>{day.getDate()}</span>
-                        <button type="button" aria-label={`Add task on ${key}`} disabled={!board || busy} className="rounded p-1 text-muted hover:bg-hover" onClick={() => setEditor({ item: null, seedDate: key })}><Plus size={13} aria-hidden="true" /></button></div>
+                        <button type="button" aria-label={t("planner.addOnDate", { date: key })} disabled={!board || busy} className="rounded p-1 text-muted hover:bg-hover" onClick={() => setEditor({ item: null, seedDate: key })}><Plus size={13} aria-hidden="true" /></button></div>
                       <div className="space-y-1">{cards.slice(0, 3).map(item => taskCard(item, true))}{events.slice(0, 2).map(routineEntry)}
-                        {(cards.length > 3 || events.length > 2) && <details><summary className="cursor-pointer py-1 text-xs text-muted">{Math.max(0, cards.length - 3) + Math.max(0, events.length - 2)} more</summary><div className="space-y-1">{cards.slice(3).map(item => taskCard(item, true))}{events.slice(2).map(routineEntry)}</div></details>}
+                        {(cards.length > 3 || events.length > 2) && <details><summary className="cursor-pointer py-1 text-xs text-muted">{t("planner.more", { count: Math.max(0, cards.length - 3) + Math.max(0, events.length - 2) })}</summary><div className="space-y-1">{cards.slice(3).map(item => taskCard(item, true))}{events.slice(2).map(routineEntry)}</div></details>}
                       </div>
                     </section>;
                   })}
                 </div>
               </div>
             </div>
-            {filtered.some(item => !deadlineDay(item)) && <details><summary className="cursor-pointer text-sm text-muted">Tasks without a due date ({filtered.filter(item => !deadlineDay(item)).length})</summary><div className="mt-2 grid gap-2 sm:grid-cols-3">{filtered.filter(item => !deadlineDay(item)).map(item => taskCard(item))}</div></details>}
+            {filtered.some(item => !deadlineDay(item)) && <details><summary className="cursor-pointer text-sm text-muted">{t("planner.noDueDate", { count: filtered.filter(item => !deadlineDay(item)).length })}</summary><div className="mt-2 grid gap-2 sm:grid-cols-3">{filtered.filter(item => !deadlineDay(item)).map(item => taskCard(item))}</div></details>}
           </div>}
         </div>
       </div>

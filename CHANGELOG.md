@@ -4,6 +4,8 @@
 
 ### Added
 
+- Put language pickers on sign-in and chat, use English as the default, and translate common sign-in, chat, sidebar, search, audio, planner, approvals, team and room controls across the supported languages. Decision-log summaries, health-scan details, other specialized screens and engine-supplied text can still contain English.
+
 - Redo the Agents and Edit agent screens: compact agent rows with an overflow menu for less common actions, search, one banner for engines that need sign-in, an editor with sections, a sticky Save footer, unsaved-changes and discard confirmation, and compact per-app access controls. Move the Telegram connection from the sidebar into Settings under AI > Channels.
 
 ## 0.8.0 - 2026-11-03

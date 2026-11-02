@@ -9,13 +9,9 @@ import { ApprovalRules } from "./ApprovalRules";
 import { DecisionLog } from "./DecisionLog";
 import { HealthScan } from "./HealthScan";
 
-const TABS = [
-  { id: "rules", label: "Always allowed" },
-  { id: "decisions", label: "Decisions" },
-  { id: "health", label: "Health" },
-] as const;
+const TABS = ["rules", "decisions", "health"] as const;
 
-type Tab = (typeof TABS)[number]["id"];
+type Tab = (typeof TABS)[number];
 
 export function ApprovalsTabs({
   threadId = null,
@@ -31,7 +27,7 @@ export function ApprovalsTabs({
   useEffect(() => {
     const syncTabToAnchor = () => {
       const nextTab = settingsTabForAnchor(window.location.hash.slice(1));
-      setTab(TABS.some((candidate) => candidate.id === nextTab) ? nextTab as Tab : "rules");
+      setTab(TABS.some((candidate) => candidate === nextTab) ? nextTab as Tab : "rules");
     };
     syncTabToAnchor();
     window.addEventListener("hashchange", syncTabToAnchor);
@@ -41,34 +37,34 @@ export function ApprovalsTabs({
   const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const current = (event.target as HTMLElement).dataset.tabId as Tab | undefined;
     if (!current) return;
-    const next = tabTargetForKey(TABS.map((candidate) => candidate.id), current, event.key);
+    const next = tabTargetForKey(TABS, current, event.key);
     if (!next) return;
     event.preventDefault();
     setTab(next);
-    tabRefs.current[TABS.findIndex((candidate) => candidate.id === next)]?.focus();
+    tabRefs.current[TABS.findIndex((candidate) => candidate === next)]?.focus();
   };
 
   return (
     <div>
       <div role="tablist" aria-label={t("header.approvals")} onKeyDown={onTabKeyDown} className="mb-4 flex gap-1 border-b border-line">
-        {TABS.map((t, index) => (
+        {TABS.map((id, index) => (
           <button
-            key={t.id}
+            key={id}
             ref={(element) => { tabRefs.current[index] = element; }}
-            id={`approvals-tab-${t.id}`}
-            data-tab-id={t.id}
+            id={`approvals-tab-${id}`}
+            data-tab-id={id}
             role="tab"
-            aria-selected={tab === t.id}
+            aria-selected={tab === id}
             aria-controls="approvals-tabpanel"
-            tabIndex={tab === t.id ? 0 : -1}
-            onClick={() => setTab(t.id)}
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => setTab(id)}
             className={`-mb-px cursor-pointer border-b-2 px-3 py-1.5 text-xs font-medium ${
-              tab === t.id
+              tab === id
                 ? "border-accent"
                 : "border-transparent text-muted hover:text-ink"
             }`}
           >
-            {t.label}
+            {t(id === "rules" ? "approvals.allowedTab" : id === "decisions" ? "approvals.decisionsTab" : "approvals.healthTab")}
           </button>
         ))}
       </div>
@@ -91,8 +87,9 @@ export function ApprovalsPanel({
   workspace: string | null;
   onClose: () => void;
 }) {
+  const t = useT();
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }} title="Approvals" size="wide">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }} title={t("approvals.title")} size="wide">
       <ApprovalsTabs threadId={threadId} workspace={workspace} />
     </Dialog>
   );

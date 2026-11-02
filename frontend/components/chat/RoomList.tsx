@@ -8,6 +8,7 @@ import { collaboration, type Room } from "@/lib/collaboration";
 import { roomHref } from "@/lib/rooms";
 import { useSession } from "@/components/AuthGate";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { useT } from "@/lib/use-i18n";
 
 export function RoomList({
   selected,
@@ -18,6 +19,7 @@ export function RoomList({
   onTeam: () => void;
   onNavigate?: () => void;
 }) {
+  const t = useT();
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [teamReady, setTeamReady] = useState(false);
   const [collapsed, setCollapsed] = useState(() => selected === null);
@@ -61,7 +63,7 @@ export function RoomList({
 
   const roomCount = rooms?.length ?? 0;
   const showBoth = teamReady && rooms !== null;
-  const sectionTitle = showBoth ? "Team & Rooms" : teamReady ? "Team" : "Rooms";
+  const sectionTitle = showBoth ? `${t("team.title")} & ${t("room.plural")}` : teamReady ? t("team.title") : t("room.plural");
 
   return (
     <section aria-label={sectionTitle} className="pt-2">
@@ -78,10 +80,10 @@ export function RoomList({
         </button>
         {/* Only show top-level Plus button when rooms-only (no team) to avoid ambiguity */}
         {!teamReady && admin && (
-          <Tooltip content="New room">
+          <Tooltip content={t("room.new")}>
             <Link
               href={roomHref("new")}
-              aria-label="New room"
+              aria-label={t("room.new")}
               onClick={onNavigate}
               className="inline-flex size-6 items-center justify-center rounded text-muted hover:bg-hover hover:text-ink transition-colors"
             >
@@ -98,7 +100,7 @@ export function RoomList({
             <div className="space-y-1">
               {showBoth && (
                 <div className="px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                  Team
+                  {t("team.title")}
                 </div>
               )}
               <button
@@ -111,10 +113,10 @@ export function RoomList({
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Users size={16} aria-hidden="true" className="shrink-0 text-muted group-hover:text-ink transition-colors" />
-                  <span className="truncate">Team coordination</span>
+                  <span className="truncate">{t("team.coordination")}</span>
                 </div>
                 <span className="text-[11px] font-normal text-muted group-hover:text-ink transition-colors">
-                  Manage
+                  {t("team.manage")}
                 </span>
               </button>
             </div>
@@ -126,14 +128,14 @@ export function RoomList({
               {showBoth && (
                 <div className="flex items-center justify-between px-2.5">
                   <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    <span>Rooms</span>
+                    <span>{t("room.plural")}</span>
                     {roomCount > 0 && <span className="font-normal text-faint">({roomCount})</span>}
                   </div>
                   {admin && (
-                    <Tooltip content="New room">
+                    <Tooltip content={t("room.new")}>
                       <Link
                         href={roomHref("new")}
-                        aria-label="New room"
+                        aria-label={t("room.new")}
                         onClick={onNavigate}
                         className="inline-flex size-5 items-center justify-center rounded text-muted hover:bg-hover hover:text-ink transition-colors"
                       >
@@ -152,10 +154,10 @@ export function RoomList({
                     className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
                   >
                     <Plus size={13} className="shrink-0 text-muted" />
-                    <span>Create a room</span>
+                    <span>{t("room.create")}</span>
                   </Link>
                 ) : (
-                  <p className="px-2.5 py-1.5 text-xs text-muted">No rooms yet.</p>
+                  <p className="px-2.5 py-1.5 text-xs text-muted">{t("room.noRooms")}</p>
                 )
               ) : (
                 <ul className="space-y-0.5">
@@ -172,12 +174,12 @@ export function RoomList({
                         <Hash size={15} aria-hidden="true" className="shrink-0 text-muted" />
                         <span className="min-w-0 flex-1 truncate">{room.name}</span>
                         {room.dispatches.some((item) => item.status === "running") && (
-                          <span className="animate-pulse text-xs text-warning">working</span>
+                          <span className="animate-pulse text-xs text-warning">{t("room.working")}</span>
                         )}
                         {room.unread > 0 && (
                           <span
                             className="rounded-full bg-accent px-1.5 py-0.2 text-[11px] font-medium text-accent-fg"
-                            aria-label={`${room.unread} unread messages`}
+                            aria-label={t("room.unread", { count: room.unread })}
                           >
                             {room.unread}
                           </span>
