@@ -12,6 +12,7 @@ import { Input, Select } from "@/components/ui/Input";
 import { Banner } from "@/components/ui/Banner";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { writeCachedPreference } from "@/lib/engine-selection";
 
 
 export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engines: Engine[]) => void } = {}) {
@@ -49,6 +50,11 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
       onEnginesChanged?.(updated);
       setDrafts((previous) => ({ ...previous, [engine.id]: engineDraft(saved) }));
       toast(`${engine.label} settings saved. ${saved.available ? "Ready to use." : saved.reason ?? "The engine is not ready yet."}`);
+      if (saved.available) {
+        const prefModel = (typeof draft.model === "string" && draft.model.trim()) || saved.default_model || null;
+        writeCachedPreference({ provider: saved.id, model: prefModel });
+        void api.setEnginePreference({ provider: saved.id, model: prefModel }).catch(() => {});
+      }
     } catch (err) { setError(err instanceof ApiError ? `Could not save engine settings. ${err.message}` : "Could not save engine settings."); }
     finally { setBusy(null); }
   };

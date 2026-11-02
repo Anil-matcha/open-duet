@@ -12,8 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from contextlib import nullcontext
 import shutil
 
-from app.schemas.engine import EngineConfigRequest, EngineResponse
-from app.services import engine_config
+from app.schemas.engine import EngineConfigRequest, EnginePreference, EngineResponse
+from app.services import engine_config, engine_preference
 from app.services.local_access_policy import require_local_access
 from app.services.thread_runtime import ThreadRuntime
 from app.services.thread_runtime import runtime as default_runtime
@@ -47,6 +47,20 @@ async def list_engines(refresh: bool = False, rt: ThreadRuntime = Depends(get_ru
     """Every engine, with status, models and capabilities. Results are kept
     for a few seconds; `refresh=true` checks again now."""
     return await rt.engines.describe(refresh=refresh)
+
+
+@router.get("/preference", response_model=EnginePreference)
+async def get_engine_preference():
+    """Read the preferred default engine and model from disk."""
+    return engine_preference.read_preference()
+
+
+@router.put("/preference", response_model=EnginePreference)
+async def set_engine_preference(payload: EnginePreference, rt: ThreadRuntime = Depends(get_runtime)):
+    """Save the preferred default engine and model to disk."""
+    if payload.provider and payload.provider not in rt.adapters:
+        raise HTTPException(status_code=404, detail="Engine not found")
+    return engine_preference.write_preference(payload.provider, payload.model)
 
 
 @router.get("/{engine_id}", response_model=EngineResponse)

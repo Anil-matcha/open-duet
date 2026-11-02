@@ -560,6 +560,10 @@ export type Engine = {
   // Set while the engine refuses turns for a usage or rate limit or no credits.
   limit?: EngineLimit | null;
 };
+export type EnginePreference = {
+  provider: string | null;
+  model: string | null;
+};
 export type EngineLimit = {
   kind: "usage_limit" | "rate_limit" | "credits";
   resets_at: string | null;
@@ -919,6 +923,8 @@ export const api = {
   getNeedsYou: () => request<import("./needs-you").NeedsYouSnapshot>("/needs-you?refresh=true"),
   requestTeamLead: (agentId: number) => request<{ id: number; lead_agent_id: number }>("/team/lead", { method: "POST", body: JSON.stringify({ agent_id: agentId }) }),
   getEngines: (refresh = false) => request<Engine[]>(`/engines${refresh ? "?refresh=true" : ""}`),
+  getEnginePreference: () => request<EnginePreference>("/engines/preference"),
+  setEnginePreference: (preference: EnginePreference) => request<EnginePreference>("/engines/preference", { method: "PUT", body: JSON.stringify(preference) }),
   logoutClaudeEngine: () => request<void>("/engines/claude/logout", { method: "POST" }),
   logoutCodexEngine: () => request<void>("/engines/codex/logout", { method: "POST" }),
   startClaudeEngineLogin: () => request<ClaudeLoginOperation>("/engines/claude/login", { method: "POST" }),

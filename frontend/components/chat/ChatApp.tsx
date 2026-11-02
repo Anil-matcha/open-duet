@@ -33,6 +33,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
 import { t } from "@/lib/i18n";
 import { reportPresence } from "@/lib/presence";
+import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
 import { parseSkillCommand, skillErrorText, toggleSkill, learnableTurn, type SkillSummary, type SkillLearnSource } from "@/lib/skills";
 import { RoomList } from "./RoomList";
@@ -197,8 +198,10 @@ export function ChatApp() {
   // The agent a new chat will start with (null: a plain chat).
   const [newAgentId, setNewAgentId] = useState<number | null>(() => parseThreadId(params.get("agent")));
   const [engines, setEngines] = useState<Engine[] | null>(null);
-  const [newProvider, setNewProvider] = useState(() => params.get("engine") || "claude");
-  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || null);
+  const cachedPref = readCachedPreference();
+  const [newProvider, setNewProvider] = useState(() => params.get("engine") || cachedPref?.provider || "claude");
+  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || cachedPref?.model || null);
+
   const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null } | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
@@ -225,10 +228,35 @@ export function ChatApp() {
   }, [threadId, transcript.runningTurnId, transcript.items]);
 
   useEffect(() => {
+    let live = true;
+    api.getEnginePreference().then((saved) => {
+      if (!live || !saved?.provider) return;
+      writeCachedPreference({ provider: saved.provider, model: saved.model });
+      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+        setNewProvider(saved.provider);
+        if (!params.get("model")) setNewModel(saved.model);
+      }
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [threadId, transcript.runningTurnId, transcript.items]);
+
+  useEffect(() => {
     let cancelled = false;
     // The chat opens on the status alone; the engine list (it checks every CLI, so it can take seconds)
     // fills in when it arrives and nothing waits for it.
-    api.getEngines().then((items) => { if (!cancelled) setEngines(items); }).catch(() => { if (!cancelled) setEngines(null); });
+    api.getEngines().then((items) => {
+      if (cancelled) return;
+      setEngines(items);
+      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+        setNewProvider((current) => {
+          const resolved = resolveEngineModel({ provider: current, model: newModel }, items);
+          if (resolved.model !== newModel && !params.get("model")) {
+            setNewModel(resolved.model);
+          }
+          return resolved.provider;
+        });
+      }
+    }).catch(() => { if (!cancelled) setEngines(null); });
     api.getLocalStatus()
       .then((status) => {
         if (cancelled) return;
@@ -477,6 +505,10 @@ export function ChatApp() {
       let id = threadId;
       if (id === null) {
         id = (await api.createThread(startingAgentId, startingAgentId !== null ? { model: newModel } : { provider: newProvider, model: newModel })).id;
+        if (startingAgentId === null) {
+          writeCachedPreference({ provider: newProvider, model: newModel });
+          void api.setEnginePreference({ provider: newProvider, model: newModel }).catch(() => {});
+        }
         // Open it now: the stream replays from the start, so nothing is missed.
         router.replace(`/chat?thread=${id}`);
       }
@@ -514,6 +546,8 @@ export function ChatApp() {
       } else {
         setNewProvider(target.provider);
         setNewModel(model);
+        writeCachedPreference({ provider: target.provider, model });
+        void api.setEnginePreference({ provider: target.provider, model }).catch(() => {});
       }
       setModelDraft((previous) => previous === target ? null : previous);
     } catch (err) { setModelError(err instanceof ApiError ? err.message : "Could not change the model."); }
