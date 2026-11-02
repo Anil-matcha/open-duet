@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("openDots", {
   openGoogleSignIn: (url) => ipcRenderer.invoke("open-dots:google-sign-in", url),
   openComposioLink: (url) => ipcRenderer.invoke("open-dots:open-composio-link", url),
   nativeControl: (request) => ipcRenderer.invoke("open-dots:native-control", request),
+  copyText: (text) => ipcRenderer.invoke("open-dots:copy-text", text),
   updates: {
     run: (action) => ipcRenderer.invoke("open-dots:update", action),
     onState: (listener) => {

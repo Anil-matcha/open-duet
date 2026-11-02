@@ -12,6 +12,7 @@ import { t } from "@/lib/i18n";
 import { toolRunSummary } from "@/lib/transcript-view";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "./Markdown";
+import { copyToClipboard } from "@/lib/clipboard";
 import { MessageAttachments } from "./Attachments";
 
 type Item<K extends TranscriptItem["kind"]> = Extract<TranscriptItem, { kind: K }>;
@@ -43,17 +44,25 @@ function LongText({ value }: { value: string }) {
 }
 
 // Copies a message's text. Revealed on hover or keyboard focus, and always visible on touch screens.
+export function formatMessageTime(ts?: string | null): string | null {
+  if (!ts) return null;
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
+  const copy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ok = await copyToClipboard(text);
+    if (ok) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard blocked: nothing to do
+      setTimeout(() => setCopied(false), 2000);
     }
   };
+
   const label = copied ? t("chat.copied") : t("chat.copy");
   return (
     <button
@@ -73,15 +82,25 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
 }
 
 export function UserMessage({ item, threadId = null }: { item: Item<"user">; threadId?: number | null }) {
+  const timeStr = formatMessageTime(item.ts);
   return (
-    <div className="group/msg flex flex-col items-end gap-2">
+    <div className="group/msg flex flex-col items-end gap-1">
       <MessageAttachments threadId={threadId} items={item.attachments ?? []} />
-      <div className="flex max-w-[88%] items-end gap-1 sm:max-w-[80%]">
+      <div className="flex max-w-[88%] items-end gap-1.5 sm:max-w-[80%]">
         {item.text && <CopyButton text={item.text} />}
         <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-bubble px-4 py-2.5 text-[15px] leading-relaxed text-ink">
           {item.text}
         </p>
       </div>
+      {timeStr && (
+        <time
+          dateTime={item.ts ?? undefined}
+          title={item.ts ? new Date(item.ts).toLocaleString() : undefined}
+          className="select-none px-1 text-[11px] text-muted/70 font-normal"
+        >
+          {timeStr}
+        </time>
+      )}
       {item.skills && item.skills.length > 0 && (
         <p className="max-w-[88%] break-words text-xs text-muted sm:max-w-[80%]">
           Skill: <span className="font-mono">{item.skills.map((name) => `/${name}`).join(" ")}</span>
@@ -95,16 +114,32 @@ export function AssistantMessage({
   text,
   incomplete = false,
   live = false,
+  ts = null,
 }: {
   text: string;
   incomplete?: boolean;
   live?: boolean;
+  ts?: string | null;
 }) {
+  const timeStr = formatMessageTime(ts);
   return (
     <div className="group/msg max-w-full text-[15px] leading-relaxed">
       <Markdown text={text} />
       {live && <span aria-hidden="true" className="animate-pulse text-muted motion-reduce:animate-none">▍</span>}
-      {!live && text && <div className="-ml-1.5 mt-0.5 flex"><CopyButton text={text} /></div>}
+      {!live && text && (
+        <div className="-ml-1 mt-1 flex items-center gap-2">
+          <CopyButton text={text} />
+          {timeStr && (
+            <time
+              dateTime={ts ?? undefined}
+              title={ts ? new Date(ts).toLocaleString() : undefined}
+              className="select-none text-[11px] text-muted/70 font-normal"
+            >
+              {timeStr}
+            </time>
+          )}
+        </div>
+      )}
       {incomplete && <p className="mt-1 text-xs text-muted">This message stopped before it was finished.</p>}
     </div>
   );

@@ -27,6 +27,7 @@ import {
   type UserProfile,
 } from "@/lib/profile";
 import { request } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 
 const PROVIDER_COLORS: Record<string, string> = {
   anthropic: "#D97706",
@@ -864,10 +865,12 @@ function ProfileShareDialog({
       .join("\n");
   }, [name, stats]);
 
-  function copySummary() {
-    navigator.clipboard.writeText(shareText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copySummary() {
+    const ok = await copyToClipboard(shareText);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   return (
