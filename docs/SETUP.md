@@ -23,7 +23,7 @@ Outside the desktop app every request needs a sign-in. Full design and tradeoffs
    ```
 
    The same command replaces a forgotten passphrase (every browser is then signed out).
-3. **Pair a phone or another browser:** **Settings → Devices → Create pairing code**, choose *Chat only* or *Full access*, then scan the QR code or open `/pair` on the other device and type the code (5 minutes, single use). Revoke a device from the same list. From the shell: `uv run python -m app.auth.cli pairing-code [--scope chat]`, `devices`, `revoke ID`.
+3. **Pair a phone or another browser:** **Settings → Devices → Create pairing code**, choose *Chat only*, *Chat and files* or *Full access*, then scan the QR code or open `/pair` on the other device and type the code (5 minutes, single use). Revoke a device from the same list. From the shell: `uv run python -m app.auth.cli pairing-code [--scope chat]`, `devices`, `revoke ID`.
 4. **Scripts:** pair them (`POST /api/v1/auth/pair` with `{"code": "…"}` returns a token once) and send `Authorization: Bearer <token>`.
 5. **An older browser** that kept its guest or Telegram id in `localStorage` hands it to the server after the first sign-in and forgets it; your tasks and schedules stay yours.
 
@@ -36,7 +36,8 @@ Nothing to set up; see [EVERYDAY.md](EVERYDAY.md). Attached files are kept in
 `ATTACHMENTS_DIR`; the desktop app uses its data folder), folders `0700` and
 files `0600`, and are deleted with their conversation. The Files and Usage
 panels need an admin session; a device paired with the `chat` scope can search
-and attach but cannot browse workspace files or see usage. No migration is
+and attach but cannot browse workspace files or see usage. A device paired with
+*Chat and files* can also list, preview and download workspace files (not the zip). No migration is
 needed.
 
 ## Database

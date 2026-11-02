@@ -27,6 +27,10 @@ bearer header, so a token copied out of one cannot be replayed as the other.
 - `chat`: conversations (create, send, stop, read events, answer approvals) and
   the reads the chat page needs. The list is in `backend/app/auth/policy.py`
   and is an allowlist: a route added later is admin-only until it is listed.
+- `files`: opt-in, chosen when the pairing code is made (**Chat and files**; `--scope files`
+  on the CLI). It is chat plus reading a conversation's workspace files: list, preview,
+  image and download, not the folder zip. `admin` includes it. A chat-only device never
+  gains it; the phone must be paired again with a code that has it.
 
 ## The owner
 
@@ -90,13 +94,13 @@ without a preflight. That closes login CSRF.
    code from a 31-symbol alphabet without look-alikes (about 2^39.6), shown as
    `ABCD-EFGH`, with a QR code of `<web UI>/pair#code=ABCD-EFGH`. The code is
    carried in the URL fragment, so it never reaches a server log. For a
-   chat-only code the screen shows a second QR code and link for the
+   chat-only or chat-and-files code the screen shows a second QR code and link for the
    [phone app](MOBILE.md), `suparagent://pair?server=<web UI>#code=ABCD-EFGH`.
 2. On the device, scan the QR or open `/pair` and type the code. A browser
    exchanges it for its own session cookie; any other client
    (`POST /api/v1/auth/pair` without `"cookie": true`) receives a bearer token
    **once**, to keep in its own secret storage. The phone app takes the token
-   path. It accepts only a chat-only session: for one with `admin` it calls
+   path. It accepts a chat-only or chat-and-files session: for one with `admin` it calls
    `POST /api/v1/auth/logout` with the new token, which revokes it, and refuses.
 3. The code is single use (consumed atomically: of two simultaneous
    redemptions only one wins), expires after 5 minutes, and is stored only as

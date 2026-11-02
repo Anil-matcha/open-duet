@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Linking, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { parseMarkdown, type Span } from '@/lib/markdown';
-import { useStyles, type Palette } from '@/lib/theme';
+import { Text } from '@/components/text';
+import { MONO } from '@/lib/fonts';
+import { parseMarkdown, type Align, type Span } from '@/lib/markdown';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
-const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const HEADING_SIZE = [0, 22, 20, 18, 17, 16, 16];
 
 function Spans({ spans }: { spans: Span[] }) {
@@ -22,6 +23,45 @@ function Spans({ spans }: { spans: Span[] }) {
         </Text>
       ))}
     </>
+  );
+}
+
+const spanText = (spans: Span[]) => spans.map((span) => span.text).join('');
+
+/** Width of each column from its longest cell, scaled with the person's text size. Long cells wrap. */
+export function columnWidths(header: Span[][], rows: Span[][][], fontScale: number): number[] {
+  return header.map((_, column) => {
+    const longest = Math.max(spanText(header[column]).length, ...rows.map((row) => spanText(row[column]).length));
+    return Math.round(Math.min(240, Math.max(72, longest * 8.5 + 24)) * Math.max(1, fontScale));
+  });
+}
+
+// Wider than the screen is fine: the table scrolls sideways, so no column is ever cut off.
+function Table({ header, rows, align }: { header: Span[][]; rows: Span[][][]; align: Align[] }) {
+  const styles = useStyles(createStyles);
+  const { fontScale } = useWindowDimensions();
+  const widths = columnWidths(header, rows, fontScale);
+  // The scroll view is given the table's own height: left to itself it can come out taller than its rows.
+  const [height, setHeight] = useState<number | null>(null);
+  const line = (cells: Span[][], head: boolean) =>
+    cells.map((spans, column) => (
+      <View key={column} style={[styles.cell, head && styles.headCell, { width: widths[column] }]}>
+        <Text selectable style={[styles.text, styles.cellText, head && styles.bold, { textAlign: align[column] }]}>
+          <Spans spans={spans} />
+        </Text>
+      </View>
+    ));
+  return (
+    <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={[styles.scroll, height !== null && { height }]}>
+      <View style={styles.table} onLayout={(event) => setHeight(Math.ceil(event.nativeEvent.layout.height))}>
+        <View style={styles.row}>{line(header, true)}</View>
+        {rows.map((row, index) => (
+          <View key={index} style={styles.row}>
+            {line(row, false)}
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -54,6 +94,8 @@ export function Markdown({ text }: { text: string }) {
                 </Text>
               </View>
             );
+          case 'table':
+            return <Table key={index} header={block.header} rows={block.rows} align={block.align} />;
           case 'list':
             return (
               <View key={index} style={styles.list}>
@@ -87,10 +129,16 @@ const createStyles = (p: Palette) =>
     italic: { fontStyle: 'italic' },
     link: { color: p.accentText, textDecorationLine: 'underline' },
     inlineCode: { fontFamily: MONO, backgroundColor: p.surfaceStrong },
-    codeBlock: { backgroundColor: p.surfaceStrong, borderRadius: 8, padding: 8 },
+    codeBlock: { backgroundColor: p.surfaceStrong, borderRadius: radius.field, padding: 8 },
     codeText: { fontFamily: MONO, fontSize: 13, color: p.text },
     quote: { borderLeftWidth: 3, borderLeftColor: p.quoteBar, paddingLeft: 8 },
     list: { gap: 4 },
     item: { flexDirection: 'row', gap: 6 },
     itemText: { flex: 1 },
+    scroll: { flexGrow: 0 },
+    table: { alignSelf: 'flex-start', borderTopWidth: StyleSheet.hairlineWidth, borderLeftWidth: StyleSheet.hairlineWidth, borderColor: p.border },
+    row: { flexDirection: 'row' },
+    cell: { padding: 6, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: p.border },
+    headCell: { backgroundColor: p.surfaceStrong },
+    cellText: { fontSize: 14 },
   });
