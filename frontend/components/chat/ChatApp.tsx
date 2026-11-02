@@ -33,6 +33,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
 import { t } from "@/lib/i18n";
 import { reportPresence } from "@/lib/presence";
+import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
 import { parseSkillCommand, skillErrorText, toggleSkill, learnableTurn, type SkillSummary, type SkillLearnSource } from "@/lib/skills";
 import { RoomList } from "./RoomList";
@@ -197,9 +198,12 @@ export function ChatApp() {
   // The agent a new chat will start with (null: a plain chat).
   const [newAgentId, setNewAgentId] = useState<number | null>(() => parseThreadId(params.get("agent")));
   const [engines, setEngines] = useState<Engine[] | null>(null);
-  const [newProvider, setNewProvider] = useState(() => params.get("engine") || "claude");
-  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || null);
-  const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null } | null>(null);
+  const cachedPref = readCachedPreference();
+  const [newProvider, setNewProvider] = useState(() => params.get("engine") || cachedPref?.provider || "claude");
+  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || cachedPref?.model || null);
+  const [newEffort, setNewEffort] = useState<string | null>(() => params.get("effort") || cachedPref?.effort || null);
+
+  const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null; effort: string | null } | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
 
@@ -225,10 +229,39 @@ export function ChatApp() {
   }, [threadId, transcript.runningTurnId, transcript.items]);
 
   useEffect(() => {
+    let live = true;
+    api.getEnginePreference().then((saved) => {
+      if (!live || !saved?.provider) return;
+      writeCachedPreference({ provider: saved.provider, model: saved.model, effort: saved.effort });
+      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+        setNewProvider(saved.provider);
+        if (!params.get("model")) setNewModel(saved.model);
+        if (!params.get("effort")) setNewEffort(saved.effort ?? null);
+      }
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [threadId, transcript.runningTurnId, transcript.items]);
+
+  useEffect(() => {
     let cancelled = false;
     // The chat opens on the status alone; the engine list (it checks every CLI, so it can take seconds)
     // fills in when it arrives and nothing waits for it.
-    api.getEngines().then((items) => { if (!cancelled) setEngines(items); }).catch(() => { if (!cancelled) setEngines(null); });
+    api.getEngines().then((items) => {
+      if (cancelled) return;
+      setEngines(items);
+      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+        setNewProvider((current) => {
+          const resolved = resolveEngineModel({ provider: current, model: newModel, effort: newEffort }, items);
+          if (resolved.model !== newModel && !params.get("model")) {
+            setNewModel(resolved.model);
+          }
+          if (resolved.effort !== newEffort && !params.get("effort")) {
+            setNewEffort(resolved.effort ?? null);
+          }
+          return resolved.provider;
+        });
+      }
+    }).catch(() => { if (!cancelled) setEngines(null); });
     api.getLocalStatus()
       .then((status) => {
         if (cancelled) return;
@@ -397,6 +430,7 @@ export function ChatApp() {
   const selectedEngine = engines?.find((engine) => engine.id === selectedProvider);
   const selectedAgent = threadId === null ? startingAgent : threadAgent?.provider === thread?.provider ? threadAgent : null;
   const selectedModel = (threadId === null ? newModel : thread?.model) ?? selectedAgent?.model ?? null;
+  const selectedEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
   const skillAgent = threadId === null ? startingAgent : threadAgent;
   const skillAgentId = skillAgent?.id ?? null;
   const [skillsTick, setSkillsTick] = useState(0);
@@ -476,7 +510,11 @@ export function ChatApp() {
     try {
       let id = threadId;
       if (id === null) {
-        id = (await api.createThread(startingAgentId, startingAgentId !== null ? { model: newModel } : { provider: newProvider, model: newModel })).id;
+        id = (await api.createThread(startingAgentId, startingAgentId !== null ? { model: newModel, effort: newEffort } : { provider: newProvider, model: newModel, effort: newEffort })).id;
+        if (startingAgentId === null) {
+          writeCachedPreference({ provider: newProvider, model: newModel, effort: newEffort });
+          void api.setEnginePreference({ provider: newProvider, model: newModel, effort: newEffort }).catch(() => {});
+        }
         // Open it now: the stream replays from the start, so nothing is missed.
         router.replace(`/chat?thread=${id}`);
       }
@@ -506,14 +544,18 @@ export function ChatApp() {
     const target = modelDraft;
     setModelBusy(true); setModelError(null);
     const model = target.model?.trim() || null;
+    const effort = target.effort?.trim() || null;
     try {
       if (target.threadId !== null) {
-        const updated = await api.updateThread(target.threadId, { model });
+        const updated = await api.updateThread(target.threadId, { model, effort });
         setThreads((previous) => previous?.map((item) => item.id === target.threadId ? updated : item) ?? null);
         setOpenedThread((previous) => previous?.id === target.threadId ? updated : previous);
       } else {
         setNewProvider(target.provider);
         setNewModel(model);
+        setNewEffort(effort);
+        writeCachedPreference({ provider: target.provider, model, effort });
+        void api.setEnginePreference({ provider: target.provider, model, effort }).catch(() => {});
       }
       setModelDraft((previous) => previous === target ? null : previous);
     } catch (err) { setModelError(err instanceof ApiError ? err.message : "Could not change the model."); }
@@ -613,7 +655,15 @@ export function ChatApp() {
 
   const openModelDialog = () => {
     setModelError(null);
-    setModelDraft({ threadId, agentId: startingAgentId, provider: selectedProvider, model: threadId === null ? newModel : thread?.model ?? null });
+    const activeModelId = (threadId === null ? newModel : thread?.model) ?? null;
+    const activeEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
+    setModelDraft({
+      threadId,
+      agentId: startingAgentId,
+      provider: selectedProvider,
+      model: activeModelId,
+      effort: activeEffort,
+    });
   };
 
   const refreshToday = async () => {
@@ -661,7 +711,23 @@ export function ChatApp() {
       engine={
         ready && engines && (threadId === null || thread !== null)
           ? {
-              label: `${selectedEngine?.label ?? selectedProvider} · ${modelLabel(selectedModel)}`,
+              label: (() => {
+                const baseEngine = selectedEngine?.label ?? selectedProvider;
+                const modelObj = selectedEngine?.models.find((item) => item.id === selectedModel);
+                const modelName = modelObj?.label ?? (selectedModel ? modelLabel(selectedModel) : "default");
+                const supportsEffort = Boolean(
+                  modelObj?.supported_reasoning_efforts &&
+                  modelObj.supported_reasoning_efforts.length > 1 &&
+                  modelObj.reasoning_effort_configurable !== false
+                );
+                const effortToShow = supportsEffort
+                  ? (selectedEffort ?? modelObj?.default_reasoning_effort)
+                  : null;
+                const effortPart = effortToShow
+                  ? ` · ${effortToShow.charAt(0).toUpperCase() + effortToShow.slice(1)}`
+                  : "";
+                return `${baseEngine} · ${modelName}${effortPart}`;
+              })(),
               disabled: modelBusy || sending || transcript.runningTurnId !== null,
               onClick: openModelDialog,
             }
@@ -817,7 +883,16 @@ export function ChatApp() {
       {modelDraft && modelDraft.threadId === threadId && (threadId !== null || modelDraft.agentId === startingAgentId) && engines && (
         <Dialog open onOpenChange={(open) => { if (!open) setModelDraft(null); }} title="Engine and model" size="sm">
           <form onSubmit={(event) => { event.preventDefault(); void saveModel(); }} className="space-y-4">
-            <EngineModelFields engines={engines} provider={modelDraft.provider} model={modelDraft.model} onChange={(provider, model) => setModelDraft({ ...modelDraft, provider, model })} disabled={modelBusy} lockProvider={threadId !== null || startingAgentId !== null} defaultLabel={selectedAgent ? `Agent default (${modelLabel(selectedAgent.model)})` : undefined} />
+            <EngineModelFields
+              engines={engines}
+              provider={modelDraft.provider}
+              model={modelDraft.model}
+              effort={modelDraft.effort}
+              onChange={(provider, model, effort) => setModelDraft({ ...modelDraft, provider, model, effort: effort ?? null })}
+              disabled={modelBusy}
+              lockProvider={threadId !== null || startingAgentId !== null}
+              defaultLabel={selectedAgent ? `Agent default (${modelLabel(selectedAgent.model)})` : undefined}
+            />
             {threadId !== null && <p className="text-xs text-muted">The model changes on the next message. This conversation keeps its engine.</p>}
             {modelError && <p role="alert" className="text-sm text-danger">{modelError}</p>}
             <div className="flex flex-wrap items-center gap-2">

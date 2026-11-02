@@ -26,7 +26,7 @@ export type TranscriptItem =
   | { kind: "team_setup"; key: string; turnId: number | null; requestId: string; undoAvailable: boolean; rows: { action: string; agentId: number; name: string; changes?: { field: string; before: unknown; after: unknown }[] }[] }
   | { kind: "routine_change"; key: string; turnId: number | null; requestId: string; routineId: number; name: string; action: string; paused: boolean; note: string }
   | { kind: "agent_created"; key: string; turnId: number | null; agentId: number; name: string; title: string }
-  | { kind: "user"; key: string; turnId: number | null; text: string; attachments: AttachmentRef[]; skills?: string[] }
+  | { kind: "user"; key: string; turnId: number | null; text: string; attachments: AttachmentRef[]; skills?: string[]; ts?: string }
   | {
       kind: "assistant";
       key: string;
@@ -34,6 +34,7 @@ export type TranscriptItem =
       text: string;
       // The message did not finish (the turn failed or was stopped while it was written).
       incomplete: boolean;
+      ts?: string;
     }
   | {
       kind: "tool";
@@ -191,7 +192,7 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
         typing: null,
         items: [
           ...state.items,
-          { kind: "user", key, turnId: id, text: text(data.prompt_text), attachments: attachmentRefs(data.attachments) },
+          { kind: "user", key, turnId: id, text: text(data.prompt_text), attachments: attachmentRefs(data.attachments), ts: event.ts },
         ],
       };
 
@@ -201,7 +202,7 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
         typing: null,
         items: [
           ...state.items,
-          { kind: "assistant", key, turnId: id, text: text(data.text), incomplete: data.incomplete === true },
+          { kind: "assistant", key, turnId: id, text: text(data.text), incomplete: data.incomplete === true, ts: event.ts },
         ],
       };
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import { useState } from "react";
 import { ApiError, type Agent } from "@/lib/api";
 import { collaboration, type Room, type RoomInput } from "@/lib/collaboration";
@@ -40,8 +42,8 @@ export function RoomSettings({ room, agents, onSaved, onCancel }: { room?: Room;
       {room && <p className="text-xs text-muted">Removal skips queued replies. Stop working members and wait for them to finish before removing them. Re-adding keeps their work history and starts with new room messages; old replies are never retried automatically.</p>}
     </fieldset>
     <label className="block text-sm">Shared instructions<textarea maxLength={12000} rows={4} className={FIELD} value={bulletin} onChange={event => setBulletin(event.target.value)} /><span className="mt-1 block text-xs text-muted">Visible to every room member. Do not put credentials here.</span></label>
-    <label className="block text-sm">Who answers without a tag?<select className={FIELD} value={kind} onChange={event => setKind(event.target.value as Room["default_responder_kind"])}><option value="mentions">Only tagged members</option><option value="member">One member</option><option value="everyone">Everyone</option></select></label>
-    {kind === "member" && <label className="block text-sm">Default responder<select required className={FIELD} value={responder ?? ""} onChange={event => setResponder(Number(event.target.value) || null)}><option value="">Choose a member…</option>{agents.filter(agent => members.includes(agent.id)).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>}
+    <label className="block text-sm">Who answers without a tag?<Select className={FIELD} value={kind} onChange={event => setKind(event.target.value as Room["default_responder_kind"])}><option value="mentions">Only tagged members</option><option value="member">One member</option><option value="everyone">Everyone</option></Select></label>
+    {kind === "member" && <label className="block text-sm">Default responder<Select required className={FIELD} value={responder ?? ""} onChange={event => setResponder(Number(event.target.value) || null)}><option value="">Choose a member…</option>{agents.filter(agent => members.includes(agent.id)).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</Select></label>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     <div className="flex gap-2"><button className="rounded-field border border-line px-3 py-2 text-sm hover:bg-hover" type="submit" disabled={!name.trim() || members.length === 0 || members.length > 12 || (kind === "member" && (!responder || !members.includes(responder)))}>{busy ? "Saving…" : room ? "Save room" : "Create room"}</button><button className="px-3 py-2 text-sm underline" type="button" onClick={onCancel}>Cancel</button></div>
   </fieldset></form>;

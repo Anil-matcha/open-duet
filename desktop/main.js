@@ -10,7 +10,7 @@
 // Everything that can be tested without Electron is in src/. This file only
 // connects those pieces to Electron.
 
-const { app, BrowserWindow, dialog, safeStorage, session, ipcMain, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, dialog, safeStorage, session, ipcMain, shell, systemPreferences, clipboard } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -159,6 +159,13 @@ async function main() {
   registerEngineSignIn({ ipcMain, openExternal: url => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerGoogleSignIn({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerComposioLink({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
+  ipcMain.handle("open-dots:copy-text", (_event, text) => {
+    if (typeof text === "string") {
+      clipboard.writeText(text);
+      return true;
+    }
+    return false;
+  });
   updater = createUpdater({
     currentVersion: app.getVersion(),
     platform: process.platform,

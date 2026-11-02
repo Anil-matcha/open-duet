@@ -31,6 +31,17 @@ async def usage_summary(month: str | None = _MONTH, rt: ThreadRuntime = Depends(
         raise _bad_month() from None
 
 
+@router.get("/usage/annual")
+async def usage_annual(
+    days: int = Query(365, ge=7, le=730),
+    rt: ThreadRuntime = Depends(get_runtime),
+):
+    """Activity and usage summary over the past year (or given days),
+    for the Profile tab."""
+    async with rt.session() as db:
+        return await usage_report.annual_summary(db, rt.owner_id, days)
+
+
 @router.get("/usage.csv")
 async def usage_csv(month: str | None = _MONTH, rt: ThreadRuntime = Depends(get_runtime)):
     """One row per finished turn of the month."""

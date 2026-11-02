@@ -160,7 +160,7 @@ export function Conversation({
               case "user":
                 return <UserMessage key={item.key} item={item} threadId={threadId} />;
               case "assistant":
-                return <AssistantMessage key={item.key} text={item.text} incomplete={item.incomplete} />;
+                return <AssistantMessage key={item.key} text={item.text} incomplete={item.incomplete} ts={item.ts} />;
               case "tool":
                 return <ToolStep key={item.key} item={item} />;
               case "approval":

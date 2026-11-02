@@ -4,6 +4,7 @@ export type SettingsPage = { href: string; label: string; summary: string };
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { href: "/settings/", label: "General", summary: "Appearance, updates and the setup guide." },
+  { href: "/settings/profile/", label: "Profile", summary: "Your profile, annual activity stats, top models and account." },
   { href: "/settings/engines/", label: "Engines", summary: "Claude Code, Codex and the other engines, their paths and limits." },
   { href: "/settings/approvals/", label: "Approvals", summary: "Commands you always allow and what was decided." },
   { href: "/settings/account/", label: "Account & privacy", summary: "Your account, devices, history export and permissions." },

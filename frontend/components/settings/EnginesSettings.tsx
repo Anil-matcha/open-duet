@@ -21,6 +21,7 @@ declare global {
       openComposioLink(url: string): Promise<void>;
       nativeControl(request: import("@/components/chat/NativeComputer").NativeRequest): Promise<import("@/components/chat/NativeComputer").NativeStatus | { held: boolean }>;
       updates?: import("@/components/AppUpdates").UpdatesBridge;
+      copyText?(text: string): Promise<boolean>;
     };
   }
 }

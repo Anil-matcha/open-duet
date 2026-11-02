@@ -150,11 +150,16 @@ async def rename_thread(db: AsyncSession, thread_id: int, title: str) -> Thread:
     return await _change_quietly(db, thread_id, title=title)
 
 
-async def set_model(db: AsyncSession, thread_id: int, model: str | None) -> Thread:
+async def set_model(db: AsyncSession, thread_id: int, model: str | None, effort: str | None = None) -> Thread:
     """Change the model the next turns ask for (None: the engine's default).
     Not activity: the list order does not change. Raises ThreadNotFound."""
-    await _locked_thread(db, thread_id)
-    return await _change_quietly(db, thread_id, model=model)
+    thread = await _locked_thread(db, thread_id)
+    state = dict(thread.provider_state or {})
+    if effort is not None:
+        state["effort"] = effort
+    elif "effort" in state and model is None:
+        state.pop("effort", None)
+    return await _change_quietly(db, thread_id, model=model, provider_state=state)
 
 
 async def set_archived(db: AsyncSession, thread_id: int, archived: bool) -> Thread:
@@ -353,6 +358,7 @@ async def create_thread(
     kind: str = "chat",
     job_id: int | None = None,
     room_id: int | None = None,
+    effort: str | None = None,
     commit: bool = True,
 ) -> Thread:
     if not provider.strip():
@@ -361,6 +367,9 @@ async def create_thread(
     if workspace_path is None:
         from app.services.local_claude_runner import workspace_dir
         workspace_path = str(workspace_dir().resolve())
+    if effort:
+        provider_state = dict(provider_state or {})
+        provider_state["effort"] = effort
     await begin_write(db)
     now = utcnow()
     thread = Thread(

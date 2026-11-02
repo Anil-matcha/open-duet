@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, ApiError, type Agent } from "@/lib/api";
@@ -72,7 +74,7 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
           {approvals.filter(item => item.status === "pending").map(approval => <SharedApproval key={approval.id} approval={approval} onChanged={() => void refresh()} />)}
         </div>
         {room.dispatches.filter(item => ["failed", "stopped"].includes(item.status)).map(item => <div key={item.id} className="flex flex-wrap items-center gap-2 text-xs text-warning"><span>{roomMemberName(room.members, item.agent_id)}: {item.status}{item.error_code ? ` (${item.error_code})` : ""}</span>{admin && <button type="button" className="underline" disabled={busy} onClick={() => void act(() => collaboration.retryDispatch(room.id, item.id))}>Retry</button>}</div>)}
-        <form onSubmit={send} className="space-y-2"><label className="block text-sm">Message the room<textarea required maxLength={100000} rows={3} className="mt-1 w-full resize-y rounded-field border border-line bg-raised p-3 text-sm" value={draft} onChange={event => setDraft(event.target.value)} disabled={busy} placeholder="Write a message or tag a member…" /></label><div className="flex flex-wrap gap-2"><select aria-label="Mention a member" className={BUTTON} value="" disabled={busy} onChange={event => { if (event.target.value) setDraft(previous => `${previous}${previous && !/\s$/.test(previous) ? " " : ""}${event.target.value}`); }}><option value="">Mention…</option><option value="@everyone ">@everyone</option>{room.members.map(member => <option key={member.agent_id} value={mentionToken(member.name)}>{member.name}</option>)}</select><button className={BUTTON} type="submit" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send message"}</button></div></form>
+        <form onSubmit={send} className="space-y-2"><label className="block text-sm">Message the room<textarea required maxLength={100000} rows={3} className="mt-1 w-full resize-y rounded-field border border-line bg-raised p-3 text-sm" value={draft} onChange={event => setDraft(event.target.value)} disabled={busy} placeholder="Write a message or tag a member…" /></label><div className="flex flex-wrap gap-2"><Select aria-label="Mention a member" className={BUTTON} value="" disabled={busy} onChange={event => { if (event.target.value) setDraft(previous => `${previous}${previous && !/\s$/.test(previous) ? " " : ""}${event.target.value}`); }}><option value="">Mention…</option><option value="@everyone ">@everyone</option>{room.members.map(member => <option key={member.agent_id} value={mentionToken(member.name)}>{member.name}</option>)}</Select><button className={BUTTON} type="submit" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send message"}</button></div></form>
       </> : !error && <p role="status" className="text-sm text-muted">Loading room…</p>}
     </div>
   </Dialog>;

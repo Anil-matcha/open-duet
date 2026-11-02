@@ -8,13 +8,13 @@ import { loadDraft, saveDraft } from "@/lib/drafts";
 import { t } from "@/lib/i18n";
 import { MAX_SKILLS_PER_MESSAGE, skillCompletions, type SkillSummary } from "@/lib/skills";
 import { Button } from "@/components/ui/Button";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { PendingAttachments } from "./Attachments";
 
 const MAX_HEIGHT_PX = 200;
 
-// The message box: one rounded field with the paperclip on the left and Send (or Stop while an
-// answer is being written) on the right. Enter sends, Shift+Enter adds a line, and Enter during
-// IME composition does neither. While it cannot send it says why, instead of just going grey.
+// The message box: full-width text area with chips on top and action bar (paperclip, skills, Send/Stop) on the bottom.
+// Enter sends, Shift+Enter adds a line, and Enter during IME composition does neither.
 export function Composer({
   value,
   onChange,
@@ -152,15 +152,17 @@ export function Composer({
         {attachNotice && <p role="status" className="mb-2 text-sm text-warning">{attachNotice}</p>}
         <div
           className={cn(
-            "rounded-3xl border bg-raised px-2 py-2 shadow-sm transition-colors duration-(--dur-fast) focus-within:border-accent/60",
+            "flex flex-col rounded-2xl border bg-raised p-2 shadow-sm transition-colors duration-(--dur-fast) focus-within:border-accent/60",
             dragging ? "border-accent bg-accent/10" : "border-line",
           )}
         >
           {onRemoveFile && files.length > 0 && (
-            <div className="px-2 pt-1"><PendingAttachments files={files} onRemove={onRemoveFile} disabled={sending} /></div>
+            <div className="px-2 pt-1 pb-1">
+              <PendingAttachments files={files} onRemove={onRemoveFile} disabled={sending} />
+            </div>
           )}
           {chips.length > 0 && (
-            <ul aria-label="Pasted text" className="flex flex-wrap gap-1.5 px-2 pt-1">
+            <ul aria-label="Pasted text" className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
               {chips.map((text, i) => (
                 <li key={`${i}-${text.length}`} className="inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-inset py-0.5 pl-2.5 pr-1 text-xs text-ink">
                   <span className="truncate" title={text.slice(0, 200)}>{t("composer.pasted", { count: text.length.toLocaleString() })}</span>
@@ -172,7 +174,7 @@ export function Composer({
             </ul>
           )}
           {chosenSkills.length > 0 && onToggleSkill && (
-            <ul aria-label="Skills for this message" className="flex flex-wrap gap-1.5 px-2 pt-1">
+            <ul aria-label="Skills for this message" className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
               {chosenSkills.map((name) => (
                 <li key={name} className="inline-flex max-w-full items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pl-2.5 pr-1 text-xs text-ink">
                   <Sparkles size={12} aria-hidden="true" className="shrink-0 text-accent" />
@@ -185,7 +187,7 @@ export function Composer({
             </ul>
           )}
           {slashOpen && completions.length > 0 && (
-            <ul id={menuId} role="listbox" aria-label="Skills" className="mx-2 mt-1 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm">
+            <ul id={menuId} role="listbox" aria-label="Skills" className="mx-2 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm shadow-md">
               {completions.map((s, i) => (
                 <li key={s.name} role="presentation">
                   <button id={`${menuId}-${i}`} type="button" role="option" aria-selected={i === activeIndex}
@@ -211,7 +213,7 @@ export function Composer({
             </p>
           )}
           {pickerOpen && onToggleSkill && (
-            <div role="group" aria-label="Pick skills" className="mx-2 mt-1 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm">
+            <div role="group" aria-label="Pick skills" className="mx-2 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-raised text-sm shadow-md">
               {enabledSkills.length === 0 ? (
                 <p className="px-3 py-2 text-xs text-muted">No skills are switched on for this agent. Add one in the agent&apos;s settings.</p>
               ) : (
@@ -233,47 +235,9 @@ export function Composer({
             </div>
           )}
           {dragging && <p className="px-3 pb-1 text-xs text-accent">Drop to attach</p>}
-          <div className="flex items-end gap-1">
-            {onAddFiles && (
-              <>
-                <input
-                  ref={picker}
-                  type="file"
-                  multiple
-                  hidden
-                  aria-hidden
-                  tabIndex={-1}
-                  accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
-                  onChange={(e) => {
-                    onAddFiles(Array.from(e.target.files ?? []));
-                    e.target.value = "";
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => picker.current?.click()}
-                  disabled={sending}
-                  aria-label="Attach files"
-                  title="Attach images, text or audio files (or paste, or drop them here)"
-                  className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-11"
-                >
-                  <Paperclip size={18} aria-hidden="true" />
-                </button>
-              </>
-            )}
-            {onToggleSkill && (
-              <button
-                type="button"
-                onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
-                disabled={sending}
-                aria-label="Pick skills"
-                aria-expanded={pickerOpen}
-                title="Use a saved skill for this message (or type / and a name)"
-                className={cn("inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-11", (pickerOpen || chosenSkills.length > 0) && "text-accent")}
-              >
-                <Sparkles size={18} aria-hidden="true" />
-              </button>
-            )}
+
+          {/* Full-width textarea */}
+          <div className="relative w-full">
             <textarea
               ref={box}
               value={value}
@@ -338,29 +302,89 @@ export function Composer({
               rows={1}
               placeholder={blockedReason ?? "Message your agent"}
               aria-label="Message"
-              className="max-h-52 min-h-10 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] leading-5 outline-none placeholder:text-faint focus-visible:outline-none"
+              className="block w-full max-h-52 min-h-11 resize-none bg-transparent px-2.5 pt-1.5 pb-1 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint focus-visible:outline-none"
             />
-            {running ? (
-              <button
-                type="button"
-                onClick={onStop}
-                disabled={stopping}
-                className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-raised px-4 text-sm font-medium text-ink transition-colors duration-(--dur-fast) hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 touch:h-11"
-              >
-                <Square size={13} aria-hidden="true" />
-                {stopping ? "Stopping…" : "Stop"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSend}
-                disabled={!canSend}
-                className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg transition-opacity duration-(--dur-fast) hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 touch:h-11"
-              >
-                <ArrowUp size={16} aria-hidden="true" />
-                {sending ? "Sending…" : "Send"}
-              </button>
-            )}
+          </div>
+
+          {/* Action Toolbar */}
+          <div className="flex items-center justify-between gap-2 px-1 pt-1">
+            <div className="flex items-center gap-1">
+              {onAddFiles && (
+                <>
+                  <input
+                    ref={picker}
+                    type="file"
+                    multiple
+                    hidden
+                    aria-hidden
+                    tabIndex={-1}
+                    accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
+                    onChange={(e) => {
+                      onAddFiles(Array.from(e.target.files ?? []));
+                      e.target.value = "";
+                    }}
+                  />
+                  <Tooltip content="Attach files or media">
+                    <button
+                      type="button"
+                      onClick={() => picker.current?.click()}
+                      disabled={sending}
+                      aria-label="Attach files"
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                    >
+                      <Paperclip size={18} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </>
+              )}
+              {onToggleSkill && (
+                <Tooltip content="Pick skills (/name)">
+                  <button
+                    type="button"
+                    onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
+                    disabled={sending}
+                    aria-label="Pick skills"
+                    aria-expanded={pickerOpen}
+                    className={cn(
+                      "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10",
+                      (pickerOpen || chosenSkills.length > 0) && "text-accent bg-accent/10"
+                    )}
+                  >
+                    <Sparkles size={18} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {running ? (
+                <Tooltip content={stopping ? "Stopping answer…" : "Stop generating"}>
+                  <button
+                    type="button"
+                    onClick={onStop}
+                    disabled={stopping}
+                    aria-label={stopping ? "Stopping answer" : "Stop generating"}
+                    className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger shadow-xs transition-colors duration-(--dur-fast) hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                  >
+                    <Square size={13} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              ) : (
+                <Tooltip content={sending ? "Sending…" : canSend ? "Send message (Enter)" : (blockedReason ?? "Enter a message to send")}>
+                  <span>
+                    <button
+                      type="button"
+                      onClick={onSend}
+                      disabled={!canSend}
+                      aria-label="Send message"
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-accent-fg shadow-xs transition-all duration-(--dur-fast) hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 touch:size-10"
+                    >
+                      <ArrowUp size={16} aria-hidden="true" />
+                    </button>
+                  </span>
+                </Tooltip>
+              )}
+            </div>
           </div>
         </div>
         {onSaveAsSkill && (

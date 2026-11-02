@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError, type Agent, type Engine } from "@/lib/api";
@@ -32,10 +34,10 @@ export function AgentSetupEntry({ agents, engines, onStart, onCreateLead }: {
       <button type="button" className="rounded-field border border-line px-3 py-1.5 disabled:opacity-50" disabled={!ready || busy} onClick={() => onStart(lead.id)}>Chat with {lead.name}</button>
     </> : team && <>
       <p className="text-xs text-muted">Choose a team lead (Chief of Staff) to help create and coordinate agents. This role replaces the current lead.</p>
-      <select aria-label="Choose setup lead" value={choice} disabled={busy} onChange={event => setChoice(event.target.value)} className="w-full rounded-field border border-line bg-raised p-2">
+      <Select aria-label="Choose setup lead" value={choice} disabled={busy} onChange={event => setChoice(event.target.value)} className="w-full rounded-field border border-line bg-raised p-2">
         <option value="">Choose an existing agent…</option>
         {agents.filter(agent => !agent.archived_at && engines.some(item => item.id === agent.provider && item.capabilities.mcp && item.available)).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-      </select>
+      </Select>
       <div className="flex flex-wrap gap-3"><button type="button" disabled={!choice || busy} className="text-xs underline disabled:opacity-50" onClick={() => void choose()}>Make selected agent lead</button><button type="button" className="text-xs underline" onClick={onCreateLead}>Create a lead in the form</button></div>
     </>}
     {!team && !error && <p role="status" className="text-xs text-muted">Checking team…</p>}

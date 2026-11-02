@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import { useEffect, useState } from "react";
 import { api, ApiError, type DecisionEntry, type DecisionEvent } from "@/lib/api";
 import { DECISION_EVENTS, csvFileName, decisionEventLabel, decisionText } from "@/lib/approvals";
@@ -74,7 +76,7 @@ export function DecisionLog({ threadId = null }: { threadId?: number | null }) {
   return (
     <div className="space-y-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
           aria-label="Event"
           value={event}
           onChange={(e) => setEvent(e.target.value as DecisionEvent | "")}
@@ -86,7 +88,7 @@ export function DecisionLog({ threadId = null }: { threadId?: number | null }) {
               {e.label}
             </option>
           ))}
-        </select>
+        </Select>
         <input
           aria-label="Conversation number"
           inputMode="numeric"
