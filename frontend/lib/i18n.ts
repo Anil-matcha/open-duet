@@ -1,6 +1,18 @@
 // Strings for the new interface only; older components keep their literal text. The supported
 // locale falls back to English for any catalog entry that has not been translated yet.
-// Keys are surface.name; {name} in a message is a placeholder. No imports, so node tests can load it.
+// Keys are surface.name; {name} in a message is a placeholder. Locale modules contain data only.
+import { de } from "./locales/de.ts";
+import { fr } from "./locales/fr.ts";
+import { it } from "./locales/it.ts";
+import { ja } from "./locales/ja.ts";
+import { ko } from "./locales/ko.ts";
+import { nl } from "./locales/nl.ts";
+import { pl } from "./locales/pl.ts";
+import { pt } from "./locales/pt.ts";
+import { ru } from "./locales/ru.ts";
+import { tr } from "./locales/tr.ts";
+import { zh } from "./locales/zh.ts";
+
 export const en = {
   "theme.label": "Theme",
   "theme.system": "System",
@@ -105,11 +117,42 @@ export const en = {
 } as const;
 
 export type MessageKey = keyof typeof en;
-export type Locale = "en" | "es";
+export const LOCALES = ["en", "de", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt", "ru", "tr", "zh"] as const;
+export type Locale = (typeof LOCALES)[number];
 export type LanguageChoice = "system" | Locale;
 
 export const LANGUAGE_KEY = "od-language";
-export const LANGUAGE_CHOICES: readonly LanguageChoice[] = ["system", "en", "es"];
+export const LANGUAGE_CHOICES: readonly LanguageChoice[] = ["system", ...LOCALES];
+export const LANGUAGE_LABELS: Record<Locale, string> = {
+  en: "English",
+  de: "Deutsch",
+  es: "Español",
+  fr: "Français",
+  it: "Italiano",
+  ja: "日本語",
+  ko: "한국어",
+  nl: "Nederlands",
+  pl: "Polski",
+  pt: "Português (Brasil)",
+  ru: "Русский",
+  tr: "Türkçe",
+  zh: "简体中文",
+};
+export const LANGUAGE_TAGS: Record<Locale, string> = {
+  en: "en",
+  de: "de",
+  es: "es",
+  fr: "fr",
+  it: "it",
+  ja: "ja",
+  ko: "ko",
+  nl: "nl",
+  pl: "pl",
+  pt: "pt-BR",
+  ru: "ru",
+  tr: "tr",
+  zh: "zh-CN",
+};
 
 export const es: Partial<Record<MessageKey, string>> = {
   "theme.label": "Tema",
@@ -214,15 +257,36 @@ export const es: Partial<Record<MessageKey, string>> = {
   "language.spanish": "Español",
 };
 
+const catalogs: Record<Locale, Partial<Record<MessageKey, string>>> = {
+  en,
+  de,
+  es,
+  fr,
+  it,
+  ja,
+  ko,
+  nl,
+  pl,
+  pt,
+  ru,
+  tr,
+  zh,
+};
+
+function isLocale(value: string): value is Locale {
+  return (LOCALES as readonly string[]).includes(value);
+}
+
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export function parseLanguageChoice(value: unknown): LanguageChoice {
-  return value === "en" || value === "es" ? value : "system";
+  return value === "system" || (typeof value === "string" && isLocale(value)) ? value : "system";
 }
 
 export function resolveLocale(choice: LanguageChoice, systemLocale: string): Locale {
-  if (choice === "en" || choice === "es") return choice;
-  return systemLocale.split("-")[0]?.toLowerCase() === "es" ? "es" : "en";
+  if (choice !== "system") return choice;
+  const browserLocale = systemLocale.split("-")[0]?.toLowerCase() ?? "";
+  return isLocale(browserLocale) ? browserLocale : "en";
 }
 
 export function readLanguage(storage: () => StorageLike): LanguageChoice {
@@ -252,20 +316,22 @@ type DocumentLike = {
 
 export function applyLanguage(doc: DocumentLike, choice: LanguageChoice, systemLocale: string): Locale {
   const locale = resolveLocale(choice, systemLocale);
-  doc.documentElement.lang = locale;
+  doc.documentElement.lang = LANGUAGE_TAGS[locale];
   doc.documentElement.dataset.languageChoice = choice;
   return locale;
 }
 
 export const LANGUAGE_INIT_SCRIPT =
-  '(function(){var d=document.documentElement,c="system",s="en";' +
-  'try{var v=localStorage.getItem("' + LANGUAGE_KEY + '");if(v==="en"||v==="es")c=v}catch(e){}' +
+  '(function(){var d=document.documentElement,c="system",s="en",a=' +
+  JSON.stringify(LOCALES) +
+  ';function ok(v){return a.indexOf(v)>=0}' +
+  'try{var v=localStorage.getItem(' + JSON.stringify(LANGUAGE_KEY) + ');if(ok(v))c=v}catch(e){}' +
   'try{s=(navigator.language||"en").split("-")[0].toLowerCase()}catch(e){}' +
-  'var l=c==="system"?(s==="es"?"es":"en"):c;d.dataset.languageChoice=c;d.lang=l})();';
+  'var l=c==="system"?(ok(s)?s:"en"):c;d.dataset.languageChoice=c;' +
+  'd.lang=l==="pt"?"pt-BR":l==="zh"?"zh-CN":l})();';
 
 export function translate(locale: Locale, key: string, params?: Record<string, string | number>): string {
-  const template: string =
-    (locale === "es" ? es[key as MessageKey] : undefined) ?? en[key as MessageKey] ?? key;
+  const template: string = catalogs[locale][key as MessageKey] ?? en[key as MessageKey] ?? key;
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in params ? String(params[name]) : whole));
 }
