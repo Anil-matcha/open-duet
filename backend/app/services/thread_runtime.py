@@ -612,6 +612,7 @@ class ThreadRuntime:
         kind: str = "chat",
         job_id: int | None = None,
         room_id: int | None = None,
+        effort: str | None = None,
         db=None,
     ) -> store.Thread:
         """A new thread for this runtime's owner. With `agent_id` the thread is
@@ -653,6 +654,7 @@ class ThreadRuntime:
             workspace_path=str(workspace.resolve()),
             agent_id=agent.id if agent is not None else None,
             kind=kind, job_id=job_id, room_id=room_id,
+            effort=effort,
         )
         if destination_db is not None:
             # The caller owns the transaction, including rollback on failure.
@@ -860,6 +862,7 @@ class ThreadRuntime:
             # engine (the agent changed engine since) uses that engine's default.
             model=thread.model
             or (agent.model if agent is not None and agent.provider == thread.provider else None),
+            effort=(thread.provider_state or {}).get("effort") if isinstance(thread.provider_state, dict) else None,
             provider_session_id=thread.provider_session_id,
             provider_state=thread.provider_state,
             resume=thread.session_state == "active",
@@ -1393,6 +1396,7 @@ class ThreadRuntime:
             prompt=old.prompt,
             workspace=old.workspace,
             model=fallback_model,
+            effort=old.effort,
             provider_session_id=fallback.new_session_id(),
             provider_state=None,
             resume=False,

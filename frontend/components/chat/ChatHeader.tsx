@@ -11,7 +11,7 @@ import { Menu, MenuItem } from "@/components/ui/Menu";
 import { Select } from "@/components/ui/Select";
 
 const CHIP =
-  "inline-flex h-8 max-w-20 shrink-0 cursor-pointer items-center sm:max-w-52 rounded-full border border-line bg-raised px-3 text-[13px] text-ink transition-colors duration-(--dur-fast) hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 touch:h-10";
+  "inline-flex h-8 max-w-20 shrink-0 cursor-pointer items-center sm:max-w-72 rounded-full border border-line bg-raised px-3 text-[13px] text-ink transition-colors duration-(--dur-fast) hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 touch:h-10";
 
 // The strip above a conversation: what it is (agent and title), how it runs (engine and model,
 // approval mode, computer), and a few quiet icon buttons. Everything else lives in the sidebar

@@ -101,3 +101,69 @@ test("cached preference read and write in localStorage", () => {
   });
 });
 
+
+test("resolves reasoning effort when model supports configurable effort", () => {
+  const enginesWithEffort = [
+    {
+      id: "antigravity",
+      label: "Google Gemini",
+      available: true,
+      default_model: "gemini-3.8-flash",
+      models: [
+        {
+          id: "gemini-3.8-flash",
+          label: "Gemini 3.8 Flash",
+          default: true,
+          default_reasoning_effort: "medium",
+          supported_reasoning_efforts: ["low", "medium", "high"],
+          reasoning_effort_configurable: true,
+        },
+        {
+          id: "gpt-oss-120b",
+          label: "GPT-OSS 120B (Medium)",
+          default: false,
+          supported_reasoning_efforts: [],
+          reasoning_effort_configurable: false,
+        },
+      ],
+    },
+  ];
+
+  // 1. No effort saved -> picks model default reasoning effort
+  const resDefault = resolveEngineModel({ provider: "antigravity", model: "gemini-3.8-flash" }, enginesWithEffort);
+  assert.deepEqual(resDefault, {
+    provider: "antigravity",
+    model: "gemini-3.8-flash",
+    effort: "medium",
+  });
+
+  // 2. Saved effort is valid -> preserves saved effort
+  const resHigh = resolveEngineModel({ provider: "antigravity", model: "gemini-3.8-flash", effort: "high" }, enginesWithEffort);
+  assert.deepEqual(resHigh, {
+    provider: "antigravity",
+    model: "gemini-3.8-flash",
+    effort: "high",
+  });
+
+  // 3. Model without configurable effort -> no effort returned
+  const resFixed = resolveEngineModel({ provider: "antigravity", model: "gpt-oss-120b", effort: "high" }, enginesWithEffort);
+  assert.deepEqual(resFixed, {
+    provider: "antigravity",
+    model: "gpt-oss-120b",
+  });
+});
+
+test("cached preference read and write with effort in localStorage", () => {
+  const store = {};
+  const mockStorage = {
+    getItem: (key) => store[key] ?? null,
+    setItem: (key, val) => { store[key] = String(val); },
+  };
+
+  writeCachedPreference({ provider: "antigravity", model: "gemini-3.8-flash", effort: "high" }, mockStorage);
+  assert.deepEqual(readCachedPreference(mockStorage), {
+    provider: "antigravity",
+    model: "gemini-3.8-flash",
+    effort: "high",
+  });
+});

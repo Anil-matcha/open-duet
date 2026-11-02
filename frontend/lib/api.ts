@@ -528,7 +528,14 @@ export type AgentInput = {
   starter_notes?: string | null;
 };
 
-export type EngineModel = { id: string; label: string; default: boolean };
+export type EngineModel = {
+  id: string;
+  label: string;
+  default: boolean;
+  default_reasoning_effort?: string | null;
+  supported_reasoning_efforts?: string[];
+  reasoning_effort_configurable?: boolean;
+};
 export type EngineConfigField = {
   name: keyof EngineConfigInput;
   label: string;
@@ -563,6 +570,7 @@ export type Engine = {
 export type EnginePreference = {
   provider: string | null;
   model: string | null;
+  effort?: string | null;
 };
 export type EngineLimit = {
   kind: "usage_limit" | "rate_limit" | "credits";
@@ -717,6 +725,7 @@ export type Thread = {
   title: string | null;
   provider: string;
   model: string | null;
+  effort?: string | null;
   // The folder Claude works in; saved command rules can be tied to it.
   workspace_path?: string | null;
   // The computer this conversation's tools run in (its agent's), or null.
@@ -1080,7 +1089,7 @@ export const api = {
 
   getThread: (threadId: number) => request<ThreadDetail>(`/threads/${threadId}`),
 
-  createThread: (agentId?: number | null, selection?: { provider?: string; model?: string | null }) =>
+  createThread: (agentId?: number | null, selection?: { provider?: string; model?: string | null; effort?: string | null }) =>
     request<Thread>("/threads", {
       method: "POST",
       body: JSON.stringify({ ...(agentId != null ? { agent_id: agentId } : {}), ...selection }),
@@ -1273,7 +1282,7 @@ export const api = {
     request<{ status: string; turn_id: number }>(`/threads/${threadId}/stop`, { method: "POST" }),
 
   // Rename and/or archive. 409 turn_running: stop the answer first (archive only).
-  updateThread: (threadId: number, change: { title?: string; archived?: boolean; model?: string | null }) =>
+  updateThread: (threadId: number, change: { title?: string; archived?: boolean; model?: string | null; effort?: string | null }) =>
     request<Thread>(`/threads/${threadId}`, { method: "PATCH", body: JSON.stringify(change) }),
 
   // Permanent: the conversation's messages, tool calls and approvals in this app's

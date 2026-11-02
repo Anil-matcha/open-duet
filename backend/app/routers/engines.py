@@ -60,7 +60,7 @@ async def set_engine_preference(payload: EnginePreference, rt: ThreadRuntime = D
     """Save the preferred default engine and model to disk."""
     if payload.provider and payload.provider not in rt.adapters:
         raise HTTPException(status_code=404, detail="Engine not found")
-    return engine_preference.write_preference(payload.provider, payload.model)
+    return engine_preference.write_preference(payload.provider, payload.model, payload.effort)
 
 
 @router.get("/{engine_id}", response_model=EngineResponse)

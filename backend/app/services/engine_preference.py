@@ -35,24 +35,28 @@ def read_preference() -> dict[str, str | None]:
         if isinstance(data, dict):
             provider = data.get("provider")
             model = data.get("model")
+            effort = data.get("effort")
             return {
                 "provider": str(provider).strip() if provider else None,
                 "model": str(model).strip() if model else None,
+                "effort": str(effort).strip() if effort else None,
             }
     except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
         pass
-    return {"provider": None, "model": None}
+    return {"provider": None, "model": None, "effort": None}
 
 
-def write_preference(provider: str | None, model: str | None = None) -> dict[str, str | None]:
+def write_preference(provider: str | None, model: str | None = None, effort: str | None = None) -> dict[str, str | None]:
     path = preference_file_path()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     clean_provider = provider.strip() if provider else None
     clean_model = model.strip() if model else None
+    clean_effort = effort.strip() if effort else None
     data = {
         "version": 1,
         "provider": clean_provider,
         "model": clean_model,
+        "effort": clean_effort,
         "updated_at": datetime.now(UTC).isoformat(),
     }
     temp_dir = path.parent
@@ -72,5 +76,5 @@ def write_preference(provider: str | None, model: str | None = None) -> dict[str
             os.unlink(temp_path)
         except FileNotFoundError:
             pass
-    return {"provider": clean_provider, "model": clean_model}
+    return {"provider": clean_provider, "model": clean_model, "effort": clean_effort}
 

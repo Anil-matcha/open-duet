@@ -213,15 +213,15 @@ async def test_engine_preference_api(api, tmp_path, monkeypatch):
 
     get_res = await api.get("/api/v1/engines/preference")
     assert get_res.status_code == 200
-    assert get_res.json() == {"provider": None, "model": None}
+    assert get_res.json() == {"provider": None, "model": None, "effort": None}
 
-    put_res = await api.put("/api/v1/engines/preference", json={"provider": "claude", "model": "haiku"})
+    put_res = await api.put("/api/v1/engines/preference", json={"provider": "claude", "model": "haiku", "effort": "high"})
     assert put_res.status_code == 200
-    assert put_res.json() == {"provider": "claude", "model": "haiku"}
+    assert put_res.json() == {"provider": "claude", "model": "haiku", "effort": "high"}
 
     get_res2 = await api.get("/api/v1/engines/preference")
     assert get_res2.status_code == 200
-    assert get_res2.json() == {"provider": "claude", "model": "haiku"}
+    assert get_res2.json() == {"provider": "claude", "model": "haiku", "effort": "high"}
 
     bad_res = await api.put("/api/v1/engines/preference", json={"provider": "nonexistent_engine"})
     assert bad_res.status_code == 404

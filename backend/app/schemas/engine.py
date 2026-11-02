@@ -5,6 +5,9 @@ class EngineModel(BaseModel):
     id: str
     label: str
     default: bool = False
+    default_reasoning_effort: str | None = None
+    supported_reasoning_efforts: list[str] = Field(default_factory=list)
+    reasoning_effort_configurable: bool = True
 
 
 class EngineCapabilities(BaseModel):
@@ -95,4 +98,5 @@ class EnginePreference(BaseModel):
 
     provider: str | None = None
     model: str | None = None
+    effort: str | None = None
 
