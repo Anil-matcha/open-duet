@@ -589,7 +589,7 @@ export function ProfileSettings() {
       <ConfirmDialog
         open={signOutOpen}
         onOpenChange={setSignOutOpen}
-        title="Sign out of Open Duet"
+        title="Sign out of Open Dots"
         description="Signing out locks your local profile. Your conversations and engine credentials remain safe on this computer."
         confirmLabel="Sign out"
         danger
@@ -847,7 +847,7 @@ function ProfileEditDialog({
           <textarea
             value={bio}
             onChange={(e) => { setBio(e.target.value); setSaveError(null); }}
-            placeholder="What you're building with Open Duet…"
+            placeholder="What you're building with Open Dots…"
             rows={2}
             maxLength={500}
             className="w-full rounded-field border border-line bg-raised px-3 py-1.5 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
@@ -895,7 +895,7 @@ function ProfileShareDialog({
 
   const shareText = useMemo(() => {
     return [
-      `🚀 Open Duet Activity for ${name}`,
+      `🚀 Open Dots Activity for ${name}`,
       `⚡ ${formatCompact(stats.tokens)} Tokens consumed`,
       `🔥 ${stats.currentStreak} Day current streak (Longest: ${stats.longestStreak} days)`,
       `🏆 Peak Day: ${stats.peak ? `${formatCompact(stats.peak.tokens)} tokens` : "N/A"}`,
@@ -919,7 +919,7 @@ function ProfileShareDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Share activity summary"
-      description="Share your Open Duet AI accomplishments and usage milestones."
+      description="Share your Open Dots AI accomplishments and usage milestones."
       size="sm"
     >
       <div className="space-y-4">
@@ -929,7 +929,7 @@ function ProfileShareDialog({
             <UserAvatar user={{ name, avatar_url: profile?.avatar_url }} size={44} />
             <div>
               <div className="font-semibold text-ink leading-tight">{name}</div>
-              <div className="text-xs text-muted">Open Duet Milestones</div>
+              <div className="text-xs text-muted">Open Dots Milestones</div>
             </div>
           </div>
 
