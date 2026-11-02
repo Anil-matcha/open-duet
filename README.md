@@ -11,14 +11,18 @@ separate hosted service.
 Open Duet does not include an AI model or model subscription. You choose the
 engine and provider account used for your work.
 
-[GitHub](https://github.com/Anil-matcha/open-duet) ·
-[Downloads](https://github.com/Anil-matcha/open-duet/releases) ·
-[Hosted app](https://suparagent.ai) ·
-[Watch the demo](https://youtu.be/vtFy94DfETE) ·
-[Quick start](#quick-start) ·
-[Self-hosting](docs/SELF-HOSTING.md) ·
-[Guides](#guides) ·
-[Discord support](https://discord.com/invite/zpnuBRXhKg)
+## Project links
+
+- [GitHub repository](https://github.com/Anil-matcha/open-duet)
+- [Desktop downloads](https://github.com/Anil-matcha/open-duet/releases)
+- [Hosted app](https://suparagent.ai)
+- [Watch the demo](https://youtu.be/vtFy94DfETE)
+- [Quick start](#quick-start)
+- [Self-hosting guide](docs/SELF-HOSTING.md)
+- [Guides](#guides)
+- [Discord support](https://discord.com/invite/zpnuBRXhKg)
+
+<p align="center"><a href="https://youtu.be/vtFy94DfETE" title="Watch the Open Duet demo"><img src="https://i.ytimg.com/vi/vtFy94DfETE/maxresdefault.jpg" alt="Open Duet demo video thumbnail — click to watch on YouTube" width="720"></a></p>
 
 > **Status:** Open Duet is in active development. Desktop releases, self-hosting,
 > agent computers, and newer team features are still evolving. Review
