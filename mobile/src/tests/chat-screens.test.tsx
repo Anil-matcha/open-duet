@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { FlatList } from 'react-native';
 
 import Conversations from '../app';
 import Thread from '../app/thread/[id]';
@@ -7,6 +8,7 @@ import { emptyTranscript } from '@/lib/transcript';
 
 const mockPush = jest.fn();
 let mockThreadState: Record<string, unknown> = {};
+let mockParams: Record<string, string> = { id: '3' };
 const mockApi = { listThreads: jest.fn(), createThread: jest.fn(), listAgents: jest.fn() };
 
 jest.mock('expo-router', () => {
@@ -14,11 +16,16 @@ jest.mock('expo-router', () => {
   return {
     Stack: { Screen: () => null },
     useRouter: () => ({ push: mockPush }),
-    useLocalSearchParams: () => ({ id: '3' }),
+    useLocalSearchParams: () => mockParams,
     useFocusEffect: (callback: () => void) => useEffect(callback, [callback]),
   };
 });
 
+let mockWelcome = false;
+const mockDismiss = jest.fn();
+jest.mock('@/lib/auth-context', () => ({
+  useAuth: () => ({ state: { status: 'paired', server: 'https://dots.example.com', token: 't', label: 'My phone' }, welcome: mockWelcome, dismissWelcome: mockDismiss }),
+}));
 jest.mock('@/lib/use-api', () => ({ useApi: () => mockApi }));
 jest.mock('@/lib/use-thread', () => ({ useThread: () => mockThreadState }));
 
@@ -36,6 +43,8 @@ const thread = (id: number, title: string | null) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockWelcome = false;
+  mockParams = { id: '3' };
   mockApi.listAgents.mockResolvedValue([]);
   mockThreadState = {
     transcript: emptyTranscript(),
@@ -60,6 +69,13 @@ describe('Conversations', () => {
     expect(screen.getAllByText('New conversation')).toHaveLength(2);
   });
 
+  it('opens the search', async () => {
+    mockApi.listThreads.mockResolvedValue([]);
+    await render(<Conversations />);
+    await fireEvent.press(screen.getByLabelText('Search conversations'));
+    expect(mockPush).toHaveBeenCalledWith('/search');
+  });
+
   it('says so when there are none', async () => {
     mockApi.listThreads.mockResolvedValue([]);
     await render(<Conversations />);
@@ -73,6 +89,32 @@ describe('Conversations', () => {
     expect(await screen.findByText(/could not reach your server/i)).toBeTruthy();
   });
 
+  it('offers to try again when the list could not load, and loads it', async () => {
+    const { ApiError } = jest.requireActual('@/lib/api');
+    mockApi.listThreads.mockRejectedValueOnce(new ApiError(0, 'unreachable', '')).mockResolvedValueOnce([thread(3, 'Plan the week')]);
+    await render(<Conversations />);
+    await fireEvent.press(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Plan the week')).toBeTruthy();
+    expect(screen.queryByText(/could not reach your server/i)).toBeNull();
+  });
+
+  it('says once, after pairing, which server this is and what the phone can do, until it is dismissed', async () => {
+    mockWelcome = true;
+    mockApi.listThreads.mockResolvedValue([]);
+    await render(<Conversations />);
+    expect(screen.getByText('Connected to dots.example.com')).toBeTruthy();
+    expect(screen.getByText(/chat with your agents, stop an answer, and allow or deny/)).toBeTruthy();
+    expect(screen.getByText(/managed on your server/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Got it' }));
+    expect(mockDismiss).toHaveBeenCalled();
+  });
+
+  it('shows no welcome note when it was already dismissed', async () => {
+    mockApi.listThreads.mockResolvedValue([]);
+    await render(<Conversations />);
+    expect(screen.queryByText(/Connected to/)).toBeNull();
+  });
+
   it('starts a conversation and opens it', async () => {
     mockApi.listThreads.mockResolvedValue([]);
     mockApi.createThread.mockResolvedValue(thread(9, null));
@@ -83,6 +125,63 @@ describe('Conversations', () => {
 });
 
 describe('Thread', () => {
+  const longConversation = () => ({
+    ...emptyTranscript(),
+    items: Array.from({ length: 12 }, (_, n) => ({ kind: 'assistant' as const, key: `e${n + 1}`, turnId: 1, text: `message ${n + 1}`, incomplete: false })),
+  });
+
+  const scrolled = (y: number) => ({ nativeEvent: { contentOffset: { x: 0, y }, contentSize: { width: 300, height: 3000 }, layoutMeasurement: { width: 300, height: 600 } } });
+
+  it('offers a jump to the latest message only while scrolled up from it, and goes there', async () => {
+    const toEnd = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => undefined);
+    mockThreadState = { ...mockThreadState, transcript: longConversation() };
+    await render(<Thread />);
+    expect(screen.queryByLabelText('Jump to latest')).toBeNull();
+
+    await fireEvent.scroll(screen.getByTestId('conversation-list'), scrolled(0));
+    await fireEvent.press(screen.getByLabelText('Jump to latest'));
+    expect(toEnd).toHaveBeenLastCalledWith({ animated: true });
+    expect(screen.queryByLabelText('Jump to latest')).toBeNull();
+
+    // Back near the end, the button stays away.
+    await fireEvent.scroll(screen.getByTestId('conversation-list'), scrolled(2380));
+    expect(screen.queryByLabelText('Jump to latest')).toBeNull();
+    toEnd.mockRestore();
+  });
+
+  it('opens at the message a search found instead of the end', async () => {
+    const toIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex').mockImplementation(() => undefined);
+    const toEnd = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => undefined);
+    mockParams = { id: '3', seq: '5' };
+    mockThreadState = { ...mockThreadState, transcript: longConversation() };
+    await render(<Thread />);
+    await waitFor(() => expect(toIndex).toHaveBeenCalledWith(expect.objectContaining({ index: 4, animated: false })));
+    expect(toIndex).toHaveBeenCalledTimes(1);
+    expect(toEnd).not.toHaveBeenCalled();
+    toIndex.mockRestore();
+    toEnd.mockRestore();
+  });
+
+  it('goes to the end, as usual, for a message that is not in the transcript', async () => {
+    const toIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex').mockImplementation(() => undefined);
+    const toEnd = jest.spyOn(FlatList.prototype, 'scrollToEnd').mockImplementation(() => undefined);
+    mockParams = { id: '3', seq: '99' };
+    mockThreadState = { ...mockThreadState, transcript: longConversation() };
+    await render(<Thread />);
+    await waitFor(() => expect(toEnd).toHaveBeenCalled());
+    expect(toIndex).not.toHaveBeenCalled();
+    toIndex.mockRestore();
+    toEnd.mockRestore();
+  });
+
+  it('does not jump anywhere when it was not opened from a search', async () => {
+    const toIndex = jest.spyOn(FlatList.prototype, 'scrollToIndex').mockImplementation(() => undefined);
+    mockThreadState = { ...mockThreadState, transcript: longConversation() };
+    await render(<Thread />);
+    expect(toIndex).not.toHaveBeenCalled();
+    toIndex.mockRestore();
+  });
+
   it('shows the conversation, the typing preview and a reconnect banner', async () => {
     mockThreadState = {
       ...mockThreadState,

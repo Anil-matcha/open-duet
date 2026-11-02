@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/text';
 import { useAuth } from '@/lib/auth-context';
 import { serverLabel } from '@/lib/server-url';
-import { useStyles, type Palette } from '@/lib/theme';
+import { radius, useStyles, type Palette } from '@/lib/theme';
 
 export default function Settings() {
   const styles = useStyles(createStyles);
@@ -32,7 +33,7 @@ export default function Settings() {
       <Text style={styles.label}>Device name</Text>
       <Text style={styles.value}>{state.label || 'Phone'}</Text>
       <Text style={styles.label}>Access</Text>
-      <Text style={styles.value}>Chat only</Text>
+      <Text style={styles.value}>Chat only, or chat and files if the code allowed them</Text>
       <Pressable accessibilityRole="button" style={[styles.danger, busy && styles.disabled]} disabled={busy} onPress={confirmSignOut}>
         <Text style={styles.dangerText}>Sign out and forget this server</Text>
       </Pressable>
@@ -45,7 +46,7 @@ const createStyles = (p: Palette) =>
     container: { padding: 20, gap: 4 },
     label: { fontSize: 13, fontWeight: '600', marginTop: 12, color: p.muted },
     value: { fontSize: 16, color: p.text },
-    danger: { marginTop: 32, borderWidth: 1, borderColor: p.danger, borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+    danger: { marginTop: 32, borderWidth: 1, borderColor: p.danger, borderRadius: radius.field, paddingVertical: 14, alignItems: 'center' },
     dangerText: { color: p.danger, fontSize: 16, fontWeight: '600' },
     disabled: { opacity: 0.5 },
   });

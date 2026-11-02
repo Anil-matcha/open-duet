@@ -21,6 +21,11 @@ or keep files next to the database.
   query under 2 characters returns nothing.
 - **Filters.** `agent_id`, `since` / `until` (ISO dates, inclusive),
   `include_archived` (off by default), `limit` (1 to 100, default 40).
+- **Paging.** `offset` (0 to 500) skips that many hits. The response carries
+  `has_more` and, while it is true, `next_offset` to ask for next; a page can
+  come back empty after a full last one. A conversation with any message hit
+  never also shows its title as a hit, so pages come from one stable order.
+  Hits beyond 500 are not reachable; narrow the query or the dates.
 - **Result.** Newest first. Each hit names its conversation (id, title, agent,
   archived), where it matched (`title`, `user` or `assistant`, with the event
   `seq` and turn), when, and a snippet of about 160 characters around the
@@ -78,7 +83,8 @@ pinned workspace (for an agent's conversation, the agent's workspace).
 `GET .../files/zip?path=` downloads a folder, or the whole workspace when
 `path` is empty, as a zip (at most 2000 files and 200 MB in total before
 compression; over either is 413 `too_large`).
-Admin scope only: a paired chat-only device cannot browse files.
+Needs the `files` scope (or admin): a paired chat-only device cannot browse files. The
+zip stays admin-only.
 
 Confinement, checked on every request:
 
@@ -111,7 +117,7 @@ Confinement, checked on every request:
   as soon as building it fails; a file that grows past the cap while it is
   being zipped stops the download with 413. Each request stages up to about
   200 MB in the system temporary folder and requests are not limited in
-  number; the route is admin-only.
+  number; the route is admin-only (the `files` scope does not reach it).
 
 UI: a Files panel for the open conversation: folders, sizes, a text or image
 preview, a download link, and **Download zip** for the folder being shown.

@@ -25,7 +25,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.auth import credentials, request_info, store, tenancy
 from app.db import tenant_schema
-from app.auth.policy import Principal, is_public, required_scope
+from app.auth.policy import Principal, allows, is_public, required_scope
 from app.core.config import settings
 from app.desktop import profile
 
@@ -151,7 +151,7 @@ class AuthMiddleware:
             hosted = await resolver(scope)
             if hosted is None:
                 return (401, "auth_required", "Sign in to use this server.", False)
-            if required_scope(method, path) not in hosted.scopes:
+            if not allows(hosted.scopes, required_scope(method, path)):
                 return (403, "scope_denied", "This sign-in cannot do that.", False)
             set_principal(scope, hosted)
             return None
@@ -173,7 +173,7 @@ class AuthMiddleware:
                 if len(presented) != 1 or not hmac.compare_digest(presented[0].encode(), expected.encode()):
                     return (403, "csrf_failed", "Missing or wrong CSRF token. Reload the page.", False)
             needed = required_scope(method, path)
-            if needed not in session.scopes:
+            if not allows(session.scopes, needed):
                 return (403, "scope_denied", f"This device needs the {needed} scope for that.", False)
             set_principal(scope, Principal(kind=session.kind, scopes=session.scopes,
                                            session_id=session.id, label=session.label))

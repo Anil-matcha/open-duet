@@ -12,8 +12,13 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 
 ## What it does
 
-- **Pair** with your server by scanning a QR code or typing the server address and
-  a pairing code.
+- **Pair** with your server by scanning a QR code (the main way) or typing the server
+  address and a pairing code. The screen lists the three steps. As you type the address the
+  app asks the server's public status route, before any code is sent, whether it found a
+  server, cannot reach it, was refused, got something that is not a Suparagent server, or
+  reached one with no owner account yet; Connect stays available either way. After pairing the
+  list says once which server this is and what the phone can and cannot do, until you dismiss
+  it. A list that cannot load has a Try again button.
 - **Conversations.** List your conversations, start a new one, open one to read its
   history. If you have agents, **New conversation** first asks which to use: the
   server's default (Claude), or one of your agents, each shown with how it asks
@@ -23,8 +28,32 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 - **Chat.** Send a message and watch the answer as it is written, with one-line
   tool steps. **Stop** ends a running answer. If the connection drops, the app
   reconnects and carries on from the last event it saw. Answers are shown as
-  Markdown (headings, lists, bold, italic, code, quotes, links). There is no HTML,
-  and only `http` and `https` links can be tapped; they open in your browser.
+  Markdown (headings, lists, tables, bold, italic, code, quotes, links). A wide table
+  scrolls sideways so no column is cut off. There is no HTML, and only `http` and
+  `https` links can be tapped; they open in your browser.
+- **Chat look.** A conversation's header shows the agent's picture, the title and the agent's
+  name. Your messages are a neutral bubble and the agent's answers are plain text, as on the web.
+  A round button appears over the corner while you are scrolled up from the newest message and
+  takes you back to it. Every tappable control is at least 44 points.
+- **Look.** The colors, corner radii, typeface (Geist and Geist Mono) and agent colors are the web
+  app's, in the light and dark looks. An agent is shown as a circle with its first letter on its own
+  color, as on the web; a plain chat gets a chat glyph. A test reads the web stylesheet and fails when a
+  phone color or radius differs from the web's.
+- **Search.** The **Search conversations** box on the list searches the titles
+  and the messages of your conversations (what you wrote and what the agent
+  answered). Every word you type must appear in one title or message; it starts
+  after two letters and a short pause. Results are marked where the words match,
+  are loaded a page at a time as you scroll (oldest conversations included, not
+  only the newest 100), and a tap opens the conversation at the matching message,
+  or the room for a room message. It uses the server's `GET /api/v1/search`
+  (chat scope), which pages with `offset` since this version of the server.
+- **Files.** **Files** in a conversation's header opens that conversation's workspace: folders
+  and files with their sizes. A text file shows its start (the first 256 KB), an image is
+  drawn, and any file can be shared: **Share or save** downloads it and opens the phone's
+  share sheet (which also offers Save to Files or Drive). Secret files are listed as locked and
+  never opened. This needs a phone paired with a **Chat and files** code; a chat-only phone
+  is told to pair again with one. It uses `GET /api/v1/threads/{id}/files`, `/content`,
+  `/raw` and `/download` (the `files` scope); the zip is not offered.
 - **Attachments.** The **+** button next to the message box attaches photos
   (PNG, JPEG, GIF, WebP up to 10 MB) and text files (up to 1 MB, the types in
   [everyday features](EVERYDAY.md)), up to 8 per message. Files upload as you pick
@@ -81,7 +110,8 @@ more than one server. "Always allow" rules are not offered; use the web app for 
 The code works once and expires after five minutes. The app checks the code's
 format first, so a typo does not count as a wrong guess toward the lockout.
 
-The app accepts only a chat-only code. If it is handed a full-access one, it
+The app accepts a **Chat only** or **Chat and files** code (choose the second to open
+files the agents made). If it is handed a full-access one, it
 refuses it and signs that session out on the server, so no full-access token is
 left behind. The token is kept in the phone's secure storage (Keychain on iOS,
 Keystore-backed storage on Android), on that device only. Revoke a phone any time
@@ -97,7 +127,8 @@ in **Settings → Devices**; the app notices and returns to pairing.
 | That address answered, but it does not look like an Open Duet server | Check the address and any proxy in front of it. |
 | Could not reach the server | Check the connection and that the HTTPS certificate is trusted by the phone. |
 | This app only connects over HTTPS | Use the server's HTTPS address. |
-| That code gives full access | Create a code with Access set to **Chat only**. |
+| That code gives full access | Create a code with Access set to **Chat only** or **Chat and files**. |
+| This phone was paired without file access | Create a code with Access set to **Chat and files** and pair again. |
 | Your server has agents turned off | Set `LOCAL_EXECUTION_ENABLED=true` on the server. |
 | Your server signed this phone out | The phone was revoked or signed out; pair it again. |
 
@@ -135,6 +166,7 @@ from a short folder path, or build on EAS, WSL, Linux or macOS. See `mobile/AGEN
 | Pairing, conversations, chat, approvals | Automated: Jest tests, lint, typecheck and a bundle export for both platforms, on Windows. The app's networking code was also run against a local backend (pairing, the live stream, a dropped connection resuming without a gap or repeat, approvals answered, errors explained). |
 | The app on a screen | An Android emulator in Expo Go, against a local backend: manual chat-only pairing, staying paired after a restart, creating and listing conversations, sending a message and getting the answer, reopening history, Settings, sign-out revoking the server session, Allow and Deny on approvals that were created directly in the database, and, with a real Claude turn, a Write tool call that waited for Allow and then created the file, and Stop on a running answer (the app showed "Stopped" and the server recorded it as cancelled). |
 | Markdown, attachments, dark theme, agent picker, rooms | Automated: Jest tests (including a 4.5:1 contrast check of every text and background pair in both looks), lint, typecheck and a bundle export. The app's networking code was run against a local backend: uploading a text file, a PNG, names with accents and quotes, an oversized file and an unsupported type, and reading an image back with the token; listing agents and starting a conversation from one; and, for rooms, the live stream of a room, posting, marking read, a pending request found on the right agent's thread and answered, and a chat-only device being refused when it tries to create a room. No agent was run for any of it. |
+| Tables and search | Automated: Jest tests, lint, typecheck and a bundle export; the server's paged search with its own tests on SQLite. On an Android emulator in Expo Go against a throwaway backend with seeded data (no agent run): a seven-column table with long cells scrolls sideways to every column, wraps, keeps right alignment and inline code, and shows the text after it, also at 1.5x system font size; search for a word in 91 hits loaded five pages (offsets 0 to 80, each once), marked the matches, closed the keyboard on drag, and a result in the middle of a 14-turn conversation opened at that message. Not checked: a standalone build, a physical phone, iOS, a server with thousands of conversations. In that same Expo Go session the message box was still hidden under the full Gboard keyboard (see the keyboard note below). |
 | QR scanning and HTTPS | The Android emulator in Expo Go: scanning the QR code from the web app filled in the server and code and waited for Connect; pairing worked over HTTPS with a valid certificate, and a server with an untrusted certificate was refused. |
 | CI | The `mobile` job (install, lint, typecheck, tests, bundle export) passed on GitHub Actions on Linux. |
 
