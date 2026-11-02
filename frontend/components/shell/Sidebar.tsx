@@ -160,9 +160,7 @@ export function Sidebar({
           {t("shell.newChat")}
         </Button>
       </div>
-      <ConversationSearch agentNames={names} onActive={setSearching} onNavigate={onNavigate} />
-
-      <div className={cn("min-h-0 flex-1 overflow-y-auto px-2 pb-2", searching && "hidden")}>
+      <ConversationSearch agentNames={names} onActive={setSearching} onNavigate={onNavigate}>
         {/* 1. Recent Conversations - Front and Center */}
         <section aria-label={t("sidebar.recent")}>
           <CollapsibleSectionHeader
@@ -317,12 +315,12 @@ export function Sidebar({
 
         {/* 3. Rooms and Team Collaboration */}
         {collaboration}
-      </div>
+      </ConversationSearch>
 
       {error && <p role="alert" className="px-4 pb-2 text-xs text-danger">{error}</p>}
 
       {/* Navigation Tools & Footer */}
-      <div className="border-t border-line p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="mt-auto shrink-0 border-t border-line p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="space-y-0.5">
           {onOpenPlanner && (
             <button
