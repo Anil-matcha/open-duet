@@ -8,10 +8,8 @@ group reported one.
 
 import csv
 import io
-import os
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -221,7 +219,7 @@ async def month_csv(db: AsyncSession, owner_id: str, month: str | None) -> tuple
 
 async def annual_summary(db: AsyncSession, owner_id: str, days_count: int = 365) -> dict:
     """The past year (default: 365 days) of usage and activity for the Profile tab,
-    matching OpenBot's ProfileStats: 365-day heatmap, streaks, peak day, model/provider shares,
+    with a 365-day heatmap, streaks, peak day, model/provider shares,
     and agent teammate ranking."""
     now = datetime.now(UTC)
     start_date = (now - timedelta(days=days_count)).date()
@@ -296,70 +294,6 @@ async def annual_summary(db: AsyncSession, owner_id: str, days_count: int = 365)
         if thread.agent_id is not None:
             agent_tokens[thread.agent_id] = agent_tokens.get(thread.agent_id, 0) + turn_tokens
 
-    # Include OpenBot records on this machine to unify computer-level activity when present
-    agent_names_override: dict[Any, str] = {}
-    appdata = os.environ.get("APPDATA", "")
-    if appdata:
-        openbot_db = Path(appdata) / "OpenBot" / "openbot.db"
-        if openbot_db.exists():
-            try:
-                import json as _json
-                import sqlite3
-                conn = sqlite3.connect(str(openbot_db))
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT occurred_at, provider, model, tokens_json, estimated_cost_usd, agent_id FROM agent_usage_records WHERE occurred_at >= ?;",
-                    (start.isoformat(),),
-                )
-                ob_rows = cur.fetchall()
-                if ob_rows:
-                    # If OpenBot has turns, we can count OpenBot messages
-                    cur.execute("SELECT count(*) FROM projection_thread_messages WHERE author = 'user' OR turn_id != '';")
-                    ob_msg_count = cur.fetchone()[0]
-                    if ob_msg_count > total_messages:
-                        total_messages = ob_msg_count
-
-                    # Map OpenBot agent names
-                    cur.execute("SELECT thread_id, agent_id, title FROM projection_threads;")
-                    for _, ag_id, title in cur.fetchall():
-                        if ag_id and title:
-                            agent_names_override[ag_id] = title
-
-                    for ob_occ, ob_prov, ob_mod, ob_tok_json, ob_cost, ob_aid in ob_rows:
-                        try:
-                            t_data = _json.loads(ob_tok_json) if isinstance(ob_tok_json, str) else {}
-                        except Exception:
-                            t_data = {}
-                        t_toks = sum(v for v in t_data.values() if isinstance(v, (int, float)))
-                        if t_toks <= 0:
-                            continue
-
-                        # Add to day_map
-                        ob_date = str(ob_occ)[:10]
-                        if ob_date in day_map:
-                            day_map[ob_date]["tokens"] += t_toks
-                            day_map[ob_date]["messages"] = max(day_map[ob_date]["messages"], 1)
-
-                        total_tokens += t_toks
-                        if ob_cost is not None and isinstance(ob_cost, (int, float)) and ob_cost > 0:
-                            total_cost = (total_cost or 0.0) + float(ob_cost)
-
-                        prov_key = "Antigravity ACP server" if ob_prov == "antigravity" else (ob_prov or "local")
-                        eng_key = f"{prov_key}:{ob_mod}"
-                        if eng_key not in engines:
-                            engines[eng_key] = {"provider": prov_key, "model": ob_mod or "default", "tokens": 0}
-                        engines[eng_key]["tokens"] += t_toks
-
-                        if prov_key not in providers:
-                            providers[prov_key] = {"provider": prov_key, "tokens": 0}
-                        providers[prov_key]["tokens"] += t_toks
-
-                        if ob_aid:
-                            agent_tokens[ob_aid] = agent_tokens.get(ob_aid, 0) + t_toks
-                conn.close()
-            except Exception:
-                pass
-
     days_list = [day_map[k] for k in sorted(day_map)]
 
     longest_streak = 0
@@ -426,7 +360,7 @@ async def annual_summary(db: AsyncSession, owner_id: str, days_count: int = 365)
     teammates_out = []
     if agent_tokens:
         int_agent_ids = [aid for aid in agent_tokens.keys() if isinstance(aid, int)]
-        agent_names: dict[Any, str] = dict(agent_names_override)
+        agent_names: dict[int, str] = {}
         if int_agent_ids:
             agent_rows = (await db.execute(select(Agent).where(Agent.id.in_(int_agent_ids)))).scalars().all()
             for a in agent_rows:

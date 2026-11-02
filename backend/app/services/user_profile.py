@@ -1,6 +1,6 @@
 """Disk-backed storage for user profile information (display name, avatar, bio).
 
-Follows OpenBot's profile store pattern: persists `name` and `avatar_url` in a JSON
+Persists `name` and `avatar_url` in a JSON
 file on disk in the desktop profile / user data directory, with atomic writes.
 """
 from __future__ import annotations
