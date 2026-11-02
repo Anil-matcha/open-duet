@@ -16,6 +16,12 @@
   permission before calls. Ordinary chats retain their own approval behavior.
   Real AppSumo research and updated installed-package qualification remain open.
 
+### Fixed
+
+- Fix the phone app's QR scanner in the Android release build. The build's code shrinking broke
+  the scanner's setup, so the camera showed but never read a code. Keep rules for ML Kit are now
+  set in `app.json`. Checked on an Android phone with a signed release build.
+
 ### Changed
 
 - Stop the agent browser announcing itself as `HeadlessChrome`: its user agent,
