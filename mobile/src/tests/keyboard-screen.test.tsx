@@ -4,6 +4,7 @@ import { useKeyboardState } from 'react-native-keyboard-controller';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 import { KeyboardScreen } from '@/components/keyboard-screen';
+import { light } from '@/lib/theme';
 
 jest.mock('react-native-keyboard-controller', () => {
   const actual = jest.requireActual('react-native-keyboard-controller/jest');
@@ -36,6 +37,19 @@ describe('KeyboardScreen', () => {
       </SafeAreaInsetsContext.Provider>,
     );
     expect(bottomRoom()).toBe(30);
+  });
+
+  it('paints the room it leaves for the bottom bar in the screen background', async () => {
+    open(false);
+    await render(
+      <SafeAreaInsetsContext.Provider value={insets}>
+        <KeyboardScreen>
+          <Text>composer</Text>
+        </KeyboardScreen>
+      </SafeAreaInsetsContext.Provider>,
+    );
+    const style = Object.assign({}, ...[screen.getByTestId('keyboard-screen').props.style].flat(2).filter(Boolean));
+    expect(style.backgroundColor).toBe(light.background);
   });
 
   it('adds no extra room while the keyboard is open, because the keyboard covers that bar', async () => {

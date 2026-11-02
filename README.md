@@ -13,7 +13,8 @@ does not include a model or a model subscription.
 
 [Project on GitHub](https://github.com/Anil-matcha/open-duet) · [Desktop app](https://github.com/Anil-matcha/open-duet/releases) · [Web app](https://suparagent.ai) (invite-only) · [Watch the demo](https://youtu.be/MzgrNQXgVX4) · [Quick start](#quick-start) · [Run it on your server](docs/SELF-HOSTING.md) · [Guides](#guides)
 
-<p align="center"><a href="https://youtu.be/MzgrNQXgVX4" title="Watch the Open Duet demo on YouTube"><img src="https://i.ytimg.com/vi/MzgrNQXgVX4/maxresdefault.jpg" alt="Open Duet demo video thumbnail — click to watch on YouTube" width="720"></a></p>
+<p align="center"><a href="https://youtu.be/vtFy94DfETE"><img src="https://i.ytimg.com/vi/vtFy94DfETE/maxresdefault.jpg" width="720"></a></p>
+<p align="center"><a href="https://youtu.be/vtFy94DfETE"><b>▶ Watch: Free Unlimited Grok Bot Alternative: Open-Source, Any Model, No Restrictions </b></a></p>
 
 > **Status:** Active development. The desktop app, self-hosted server, agent computers, and newer team features are still evolving. See [known limitations](#known-limitations) before relying on them for important work.
 

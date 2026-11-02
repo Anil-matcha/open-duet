@@ -59,8 +59,8 @@ CHAT_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
         ({"GET"}, f"/threads/{_ID}/events/stream"),
         ({"GET"}, f"/threads/{_ID}/approvals"),
         ({"POST"}, f"/threads/{_ID}/approvals/[A-Za-z0-9_-]+"),
-        # Search and attachments are part of chatting. Workspace files
-        # (/threads/{id}/files...) and usage (/usage) stay admin-only.
+        # Search and attachments are part of chatting. Workspace files need
+        # the `files` scope (below) and usage (/usage) stays admin-only.
         ({"GET"}, "/search"),
         ({"POST"}, f"/threads/{_ID}/attachments"),
         ({"GET"}, f"/threads/{_ID}/attachments/[0-9a-f]{{32}}"),
@@ -74,6 +74,19 @@ CHAT_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
 )
 
 
+# What the opt-in `files` scope adds to chat: reading a conversation's workspace
+# files. Not the folder zip, which stays admin-only.
+FILES_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
+    (frozenset({"GET"}), re.compile(f"^{API}{path}$"))
+    for path in (
+        f"/threads/{_ID}/files",
+        f"/threads/{_ID}/files/content",
+        f"/threads/{_ID}/files/raw",
+        f"/threads/{_ID}/files/download",
+    )
+)
+
+
 def _matches(rules, method: str, path: str) -> bool:
     return any(method in methods and pattern.match(path) for methods, pattern in rules)
 
@@ -83,7 +96,14 @@ def is_public(method: str, path: str) -> bool:
 
 
 def required_scope(method: str, path: str) -> str:
-    return "chat" if _matches(CHAT_ROUTES, method, path) else "admin"
+    if _matches(CHAT_ROUTES, method, path):
+        return "chat"
+    return "files" if _matches(FILES_ROUTES, method, path) else "admin"
+
+
+def allows(scopes: tuple[str, ...], needed: str) -> bool:
+    """Admin reaches everything, including sessions made before `files` existed."""
+    return needed in scopes or "admin" in scopes
 
 
 @dataclass(frozen=True)

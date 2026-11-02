@@ -40,8 +40,10 @@ def parse_scopes(value: str) -> tuple[str, ...]:
 
 
 def scopes_for(scope: str) -> str:
-    """'admin' includes chat; 'chat' is chat only."""
-    return "admin chat" if scope == "admin" else "chat"
+    """'admin' includes everything; 'chat' is chat only; 'files' is chat plus reading workspace files."""
+    if scope == "admin":
+        return "admin chat files"
+    return "chat files" if scope == "files" else "chat"
 
 
 # --- owner ------------------------------------------------------------------
