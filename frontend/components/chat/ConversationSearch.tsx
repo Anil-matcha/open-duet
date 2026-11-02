@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError, type SearchHit } from "@/lib/api";
@@ -76,7 +78,7 @@ export function ConversationSearch({
             Include archived
           </label>
           {agentNames && agentNames.size > 0 && (
-            <select
+            <Select
               value={agentId ?? ""}
               onChange={(e) => setAgentId(e.target.value === "" ? null : Number(e.target.value))}
               aria-label="Only conversations with this agent"
@@ -88,7 +90,7 @@ export function ConversationSearch({
                   {name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </div>
       )}

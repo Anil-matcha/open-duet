@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, Columns3, List, Plus, RefreshCw } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 import { WorkItemEditor } from "./WorkItemEditor";
 import { WorkExecutionPanel } from "./WorkExecutionPanel";
 import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
@@ -173,9 +174,9 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
       {!compact && <>
         <p className="mt-2 truncate text-xs text-muted">{assigneeLabel(item)}</p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <select aria-label={`Move ${item.title}`} className={`${control} min-w-0 max-w-full text-xs`} value={item.column_id} disabled={busy || archived} onChange={event => void update(item, { column_id: Number(event.target.value) })}>
+          <Select aria-label={`Move ${item.title}`} className={`${control} min-w-0 max-w-full text-xs`} value={item.column_id} disabled={busy || archived} onChange={event => void update(item, { column_id: Number(event.target.value) })}>
             {board?.columns.map(column => <option key={column.id} value={column.id}>{column.name}</option>)}
-          </select>
+          </Select>
           <button type="button" className="text-xs text-muted hover:underline disabled:opacity-50" disabled={busy} onClick={() => void update(item, { archived: !item.archived })}>{archived ? "Restore" : "Archive"}</button>
         </div>
       </>}
@@ -208,14 +209,14 @@ export function PlannerPanel({ agents, threads, onClose, onOpenRoutines, taskId 
           </div>
           <div className="flex flex-wrap gap-2">
             <input aria-label="Search tasks" type="search" placeholder="Search tasks…" value={query} onChange={event => setQuery(event.target.value)} className={`${control} min-w-32 flex-1`} />
-            <select aria-label="Filter by assignment" className={control} value={assignee} onChange={event => setAssignee(event.target.value)}>
+            <Select aria-label="Filter by assignment" className={control} value={assignee} onChange={event => setAssignee(event.target.value)}>
               <option value="">All assignments</option><option value="unassigned">Unassigned</option>
               {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
               {team && <option value={`team:${team.id}`}>{team.name} (team)</option>}
-            </select>
-            <select aria-label="Filter by priority" className={control} value={priority} onChange={event => setPriority(event.target.value)}>
+            </Select>
+            <Select aria-label="Filter by priority" className={control} value={priority} onChange={event => setPriority(event.target.value)}>
               <option value="">All priorities</option>{priorities.map(value => <option key={value} value={value}>{value}</option>)}
-            </select>
+            </Select>
             <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyOverdue} onChange={event => setOnlyOverdue(event.target.checked)} />Overdue</label>
             <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={archived} disabled={busy} onChange={event => { setItems(null); setArchived(event.target.checked); }} />Archived</label>
           </div>

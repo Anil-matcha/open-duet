@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import { useEffect, useState } from "react";
 import { api, ApiError, type ApprovalRule } from "@/lib/api";
 import { ruleMatchLabel, ruleScopeLabel } from "@/lib/approvals";
@@ -109,7 +111,7 @@ export function ApprovalRules({
       <form onSubmit={add} className="space-y-2 rounded-md border border-line p-3">
         <p className="text-xs font-medium">Add a rule</p>
         <div className="flex gap-2">
-          <select
+          <Select
             aria-label="How the command must match"
             value={match}
             onChange={(e) => setMatch(e.target.value === "prefix" ? "prefix" : "exact")}
@@ -117,7 +119,7 @@ export function ApprovalRules({
           >
             <option value="exact">Exactly</option>
             <option value="prefix">Starts with</option>
-          </select>
+          </Select>
           <input
             aria-label="Command"
             className={`${FIELD} font-mono`}

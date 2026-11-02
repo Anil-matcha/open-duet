@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import { Dialog } from "@/components/ui/Dialog";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -178,9 +180,9 @@ function ScheduleFields({ value, onChange, onPreviewResult }: {
   return (
     <fieldset className="space-y-2 rounded-md border border-line p-3">
       <legend className="px-1 text-xs font-medium text-muted">Schedule</legend>
-      <select aria-label="Schedule kind" value={value.kind} onChange={(e) => set({ kind: e.target.value as ScheduleDraft["kind"] })} className={input}>
+      <Select aria-label="Schedule kind" value={value.kind} onChange={(e) => set({ kind: e.target.value as ScheduleDraft["kind"] })} className={input}>
         {SCHEDULE_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
-      </select>
+      </Select>
       {value.kind === "weekdays" && (
         <div className="flex flex-wrap items-center gap-1">
           {DAY_LABELS.map((label, day) => {
@@ -382,9 +384,9 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                 <input aria-label="Routine name" required maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={input} />
               </label>
               <label className="block text-xs text-muted">Agent
-                <select aria-label="Agent" value={draft.agentId ?? ""} onChange={(e) => setDraft({ ...draft, agentId: Number(e.target.value) })} className={input}>
+                <Select aria-label="Agent" value={draft.agentId ?? ""} onChange={(e) => setDraft({ ...draft, agentId: Number(e.target.value) })} className={input}>
                   {live.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-                </select>
+                </Select>
               </label>
               <label className="block text-xs text-muted">What it should do
                 <textarea aria-label="Prompt" required rows={4} value={draft.prompt} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} className={input} />
@@ -415,10 +417,10 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                   return <fieldset key={group.app} className="space-y-2 border-t border-line pt-2">
                     <legend className="text-xs font-medium">{group.label}</legend>
                     <label className="block text-xs text-muted">Connected account
-                      <select aria-label={`${group.label} connected account`} value={selectedAccount} disabled={available.length === 0 || !draft.connectedAppGrants.some((grant) => allTools.some(([tool]) => tool === grant.tool))} onChange={(event) => setRoutineGrantAccount(group.app, event.target.value)} className={input}>
+                      <Select aria-label={`${group.label} connected account`} value={selectedAccount} disabled={available.length === 0 || !draft.connectedAppGrants.some((grant) => allTools.some(([tool]) => tool === grant.tool))} onChange={(event) => setRoutineGrantAccount(group.app, event.target.value)} className={input}>
                         {available.length === 0 ? <option value="">No account allowed for this agent</option> : available.map((account) => <option key={account.id} value={account.id}>{account.alias ?? account.id}</option>)}
                         {current && !available.some((account) => account.id === current.account_id) && <option value={current.account_id}>Unavailable account ({current.account_id})</option>}
-                      </select>
+                      </Select>
                     </label>
                     <div className="grid gap-1 sm:grid-cols-2">{group.tools.map(([tool, label]) => {
                       const grant = draft.connectedAppGrants.find((item) => item.tool === tool);
@@ -466,9 +468,9 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                   <label>Retries after a failure<input type="number" min={0} max={3} value={draft.retryLimit} onChange={(e) => setDraft({ ...draft, retryLimit: e.target.value })} className={input} /></label>
                   <label>Retry after (minutes)<input type="number" min={1} max={1440} value={draft.retryDelay} onChange={(e) => setDraft({ ...draft, retryDelay: e.target.value })} className={input} /></label>
                   <label>Approval mode
-                    <select value={draft.approvalMode} onChange={(e) => setDraft({ ...draft, approvalMode: e.target.value as ApprovalMode })} className={input}>
+                    <Select value={draft.approvalMode} onChange={(e) => setDraft({ ...draft, approvalMode: e.target.value as ApprovalMode })} className={input}>
                       {APPROVAL_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
-                    </select>
+                    </Select>
                   </label>
                 </div>
                 <p className="mt-2 text-muted">

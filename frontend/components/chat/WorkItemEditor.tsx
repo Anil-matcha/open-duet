@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useId, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { Select } from "@/components/ui/Select";
 import type { Agent, Thread } from "@/lib/api";
 import { localDateTime } from "@/lib/planner";
 import type { WorkBoard, WorkInput, WorkItem } from "@/lib/planner-api";
@@ -114,23 +115,23 @@ export function WorkItemEditor({ item, board, agents, threads, team, seedDate, s
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor={`${id}-status`} className="mb-1 block text-sm font-medium">Status</label>
-              <select id={`${id}-status`} value={draft.columnId} onChange={event => change("columnId", Number(event.target.value))} className={input}>
+              <Select id={`${id}-status`} value={draft.columnId} onChange={event => change("columnId", Number(event.target.value))} className={input}>
                 {board.columns.map(column => <option key={column.id} value={column.id}>{column.name}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor={`${id}-priority`} className="mb-1 block text-sm font-medium">Priority</label>
-              <select id={`${id}-priority`} value={draft.priority} onChange={event => change("priority", event.target.value as WorkItem["priority"])} className={input}>
+              <Select id={`${id}-priority`} value={draft.priority} onChange={event => change("priority", event.target.value as WorkItem["priority"])} className={input}>
                 <option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option>
-              </select>
+              </Select>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor={`${id}-deadline-kind`} className="mb-1 block text-sm font-medium">Deadline</label>
-              <select id={`${id}-deadline-kind`} value={draft.deadlineKind} onChange={event => change("deadlineKind", event.target.value as DeadlineKind)} className={input}>
+              <Select id={`${id}-deadline-kind`} value={draft.deadlineKind} onChange={event => change("deadlineKind", event.target.value as DeadlineKind)} className={input}>
                 <option value="none">No deadline</option><option value="date">Date only</option><option value="time">Date and time</option>
-              </select>
+              </Select>
             </div>
             {draft.deadlineKind === "date" && <div>
               <label htmlFor={`${id}-date`} className="mb-1 block text-sm font-medium">Due date</label>
@@ -144,21 +145,21 @@ export function WorkItemEditor({ item, board, agents, threads, team, seedDate, s
           <p className="text-xs text-muted">Deadlines and status changes do not start an agent. Save your changes, then use Run & history to start or schedule work.</p>
           <div>
             <label htmlFor={`${id}-assignee`} className="mb-1 block text-sm font-medium">Assigned to</label>
-            <select id={`${id}-assignee`} value={draft.assignee} onChange={event => change("assignee", event.target.value)} className={input}>
+            <Select id={`${id}-assignee`} value={draft.assignee} onChange={event => change("assignee", event.target.value)} className={input}>
               <option value="">Unassigned</option>
               {team && <option value={`team:${team.id}`}>Team · {team.name}</option>}
               {agents.map(agent => <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>)}
               {unavailableAgent && <option value={`agent:${item!.agent_id}`}>Unavailable agent · #{item!.agent_id}</option>}
               {unavailableTeam && <option value={`team:${item!.team_id}`}>Unavailable team · #{item!.team_id}</option>}
-            </select>
+            </Select>
           </div>
           <div>
             <label htmlFor={`${id}-thread`} className="mb-1 block text-sm font-medium">Linked conversation</label>
-            <select id={`${id}-thread`} value={draft.threadId ?? ""} onChange={event => change("threadId", event.target.value ? Number(event.target.value) : null)} className={input}>
+            <Select id={`${id}-thread`} value={draft.threadId ?? ""} onChange={event => change("threadId", event.target.value ? Number(event.target.value) : null)} className={input}>
               <option value="">No linked conversation</option>
               {threads.map(thread => <option key={thread.id} value={thread.id}>{thread.title || `Conversation #${thread.id}`}</option>)}
               {unavailableThread && <option value={item!.thread_id!}>Unavailable conversation · #{item!.thread_id}</option>}
-            </select>
+            </Select>
             {draft.threadId !== null && threads.some(thread => thread.id === draft.threadId) && <Link href={`/chat?thread=${draft.threadId}`} className="mt-2 inline-block text-xs text-accent underline" onClick={event => {
               if (busy) { event.preventDefault(); return; }
               (onOpenThread ?? onClose)();

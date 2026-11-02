@@ -8,6 +8,7 @@ import { t } from "@/lib/i18n";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu, MenuItem } from "@/components/ui/Menu";
+import { Select } from "@/components/ui/Select";
 
 const CHIP =
   "inline-flex h-8 max-w-20 shrink-0 cursor-pointer items-center sm:max-w-52 rounded-full border border-line bg-raised px-3 text-[13px] text-ink transition-colors duration-(--dur-fast) hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 touch:h-10";
@@ -70,7 +71,7 @@ export function ChatHeader({
         {agentChoice ? (
           <>
             <Avatar agentId={agentChoice.value} name={agentChoice.agents.find((a) => a.id === agentChoice.value)?.name} size="md" />
-            <select
+            <Select
               value={agentChoice.value ?? ""}
               onChange={(e) => agentChoice.onChange(e.target.value === "" ? null : Number(e.target.value))}
               aria-label={t("header.agentForChat")}
@@ -80,7 +81,7 @@ export function ChatHeader({
               {agentChoice.agents.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
-            </select>
+            </Select>
           </>
         ) : (
           <>

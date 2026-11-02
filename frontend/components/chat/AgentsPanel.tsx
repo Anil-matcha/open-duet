@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import Link from "next/link";
 import { Dialog } from "@/components/ui/Dialog";
 import { useEffect, useRef, useState } from "react";
@@ -505,7 +507,7 @@ export function AgentsPanel({
 
               <label className="block text-xs text-muted">
                 Fallback engine when limited
-                <select
+                <Select
                   aria-label="Fallback engine"
                   value={draft.fallback_provider && draft.fallback_provider !== draft.provider ? draft.fallback_provider : ""}
                   disabled={busy}
@@ -516,7 +518,7 @@ export function AgentsPanel({
                   {engines.filter((engine) => engine.id !== draft.provider).map((engine) => (
                     <option key={engine.id} value={engine.id}>{engine.label}</option>
                   ))}
-                </select>
+                </Select>
               </label>
               {draft.fallback_provider && draft.fallback_provider !== draft.provider && (
                 <label className="block text-xs text-muted">

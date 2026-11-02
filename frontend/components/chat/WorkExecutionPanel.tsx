@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -86,16 +88,16 @@ export function WorkExecutionPanel({ item, agents, onClose, onOpenThread, onRevi
           {retrying && <p className="text-sm text-warning">Earlier work may be partly done. Check its conversation and adjust the prompt before trying again.</p>}
           <fieldset disabled={busy || !!pending} className="space-y-3">
             <label htmlFor={`${id}-agent`} className="block text-sm">Agent
-              <select id={`${id}-agent`} required className={control} value={agentId} onChange={event => setAgentId(Number(event.target.value))}>
+              <Select id={`${id}-agent`} required className={control} value={agentId} onChange={event => setAgentId(Number(event.target.value))}>
                 <option value={0} disabled>Choose an agent</option>
                 {agents.filter(agent => !agent.archived_at).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-              </select></label>
+              </Select></label>
             <label htmlFor={`${id}-prompt`} className="block text-sm">Exact task prompt
               <textarea id={`${id}-prompt`} required maxLength={20000} rows={5} className={control} value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
             <label htmlFor={`${id}-mode`} className="block text-sm">Approval mode
-              <select id={`${id}-mode`} className={control} value={mode} onChange={event => setMode(event.target.value as WorkRunInput["approval_mode"])}>
+              <Select id={`${id}-mode`} className={control} value={mode} onChange={event => setMode(event.target.value as WorkRunInput["approval_mode"])}>
                 <option value="ask">Ask</option><option value="accept_edits">Accept edits</option><option value="plan">Plan</option>
-              </select></label>
+              </Select></label>
             <p className="text-xs text-muted">The stricter of this mode and the agent’s saved mode applies. Review approvals in the execution conversation.</p>
             <label htmlFor={`${id}-when`} className="block text-sm">Run once at · {timezone} (leave empty to start now)
               <input id={`${id}-when`} type="datetime-local" className={control} value={when} onChange={event => setWhen(event.target.value)} /></label>

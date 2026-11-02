@@ -5,6 +5,7 @@ import { useId } from "react";
 import type { Engine } from "@/lib/api";
 import { engineLimitText } from "@/lib/everyday";
 import { engineGroups } from "@/lib/engines";
+import { Select } from "@/components/ui/Select";
 
 const FIELD = "mt-1 w-full rounded-md border border-line bg-transparent px-3 py-1.5 text-sm disabled:opacity-50";
 
@@ -23,19 +24,19 @@ export function EngineModelFields({ engines, provider, model, onChange, disabled
   const knownModel = model === null || engine?.models.some((item) => item.id === model);
   return <div className="space-y-3">
     <label className="block text-xs text-muted">Engine
-      <select className={FIELD} aria-label="Engine" value={provider} disabled={disabled || lockProvider} onChange={(event) => onChange(event.target.value, null)}>
+      <Select className={FIELD} aria-label="Engine" value={provider} disabled={disabled || lockProvider} onChange={(event) => onChange(event.target.value, null)}>
         {!engine && <option value={provider}>{provider}</option>}
         {engineGroups(engines).map((group) => <optgroup key={group.label} label={group.label}>{group.engines.map((item) => <option key={item.id} value={item.id} disabled={!item.available || (hasComputer && !item.capabilities.computers)}>{item.label}{item.available ? "" : ` · ${item.reason ?? "Needs setup"}`}{item.limit ? ` · ${engineLimitText(item.limit)}` : ""}{hasComputer && !item.capabilities.computers ? " · cannot use this computer" : ""}</option>)}</optgroup>)}
-      </select>
+      </Select>
     </label>
     {engine?.limit && <p role="status" className="text-xs text-warning"><span className="mr-1 rounded-full border border-warning/60 px-2 py-0.5 font-medium">{engineLimitText(engine.limit)}</span>{engine.limit.message}</p>}
     {engine && !engine.available && <p className="text-xs text-warning">{engine.reason} <Link href="/settings/engines/" className="underline">Open engine settings</Link></p>}
     <label className="block text-xs text-muted">Model
-      {engine && !engine.custom_models ? <select className={FIELD} aria-label="Model" value={model ?? ""} disabled={disabled} onChange={(event) => onChange(provider, event.target.value || null)}>
+      {engine && !engine.custom_models ? <Select className={FIELD} aria-label="Model" value={model ?? ""} disabled={disabled} onChange={(event) => onChange(provider, event.target.value || null)}>
         <option value="">{defaultLabel ?? `Engine default${engine.default_model ? ` (${engine.default_model})` : ""}`}</option>
         {!knownModel && model && <option value={model}>{model} (saved; unavailable)</option>}
         {engine.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-      </select> : <>
+      </Select> : <>
         <input className={FIELD} aria-label="Model" list={listId} value={model ?? ""} disabled={disabled} placeholder={defaultLabel ?? (engine?.default_model ? `Engine default (${engine.default_model})` : "Engine default")} maxLength={200} autoComplete="off" spellCheck={false} onChange={(event) => onChange(provider, event.target.value || null)} />
         <datalist id={listId}>{engine?.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>
       </>}
