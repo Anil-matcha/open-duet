@@ -14,6 +14,7 @@ const pageMarkupFiles = [
   "../components/settings/GeneralSettings.tsx",
   "../components/settings/ProfileSettings.tsx",
   "../components/settings/EnginesSettings.tsx",
+  "../components/settings/ChannelsSettings.tsx",
   "../components/settings/ApprovalsSettings.tsx",
   "../components/settings/AccountSettings.tsx",
 ];
@@ -48,6 +49,8 @@ test("every registry anchor exists in settings page markup and no settings ancho
 test("search ranks likely settings first and searches titles plus keywords", () => {
   assert.equal(rankSettings("theme")[0]?.entry.id, "general-appearance");
   assert.equal(rankSettings("api key")[0]?.entry.id, "engine-api-key");
+  assert.equal(rankSettings("telegram")[0]?.entry.id, "channels-telegram");
+  assert.equal(rankSettings("channels")[0]?.entry.id, "channels-telegram");
   assert.ok(rankSettings("approvals").some(({ entry }) => entry.page === "approvals"));
   assert.deepEqual(rankSettings("   "), []);
 });

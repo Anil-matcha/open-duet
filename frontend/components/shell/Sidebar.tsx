@@ -8,7 +8,6 @@ import {
   Columns3,
   LayoutGrid,
   Plus,
-  Send,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -352,10 +351,6 @@ export function Sidebar({
           <Link href="/apps/" className={cn(ROW, "hover:bg-hover/60")}>
             <LayoutGrid size={16} aria-hidden="true" className="shrink-0 text-muted" />
             <span className="font-medium">{t("sidebar.apps")}</span>
-          </Link>
-          <Link href="/tasks/" className={cn(ROW, "hover:bg-hover/60")}>
-            <Send size={16} aria-hidden="true" className="shrink-0 text-muted" />
-            <span className="font-medium">{t("sidebar.legacyTasks")}</span>
           </Link>
         </div>
 

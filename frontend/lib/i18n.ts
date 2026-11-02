@@ -114,9 +114,55 @@ export const en = {
   "language.system": "System default",
   "language.english": "English",
   "language.spanish": "Español",
+  "channels.telegramTitle": "Telegram",
+  "channels.telegramDescription": "Link Telegram to use the same account and conversation history in the bot.",
+  "channels.boatTasksTitle": "Boat tasks",
+  "channels.boatTasksDescription": "Open the legacy task page for Boat task submissions and account setup.",
+  "channels.boatTasksLink": "Open legacy Boat tasks",
+  "channels.manageTelegram": "Manage Telegram in Settings → Channels",
+  "channels.notConnected": "Not connected",
+  "channels.connectedAs": "Connected as {userId}",
+  "channels.linkTelegram": "Link Telegram",
+  "channels.disconnect": "Disconnect",
+  "channels.sendLinkCommand": "Send this code to the Telegram bot to link your account.",
+  "channels.copy": "Copy",
+  "channels.copied": "Copied",
+  "channels.copyFailed": "Could not copy. Select and copy the command instead.",
+  "channels.waitingForLink": "Waiting for you to send it…",
+  "channels.expiresAt": "Expires {time}",
+  "channels.openTelegram": "Open Telegram →",
+  "channels.generateCodeError": "Could not generate a code.",
+  "channels.codeExpired": "Code expired — generate a new one.",
+  "channels.boatTasksCompactDescription": "Manage Boat task submissions.",
+  "channels.openBoatTasks": "Open Boat tasks",
 } as const;
 
-export type MessageKey = keyof typeof en;
+// Locale catalogs cover the established shared messages. New English-only strings stay out of
+// this key set so they can use the English fallback until a locale is translated.
+export type MessageKey = Exclude<keyof typeof en,
+  | "channels.telegramTitle"
+  | "channels.telegramDescription"
+  | "channels.boatTasksTitle"
+  | "channels.boatTasksDescription"
+  | "channels.boatTasksLink"
+  | "channels.manageTelegram"
+  | "channels.notConnected"
+  | "channels.connectedAs"
+  | "channels.linkTelegram"
+  | "channels.disconnect"
+  | "channels.sendLinkCommand"
+  | "channels.copy"
+  | "channels.copied"
+  | "channels.copyFailed"
+  | "channels.waitingForLink"
+  | "channels.expiresAt"
+  | "channels.openTelegram"
+  | "channels.generateCodeError"
+  | "channels.codeExpired"
+  | "channels.boatTasksCompactDescription"
+  | "channels.openBoatTasks"
+>;
+type EnglishKey = keyof typeof en;
 export const LOCALES = ["en", "de", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt", "ru", "tr", "zh"] as const;
 export type Locale = (typeof LOCALES)[number];
 export type LanguageChoice = "system" | Locale;
@@ -331,7 +377,7 @@ export const LANGUAGE_INIT_SCRIPT =
   'd.lang=l==="pt"?"pt-BR":l==="zh"?"zh-CN":l})();';
 
 export function translate(locale: Locale, key: string, params?: Record<string, string | number>): string {
-  const template: string = catalogs[locale][key as MessageKey] ?? en[key as MessageKey] ?? key;
+  const template: string = catalogs[locale][key as MessageKey] ?? en[key as EnglishKey] ?? key;
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in params ? String(params[name]) : whole));
 }
