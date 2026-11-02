@@ -82,7 +82,13 @@ function parseItems(children: ReactNode): SelectItem[] {
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
 
-    const props = child.props as { label?: string; children?: ReactNode; value?: unknown };
+    const props = child.props as {
+      label?: string;
+      children?: ReactNode;
+      value?: unknown;
+      disabled?: boolean;
+      className?: string;
+    };
     const isGroup =
       child.type === "optgroup" || (props?.label && props?.children);
 
