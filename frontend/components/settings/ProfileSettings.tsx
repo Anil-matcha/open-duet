@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Activity,
   Bot,
@@ -180,8 +180,25 @@ function defaultEmptyStats(): ProfileStats {
 
 /* ─── Main Profile Settings Component ─── */
 export function ProfileSettings() {
-  const [mounted, setMounted] = useState(false);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    const cached = readCachedProfile();
+    if (cached) {
+      return {
+        name: cached.name ?? null,
+        avatar_url: cached.avatar_url ?? null,
+        bio: cached.bio ?? null,
+        email: cached.email ?? null,
+        user_id: cached.user_id ?? null,
+        is_admin: cached.is_admin ?? true,
+      };
+    }
+    return null;
+  });
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -191,19 +208,6 @@ export function ProfileSettings() {
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    const cached = readCachedProfile();
-    if (cached) {
-      setProfile({
-        name: cached.name ?? null,
-        avatar_url: cached.avatar_url ?? null,
-        bio: cached.bio ?? null,
-        email: cached.email ?? null,
-        user_id: cached.user_id ?? null,
-        is_admin: cached.is_admin ?? true,
-      });
-    }
-
     let alive = true;
     profileApi
       .getProfile()
@@ -722,13 +726,15 @@ function ProfileEditDialog({
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setName(profile?.name || "");
       setBio(profile?.bio || "");
       setAvatarUrl(profile?.avatar_url || null);
     }
-  }, [open, profile]);
+  }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

@@ -72,7 +72,7 @@ function getOptionText(label: ReactNode): string {
   if (typeof label === "string") return label;
   if (typeof label === "number") return String(label);
   if (Array.isArray(label)) return label.map(getOptionText).join("");
-  if (isValidElement(label)) return getOptionText((label.props as any)?.children);
+  if (isValidElement(label)) return getOptionText((label.props as { children?: ReactNode })?.children);
   return "";
 }
 
@@ -82,7 +82,7 @@ function parseItems(children: ReactNode): SelectItem[] {
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
 
-    const props = child.props as any;
+    const props = child.props as { label?: string; children?: ReactNode; value?: unknown };
     const isGroup =
       child.type === "optgroup" || (props?.label && props?.children);
 
@@ -90,7 +90,13 @@ function parseItems(children: ReactNode): SelectItem[] {
       const groupOptions: SelectOption[] = [];
       Children.forEach(props.children, (subChild) => {
         if (!isValidElement(subChild)) return;
-        const subProps = subChild.props as any;
+        const subProps = subChild.props as {
+          value?: unknown;
+          children?: ReactNode;
+          label?: string;
+          disabled?: boolean;
+          className?: string;
+        };
         groupOptions.push({
           value: String(subProps.value ?? ""),
           label: subProps.children ?? subProps.label ?? String(subProps.value ?? ""),

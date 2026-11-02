@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveEngineModel, readCachedPreference, writeCachedPreference, PREFERRED_ENGINE_STORAGE_KEY } from "./engine-selection.ts";
+import { resolveEngineModel, readCachedPreference, writeCachedPreference } from "./engine-selection.ts";
 
 const mockEngines = [
   {
