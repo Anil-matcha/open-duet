@@ -62,7 +62,32 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
     }
     return counts;
   }, [room?.members]);
-  const queueSummary = room ? queueText(room.members, orderedWork) : "";
+  const memberHasDuplicateName = (agentId: number) => {
+    const member = room?.members.find(item => item.agent_id === agentId);
+    if (!member) return false;
+    const name = member.name.normalize("NFKC").toLocaleLowerCase();
+    return (duplicateNameCounts.get(name) ?? 0) > 1;
+  };
+  const memberDisplayName = (agentId: number) => {
+    const member = room?.members.find(item => item.agent_id === agentId);
+    if (!member) return roomMemberName(room?.members ?? [], agentId);
+    if (!memberHasDuplicateName(agentId)) return member.name;
+    const agent = agents.find(item => item.id === agentId);
+    const profile = agent?.title?.trim() || [agent?.provider, agent?.model].filter(Boolean).join(" · ");
+    return `${member.name} · ${profile ? `${profile} · ` : ""}#${agentId}`;
+  };
+  const messageAuthorName = (message: RoomMessage) => {
+    const author = message.author;
+    if (author?.agent_id && memberHasDuplicateName(author.agent_id)) return memberDisplayName(author.agent_id);
+    if (author?.label) return author.label;
+    if (author?.agent_id) return roomMemberName(room?.members ?? [], author.agent_id);
+    return author?.kind === "person" ? "You" : "Room";
+  };
+  const duplicateMemberNames = room?.members.map(member => ({
+    ...member,
+    name: memberDisplayName(member.agent_id),
+  })) ?? [];
+  const queueSummary = room ? queueText(duplicateMemberNames, orderedWork) : "";
   const pendingApprovals = approvals.filter(item => item.status === "pending");
 
   const refresh = useCallback(async () => {
@@ -143,9 +168,10 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
           <ul aria-label={t("room.members")} className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
             {room.members.slice(0, 4).map(member => {
               const status = memberStatus(room, approvals, member.agent_id, t);
-              return <li key={member.agent_id} title={status ? `${member.name} · ${status}` : member.name} aria-label={status ? `${member.name}: ${status}` : member.name} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-inset px-2 py-1 text-xs">
+              const label = memberDisplayName(member.agent_id);
+              return <li key={member.agent_id} title={status ? `${label} · ${status}` : label} aria-label={status ? `${label}: ${status}` : label} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-inset px-2 py-1 text-xs">
                 <span aria-hidden="true" className="inline-flex size-5 items-center justify-center rounded-full bg-hover font-semibold text-muted">{member.name.trim().slice(0, 1).toLocaleUpperCase() || "?"}</span>
-                <span className="max-w-32 truncate">{member.name}</span>
+                <span className="max-w-48 truncate">{label}</span>
                 {status && <span className="text-muted">{status}</span>}
               </li>;
             })}
@@ -176,7 +202,7 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
                 const status = waiting ? t("approval.waiting") : dispatch.status === "running" ? t("room.working") : t("room.queued");
                 return <li key={dispatch.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 text-xs">
                   <span className="text-muted">{index + 1}.</span>
-                  <span className="truncate">{roomMemberName(room.members, dispatch.agent_id)}</span>
+                  <span className="truncate">{memberDisplayName(dispatch.agent_id)}</span>
                   <span className="text-right text-muted">{status} · {routeReason(dispatch.reason, t)}</span>
                 </li>;
               })}
@@ -192,7 +218,7 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
           >
             {messages.length === 0 && <p className="mx-auto max-w-xl rounded-card border border-dashed border-line p-6 text-center text-sm text-muted">{t("room.startConversation")} {t("room.tagToReply")}</p>}
             {messages.map(message => <article key={message.seq} className="mx-auto max-w-4xl space-y-1.5">
-              <p className="text-xs font-semibold text-muted">{message.author?.label ?? (message.author?.agent_id ? roomMemberName(room.members, message.author.agent_id) : message.author?.kind === "person" ? "You" : "Room")} <time className="ml-1 font-normal" dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
+              <p className="text-xs font-semibold text-muted">{messageAuthorName(message)} <time className="ml-1 font-normal" dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
               <div className="break-words text-sm leading-relaxed"><Markdown text={message.text} /></div>
               {message.source?.thread_id && <Link className="text-xs underline" href={`/chat?thread=${message.source.thread_id}`}>{t("room.seeWork")}</Link>}
             </article>)}
@@ -201,7 +227,7 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
               {pendingApprovals.map(approval => <SharedApproval key={approval.id} approval={approval} onChanged={() => void refresh()} />)}
             </section>}
             {room.dispatches.filter(item => ["failed", "stopped"].includes(item.status)).map(item => <div key={item.id} role="status" className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-field border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
-              <span className="flex-1">{roomMemberName(room.members, item.agent_id)}: {item.status}{item.error_code ? ` (${item.error_code})` : ""}</span>
+              <span className="flex-1">{memberDisplayName(item.agent_id)}: {item.status}{item.error_code ? ` (${item.error_code})` : ""}</span>
               {admin && <button type="button" className="underline" disabled={busy} onClick={() => void act(() => collaboration.retryDispatch(room.id, item.id))}>{t("room.retry")}</button>}
             </div>)}
           </div>
@@ -244,10 +270,13 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
               <ul className="space-y-2">
                 {room.members.map(member => {
                   const status = memberStatus(room, approvals, member.agent_id, t);
+                  const label = memberDisplayName(member.agent_id);
+                  const disambiguator = label === member.name ? null : label.slice(member.name.length + 3);
                   return <li key={member.agent_id} className="space-y-2 rounded-field border border-line p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <strong className="block truncate text-sm">{member.name}</strong>
+                        {disambiguator && <span className="block truncate text-xs text-muted">{disambiguator}</span>}
                         {status && <span className={`text-xs ${member.held ? "text-warning" : "text-muted"}`}>{status}</span>}
                       </div>
                     </div>

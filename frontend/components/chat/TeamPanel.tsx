@@ -336,7 +336,7 @@ export function TeamPanel({ agents, onClose, onChanged }: { agents: Agent[]; onC
 
               <div className="space-y-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex gap-1 overflow-x-auto" aria-label={t("team.allWork")}>
+                  <div className="flex flex-wrap gap-1" aria-label={t("team.allWork")}>
                     {FILTERS.map((value) => <button key={value} type="button" aria-pressed={filter === value} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs transition-colors ${filter === value ? "border-accent bg-accent/10 text-accent" : "border-line text-muted hover:bg-hover"}`} onClick={() => setFilter(value)}>{t(FILTER_LABEL[value])}</button>)}
                   </div>
                   <label className="block w-full lg:max-w-xs">
