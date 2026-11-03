@@ -8,7 +8,7 @@
 
 ### Changed
 
-- Make a room conversation a full-screen workspace with a persistent transcript and docked composer. Move member controls, instructions and export/delete actions into a responsive details panel; show the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
+- Keep active rooms inside the chat workspace so conversation navigation stays visible. Center and widen the docked composer with the transcript; keep member controls, instructions and export/delete actions in a responsive details panel, with the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
 - Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
 
 ## 0.8.1 - 2026-11-03
@@ -42,6 +42,12 @@
   Each run records its starting capability ceilings and rechecks current
   permission before calls. Ordinary chats retain their own approval behavior.
   Real AppSumo research and updated installed-package qualification remain open.
+
+### Fixed
+
+- Fix the phone app's QR scanner in the Android release build. The build's code shrinking broke
+  the scanner's setup, so the camera showed but never read a code. Keep rules for ML Kit are now
+  set in `app.json`. Checked on an Android phone with a signed release build.
 
 ### Changed
 
