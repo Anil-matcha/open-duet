@@ -1,4 +1,4 @@
-export type AgentMigrationSource = "grok" | "hermes" | "other";
+export type AgentMigrationSource = "grok" | "hermes" | "other" | "openbot";
 
 export type AgentMigrationPreview = {
   document: Record<string, unknown>;
@@ -7,6 +7,7 @@ export type AgentMigrationPreview = {
   title: string;
   description: string;
   instructions: string;
+  mappingNotice?: string;
 };
 
 const MAX_EXPORT_BYTES = 1_000_000;
@@ -134,7 +135,13 @@ export function parseExternalAgentSetup(
 
   return {
     document: { format: "open-dots.agent", version: 1, agent },
-    sourceLabel: source === "grok" ? "Grok Bot" : source === "hermes" ? "Hermes Agent" : "Another agent app",
+    sourceLabel: source === "grok"
+      ? "Grok Bot"
+      : source === "hermes"
+        ? "Hermes Agent"
+        : source === "openbot"
+          ? "OpenBot database"
+          : "Another agent app",
     name,
     title,
     description: description === instructions ? "" : description,

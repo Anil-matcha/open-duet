@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/Select";
 import { Tab, TabList, TabPanel, Tabs } from "@/components/ui/Tabs";
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
-import { api, ApiError, type Agent, type AgentInput, type AgentMemory, type ApprovalMode, type Engine } from "@/lib/api";
+import { api, ApiError, isLocalApiEndpoint, type Agent, type AgentInput, type AgentMemory, type ApprovalMode, type Engine, type OpenBotDatabasePreview, type OpenBotDatabaseProfilePreview } from "@/lib/api";
 import {
   APPROVAL_MODES,
   agentFileHasNotes,
@@ -222,6 +222,7 @@ export function AgentsPanel({
   const [exporting, setExporting] = useState<ExportState | null>(null);
   const [importing, setImporting] = useState<ImportState | null>(null);
   const [migration, setMigration] = useState<MigrationState | null>(null);
+  const [openBotDatabase, setOpenBotDatabase] = useState<OpenBotDatabasePreview | null>(null);
   const [computerOf, setComputerOf] = useState<Agent | null>(null);
   const [skillsOf, setSkillsOf] = useState<Agent | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Agent | null>(initialDeleteAgent);
@@ -250,10 +251,12 @@ export function AgentsPanel({
   }, []);
   useEffect(() => { let live = true; collaboration.team().then(value => { if (live) setTeam(value); }).catch(() => {}); return () => { live = false; }; }, []);
   const fileInput = useRef<HTMLInputElement>(null);
+  const openBotDatabaseInput = useRef<HTMLInputElement>(null);
   const keepEditingRef = useRef<HTMLButtonElement>(null);
   const keepAgentRef = useRef<HTMLButtonElement>(null);
   const deleteConfirmationRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+  const canReadOpenBotDatabase = isLocalApiEndpoint();
 
   useEffect(() => {
     let cancelled = false;
@@ -455,7 +458,7 @@ export function AgentsPanel({
   };
 
   const previewMigration = () => {
-    if (!migration?.source) return;
+    if (!migration?.source || migration.source === "openbot") return;
     setError(null);
     try {
       const preview = parseExternalAgentSetup(migration.text, migration.source);
@@ -475,12 +478,52 @@ export function AgentsPanel({
   const copyMigrationPrompt = async () => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
-      await navigator.clipboard.writeText(migration?.source === "hermes" ? HERMES_AGENT_EXPORT_PROMPT : GROK_AGENT_EXPORT_PROMPT);
+      const prompt = migration?.source === "hermes"
+        ? HERMES_AGENT_EXPORT_PROMPT
+        : migration?.source === "grok"
+          ? GROK_AGENT_EXPORT_PROMPT
+          : null;
+      if (!prompt) throw new Error("Choose an export source first.");
+      await navigator.clipboard.writeText(prompt);
       setMigration((current) => current ? { ...current, copied: true } : current);
       setError(null);
     } catch {
       setError("Could not copy the prompt. Select and copy it from the box below.");
     }
+  };
+
+  const previewOpenBotDatabase = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setOpenBotDatabase(await api.previewOpenBotDatabase(file));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+      if (openBotDatabaseInput.current) openBotDatabaseInput.current.value = "";
+    }
+  };
+
+  const reviewOpenBotDatabaseProfile = (profile: OpenBotDatabaseProfilePreview) => {
+    setImporting({
+      document: profile.document,
+      name: profile.name,
+      hasNotes: false,
+      includeNotes: false,
+      migration: {
+        document: profile.document,
+        sourceLabel: "OpenBot database",
+        name: profile.name,
+        title: profile.title,
+        description: "",
+        instructions: profile.instructions,
+        mappingNotice: "The source agent's description is imported as Open Dots instructions.",
+      },
+    });
+    setOpenBotDatabase(null);
+    setMigration(null);
   };
 
   const visible = agents.filter((agent) => showArchived || agent.archived_at === null);
@@ -541,6 +584,7 @@ export function AgentsPanel({
     setExporting(null);
     setImporting(null);
     setMigration(null);
+    setOpenBotDatabase(null);
     setComputerOf(null);
     setSkillsOf(null);
     setDeleteConfirm(null);
@@ -887,6 +931,15 @@ export function AgentsPanel({
                     </button>
                     <button
                       type="button"
+                      onClick={() => { setOpenBotDatabase(null); setMigration({ ...migration, source: "openbot" }); }}
+                      disabled={!canReadOpenBotDatabase}
+                      className={BUTTON}
+                      title={canReadOpenBotDatabase ? undefined : "Available only when connected to a local backend."}
+                    >
+                      OpenBot database{canReadOpenBotDatabase ? "" : " · local app only"}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setMigration({ ...migration, source: "other" })}
                       className={BUTTON}
                     >
@@ -894,6 +947,65 @@ export function AgentsPanel({
                     </button>
                   </div>
                   <button type="button" onClick={back} className={BUTTON}>Cancel</button>
+                </>
+              ) : migration.source === "openbot" ? (
+                <>
+                  <input
+                    ref={openBotDatabaseInput}
+                    type="file"
+                    accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3"
+                    className="hidden"
+                    aria-label="Choose OpenBot database"
+                    onChange={(event) => previewOpenBotDatabase(event.target.files?.[0])}
+                  />
+                  <p>
+                    Choose the OpenBot <code>openbot.db</code> file. Close OpenBot first so its latest changes are saved.
+                    The read-only file can be up to 128 MB and must use a supported schema version.
+                  </p>
+                  <p className="text-xs text-muted">
+                    The file is sent only to the local Open Dots backend for preview and discarded afterward. Only
+                    agent names, titles and role text are returned; memories, skills, routines, connections, messages,
+                    credentials, tools and other settings are not imported. This option is unavailable on hosted accounts.
+                  </p>
+                  {!openBotDatabase ? (
+                    <button
+                      type="button"
+                      onClick={() => openBotDatabaseInput.current?.click()}
+                      disabled={busy}
+                      className={PRIMARY}
+                    >
+                      {busy ? "Reading…" : "Choose openbot.db"}
+                    </button>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted">
+                        Found {openBotDatabase.profiles.length} agent{openBotDatabase.profiles.length === 1 ? "" : "s"}
+                        in schema version {openBotDatabase.schema_version}. Choose one to review; import the others one at a time.
+                      </p>
+                      <div className="max-h-64 space-y-2 overflow-auto rounded-md border border-line p-2">
+                        {openBotDatabase.profiles.map((profile) => (
+                          <button
+                            key={profile.key}
+                            type="button"
+                            onClick={() => reviewOpenBotDatabaseProfile(profile)}
+                            className="block w-full rounded-md px-3 py-2 text-left hover:bg-hover"
+                          >
+                            <span className="block font-medium">{profile.name}</span>
+                            {profile.title && <span className="block text-xs text-muted">{profile.title}</span>}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setOpenBotDatabase(null); openBotDatabaseInput.current?.click(); }}
+                        disabled={busy}
+                        className={BUTTON}
+                      >
+                        Choose another file
+                      </button>
+                    </>
+                  )}
+                  <button type="button" onClick={back} disabled={busy} className={BUTTON}>Cancel</button>
                 </>
               ) : (
                 <>
@@ -960,6 +1072,9 @@ export function AgentsPanel({
                 <>
                   <div className="rounded-md border border-line p-3">
                     <p className="font-medium">Source: {importing.migration.sourceLabel}</p>
+                    {importing.migration.mappingNotice && (
+                      <p className="mt-1 text-xs text-muted">{importing.migration.mappingNotice}</p>
+                    )}
                     <p className="mt-1 text-xs text-muted">
                       The following fields will be copied to a new agent. It starts on &quot;Ask first&quot; with the
                       default model and its own folder.
@@ -1052,7 +1167,7 @@ export function AgentsPanel({
                 )}
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <Button onClick={() => setGallery(true)}>Templates…</Button>
-                  <Button onClick={() => { setError(null); setMigration({ source: null, text: "", copied: false }); }}>
+                  <Button onClick={() => { setError(null); setOpenBotDatabase(null); setMigration({ source: null, text: "", copied: false }); }}>
                     Migrate…
                   </Button>
                   <Button onClick={() => fileInput.current?.click()}>Import…</Button>

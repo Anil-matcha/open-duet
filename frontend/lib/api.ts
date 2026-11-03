@@ -5,6 +5,15 @@ import type { MarketplaceCatalog, MarketplaceConnection, MarketplaceSection, Mar
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
+export function isLocalApiEndpoint(): boolean {
+  try {
+    const hostname = new URL(API_BASE).hostname.toLowerCase();
+    return hostname === "localhost" || hostname.endsWith(".localhost") || hostname.startsWith("127.") || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 class ApiError extends Error {
   status: number;
   // The backend's machine-readable cause when it gives one (for example
@@ -500,6 +509,19 @@ export type Agent = {
   // Its computer, when it has one; its turns then run their tools there.
   computer_id?: number | null;
   computer?: ComputerSummary | null;
+};
+
+export type OpenBotDatabaseProfilePreview = {
+  key: string;
+  name: string;
+  title: string;
+  instructions: string;
+  document: Record<string, unknown>;
+};
+
+export type OpenBotDatabasePreview = {
+  schema_version: number;
+  profiles: OpenBotDatabaseProfilePreview[];
 };
 
 export type AgentInput = {
@@ -1202,6 +1224,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ document, include_notes: includeNotes }),
     }),
+
+  previewOpenBotDatabase: (file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return requestForm<OpenBotDatabasePreview>("/agents/import/openbot/preview", form);
+  },
 
   // --- Agent computers. An older backend answers 404 here: callers treat that
   // as "computers are not available" and keep working. ---
