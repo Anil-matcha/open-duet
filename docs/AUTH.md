@@ -33,12 +33,14 @@ bearer header, so a token copied out of one cannot be replayed as the other.
   gains it; the phone must be paired again with a code that has it.
 - `manage`: opt-in, chosen when the pairing code is made (**Chat, files and agents**; `--scope manage`
   on the CLI). It is chat and files plus creating, editing, duplicating and archiving agents
-  (`POST /agents`, `PATCH /agents/{id}`, `POST /agents/{id}/duplicate`). It does not delete agents.
+  (`POST /agents`, `PATCH /agents/{id}`, `POST /agents/{id}/duplicate`), and creating, editing and deleting
+  rooms (`POST /rooms`, `PATCH` and `DELETE /rooms/{id}`) and holding or resuming a room member
+  (`PATCH /rooms/{id}/members/{agent_id}`). It does not delete agents.
   The server also refuses, for any device without `admin`,
   an agent's workspace folder, the "Accept edits" approval mode (a device may choose "Ask first" or
   "Plan only", or move an agent to either), connected apps and the team lead role, with `403
   field_requires_admin`. A duplicate made by such a device gets its own folder and "Ask first" in place
-  of "Accept edits". Import, export, notes, skills, computers, rooms and team routes stay admin-only.
+  of "Accept edits". Import, export, notes, skills, computers and team routes stay admin-only.
 
 ## The owner
 

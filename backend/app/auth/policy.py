@@ -87,15 +87,20 @@ FILES_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
 )
 
 
-# What the opt-in `manage` scope adds to chat and files: creating and editing agents. Not deleting them (archive
-# instead), and not what is sensitive in an agent: the handlers refuse the workspace folder, "accept
-# edits", connected apps and the lead role for anyone but admin (routers/agents.py).
+# What the opt-in `manage` scope adds to chat and files: creating and editing agents, and creating, editing and
+# deleting rooms (and holding or resuming a member). Not deleting agents (archive instead), and not what is
+# sensitive in an agent: the handlers refuse the workspace folder, "accept edits", connected apps and the lead
+# role for anyone but admin (routers/agents.py). A room holds no such setting: its members keep their own
+# approvals, and a post from a device without admin is already marked restricted (routers/rooms.py).
 MANAGE_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
     (frozenset(methods), re.compile(f"^{API}{path}$"))
     for methods, path in (
         ({"POST"}, "/agents"),
         ({"PATCH"}, f"/agents/{_ID}"),
         ({"POST"}, f"/agents/{_ID}/duplicate"),
+        ({"POST"}, "/rooms"),
+        ({"PATCH", "DELETE"}, f"/rooms/{_ID}"),
+        ({"PATCH"}, f"/rooms/{_ID}/members/{_ID}"),
     )
 )
 

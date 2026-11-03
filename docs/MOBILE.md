@@ -85,15 +85,20 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   happens, post to it, and tag agents with `@` (buttons add the names; `@everyone`
   asks all of them). **Stop** ends what the agents are working on. When an agent
   in the room asks to run a tool, the request is pinned with that agent's name
-  and you Allow or Deny it, as in a conversation. A chat-only phone cannot
-  create rooms or change who is in them; do that in the web app.
+  and you Allow or Deny it, as in a conversation. **Details** (top right of a room)
+  shows its shared instructions, how replies are routed and who is in it. A phone paired
+  with **Chat, files and agents** can also make rooms (**New room** on the Rooms
+  screen), change a room's name, members (1 to 12), shared instructions and who
+  answers without a tag, hold or resume a member, and delete a room after typing its
+  name. A removed member's queued replies are skipped and a member who is working must
+  be stopped first. A chat-only phone cannot do these; use the web app.
 - **Settings.** The server address, this phone's name and its access (chat only),
   and **Sign out and forget this server**, which also asks the server to end the
   session. If the phone cannot reach the server at that moment, it only forgets
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), creating or editing rooms, deleting agents, engine, routine or settings management, or
+open), deleting agents, engine, routine or settings management, exporting a room, or
 more than one server. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs

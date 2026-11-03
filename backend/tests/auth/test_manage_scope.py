@@ -25,9 +25,13 @@ from tests.auth.test_auth_api import (  # noqa: F401
         ("POST", "/api/v1/agents"),
         ("PATCH", "/api/v1/agents/3"),
         ("POST", "/api/v1/agents/3/duplicate"),
+        ("POST", "/api/v1/rooms"),
+        ("PATCH", "/api/v1/rooms/3"),
+        ("DELETE", "/api/v1/rooms/3"),
+        ("PATCH", "/api/v1/rooms/3/members/4"),
     ],
 )
-def test_creating_and_editing_agents_need_the_manage_scope(method, path):
+def test_creating_and_editing_agents_and_rooms_need_the_manage_scope(method, path):
     assert required_scope(method, path) == "manage"
     assert not is_public(method, path)
 
@@ -58,9 +62,11 @@ def test_reading_agents_and_engines_stays_in_the_chat_scope(method, path):
         ("POST", "/api/v1/agents/3/../threads"),
         ("PATCH", "/api/v1/agents/3/extra"),
         ("POST", "/api/v1/team/lead"),
-        ("POST", "/api/v1/rooms"),
-        ("PATCH", "/api/v1/rooms/3"),
-        ("DELETE", "/api/v1/rooms/3"),
+        ("PATCH", "/api/v1/rooms/3/members"),
+        ("POST", "/api/v1/rooms/3/dispatches/5/retry"),
+        ("GET", "/api/v1/rooms/3/export.json"),
+        ("DELETE", "/api/v1/rooms/3/messages"),
+        ("POST", "/api/v1/rooms/3"),
         ("POST", "/api/v1/approval-rules"),
     ],
 )
@@ -69,7 +75,12 @@ def test_everything_else_about_agents_stays_admin_only(method, path):
 
 
 def test_every_manage_route_is_a_write():
-    assert all("GET" not in methods and "DELETE" not in methods for methods, _ in MANAGE_ROUTES)
+    assert all("GET" not in methods for methods, _ in MANAGE_ROUTES)
+
+
+def test_the_only_manage_delete_is_a_room():
+    deleting = [pattern.pattern for methods, pattern in MANAGE_ROUTES if "DELETE" in methods]
+    assert len(deleting) == 1 and "/rooms/" in deleting[0]
 
 
 def test_files_does_not_reach_manage():
@@ -106,6 +117,10 @@ async def test_a_manage_device_reaches_the_agent_write_routes_and_files_but_not_
             ("PATCH", "/api/v1/agents/1"),
             ("POST", "/api/v1/agents/1/duplicate"),
             ("GET", "/api/v1/threads/1/files"),
+            ("POST", "/api/v1/rooms"),
+            ("PATCH", "/api/v1/rooms/1"),
+            ("DELETE", "/api/v1/rooms/1"),
+            ("PATCH", "/api/v1/rooms/1/members/1"),
         ):
             reply = await phone.request(method, path, headers=bearer, json={"name": "x"} if method != "GET" else None)
             detail = reply.json().get("detail") if reply.status_code == 403 else None
@@ -121,12 +136,20 @@ async def test_a_manage_device_reaches_the_agent_write_routes_and_files_but_not_
 
 
 @pytest.mark.parametrize("scope", ["chat", "files"])
-async def test_a_chat_or_files_device_cannot_create_or_edit_agents(app, factory, monkeypatch, scope):
+async def test_a_chat_or_files_device_cannot_create_or_edit_agents_or_rooms(app, factory, monkeypatch, scope):
     monkeypatch.setattr(settings, "LOCAL_EXECUTION_ENABLED", True)
     await set_owner(factory)
     async with client(app) as owner, client(app, peer=("198.51.100.40", 1)) as phone:
         _, bearer = await paired(owner, phone, scope)
-        for method, path in (("POST", "/api/v1/agents"), ("PATCH", "/api/v1/agents/1"), ("POST", "/api/v1/agents/1/duplicate")):
+        for method, path in (
+            ("POST", "/api/v1/agents"),
+            ("PATCH", "/api/v1/agents/1"),
+            ("POST", "/api/v1/agents/1/duplicate"),
+            ("POST", "/api/v1/rooms"),
+            ("PATCH", "/api/v1/rooms/1"),
+            ("DELETE", "/api/v1/rooms/1"),
+            ("PATCH", "/api/v1/rooms/1/members/1"),
+        ):
             denied = await phone.request(method, path, headers=bearer, json={"name": "x"})
             assert denied.status_code == 403 and error_code(denied) == "scope_denied", (method, path)
 
