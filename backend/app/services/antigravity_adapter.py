@@ -101,12 +101,14 @@ def callback_url(raw, redirect, state):
 
 def option(session, name):
     options = session.get("configOptions")
-    return next((o for o in options if isinstance(o, dict) and o.get("id") == name), {}) if isinstance(options, list) else {}
+    if not isinstance(options, list):
+        return {}
+    return next((o for o in options if isinstance(o, dict) and (o.get("id") == name or o.get("category") == name)), {})
 
 
 def catalog(session):
     model = option(session, "model")
-    thought = option(session, "thought_level")
+    thought = option(session, "thinking_level") or option(session, "thought_level")
 
     global_efforts = []
     default_effort = None
@@ -148,6 +150,8 @@ def catalog(session):
             if identifier not in {m.id for m in values} and len(values) < 600:
                 label = item.get("name")
                 meta = models_meta.get(identifier, {})
+                lower_id = identifier.lower()
+                lower_label = (label or "").lower()
                 if meta.get("supportsReasoningEffort") is False:
                     model_efforts = ()
                     configurable = False
@@ -155,17 +159,18 @@ def catalog(session):
                     me_list = [normalize_effort(e.get("value", "")) for e in meta["reasoningEfforts"] if isinstance(e, dict)]
                     model_efforts = tuple(e for e in ("low", "medium", "high", "xhigh", "max") if e in me_list)
                     configurable = len(model_efforts) > 1
+                elif "(medium)" in lower_label:
+                    model_efforts = ("medium",)
+                    configurable = False
+                elif "(thinking)" in lower_label:
+                    model_efforts = ("high",)
+                    configurable = False
                 elif global_efforts:
-                    lower_label = (label or "").lower()
-                    if "(medium)" in lower_label:
-                        model_efforts = ("medium",)
-                        configurable = False
-                    elif "(thinking)" in lower_label:
-                        model_efforts = ("high",)
-                        configurable = False
-                    else:
-                        model_efforts = tuple(global_efforts)
-                        configurable = len(model_efforts) > 1
+                    model_efforts = tuple(global_efforts)
+                    configurable = len(model_efforts) > 1
+                elif lower_id.startswith("gemini-") or "gemini" in lower_label:
+                    model_efforts = ("low", "medium", "high")
+                    configurable = True
                 else:
                     model_efforts = ()
                     configurable = False
@@ -208,8 +213,39 @@ class AntigravityAdapter(AcpAdapter):
     def models(self):
         try:
             data = json.loads((profile_dir(self.config or {}) / "models.json").read_text())
-            return [ModelOption(**m) for m in data]
-        except (OSError, ValueError, TypeError):
+            result = []
+            for m in data:
+                efforts = m.get("supported_reasoning_efforts")
+                configurable = m.get("reasoning_effort_configurable")
+                default_effort = m.get("default_reasoning_effort")
+                if efforts is None:
+                    lower_id = m.get("id", "").lower()
+                    lower_label = m.get("label", "").lower()
+                    if "(medium)" in lower_label:
+                        efforts = ("medium",)
+                        configurable = False
+                        default_effort = default_effort or "medium"
+                    elif "(thinking)" in lower_label:
+                        efforts = ("high",)
+                        configurable = False
+                        default_effort = default_effort or "high"
+                    elif lower_id.startswith("gemini-") or "gemini" in lower_label:
+                        efforts = ("low", "medium", "high")
+                        configurable = True
+                        default_effort = default_effort or "high"
+                    else:
+                        efforts = ()
+                        configurable = False
+                result.append(ModelOption(
+                    id=m["id"],
+                    label=m["label"],
+                    default=bool(m.get("default")),
+                    default_reasoning_effort=default_effort,
+                    supported_reasoning_efforts=tuple(efforts),
+                    reasoning_effort_configurable=bool(configurable),
+                ))
+            return result
+        except (OSError, ValueError, TypeError, KeyError):
             return []
 
     def validate_config(self, payload, current):
@@ -272,14 +308,18 @@ class AntigravityAdapter(AcpAdapter):
             session = result or session
 
         if effort:
-            thought_opt = option(session, "thought_level")
+            thought_opt = option(session, "thinking_level") or option(session, "thought_level")
             if thought_opt and thought_opt.get("type") == "select":
                 current_effort = thought_opt.get("currentValue")
                 options = thought_opt.get("options", [])
                 wire_map = {normalize_effort(o.get("value", "")): o.get("value") for o in options if isinstance(o, dict)}
                 target_wire = wire_map.get(effort)
                 if target_wire and target_wire != current_effort:
-                    await call("session/set_config_option", {"sessionId": session_id, "configId": "thought_level", "value": target_wire}, handle_incoming=True)
+                    cfg_id = thought_opt.get("id") or "thinking_level"
+                    try:
+                        await call("session/set_config_option", {"sessionId": session_id, "configId": cfg_id, "value": target_wire}, handle_incoming=True)
+                    except Exception:
+                        pass
 
         return selected_model
 
@@ -350,7 +390,18 @@ class AntigravityAdapter(AcpAdapter):
             if not models:
                 raise InvalidConfig("Antigravity did not offer any models to this account.")
             path = profile_dir(config) / "models.json"
-            path.write_text(json.dumps([{"id": m.id, "label": m.label, "default": m.default} for m in models]))
+            payload = [
+                {
+                    "id": m.id,
+                    "label": m.label,
+                    "default": m.default,
+                    "default_reasoning_effort": m.default_reasoning_effort,
+                    "supported_reasoning_efforts": list(m.supported_reasoning_efforts),
+                    "reasoning_effort_configurable": m.reasoning_effort_configurable,
+                }
+                for m in models
+            ]
+            path.write_text(json.dumps(payload))
             path.chmod(0o600)
         finally:
             await rpc.close(grace_seconds=self.exit_grace_seconds)

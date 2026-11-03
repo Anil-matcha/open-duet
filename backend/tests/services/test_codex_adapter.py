@@ -57,9 +57,13 @@ class FakeCodex:
 def codex(monkeypatch, tmp_path):
     folder = tmp_path / "codex"
     folder.mkdir()
-    exe = tmp_path / "codex-bin"
-    exe.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE} \"$@\"\n")
-    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    if sys.platform == "win32":
+        exe = tmp_path / "codex-bin.cmd"
+        exe.write_text(f'@echo off\r\n"{sys.executable}" "{FAKE}" %*\r\n')
+    else:
+        exe = tmp_path / "codex-bin"
+        exe.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE} \"$@\"\n")
+        exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("FAKE_CODEX_DIR", str(folder))
     monkeypatch.setattr(codex_adapter, "resolve_codex_executable", lambda: exe)
     workspace = tmp_path / "ws"
@@ -346,6 +350,18 @@ async def test_probe_reports_signed_in_with_live_models(codex):
     assert probe.ready and probe.installed and probe.signed_in is True
     assert probe.version == "codex-cli 0.162.1"
     assert [(m.id, m.default) for m in probe.models] == [("gpt-fake", True), ("gpt-fake-mini", False)]
+    gpt_fake = probe.models[0]
+    assert gpt_fake.default_reasoning_effort == "medium"
+    assert gpt_fake.supported_reasoning_efforts == ("low", "medium", "high")
+    assert gpt_fake.reasoning_effort_configurable is True
+
+
+async def test_codex_turn_passes_reasoning_effort(crt, sessions, owner, codex):
+    thread = await crt.create_thread(provider="codex", effort="high")
+    await crt.send_turn(thread.id, "analyze this deeply")
+    await finished(sessions, thread.id)
+    turn = codex.received("turn/start")[0]["params"]
+    assert turn.get("effort") == "high" 
 
 
 async def test_probe_reports_signed_out(codex):

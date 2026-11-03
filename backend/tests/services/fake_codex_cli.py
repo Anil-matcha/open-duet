@@ -244,7 +244,7 @@ for line in sys.stdin:
         pass
     elif method == "model/list":
         send({"id": rid, "result": {"data": [
-            {"id": "gpt-fake", "displayName": "GPT Fake", "hidden": False, "isDefault": True},
+            {"id": "gpt-fake", "displayName": "GPT Fake", "hidden": False, "isDefault": True, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": ["low", "medium", "high"]},
             {"id": "gpt-fake-mini", "displayName": "GPT Fake Mini", "hidden": False, "isDefault": False},
             {"id": "gpt-hidden", "displayName": "Hidden", "hidden": True, "isDefault": False},
         ]}})
