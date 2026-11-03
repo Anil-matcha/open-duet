@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
@@ -9,7 +9,7 @@ import { JumpToLatest } from '@/components/jump-to-latest';
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { RoomMessage } from '@/components/room-message';
 import { mentionNames, workingNames, type RoomItem } from '@/lib/rooms';
-import { touch, useStyles, type Palette } from '@/lib/theme';
+import { touch, useStyles, useTheme, type Palette } from '@/lib/theme';
 import { useRoom } from '@/lib/use-room';
 
 const BANNER: Record<string, string> = { connecting: 'Connecting…', reconnecting: 'Reconnecting…' };
@@ -20,6 +20,8 @@ export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { room, items, approvals, connection, error, loaded, busy, send, stop, answer } = useRoom(Number(id));
   const styles = useStyles(createStyles);
+  const theme = useTheme();
+  const router = useRouter();
   const list = useRef<FlatList<RoomItem>>(null);
   const stuckToEnd = useRef(true);
   // Shown while the reader is scrolled up from the newest message.
@@ -28,7 +30,24 @@ export default function RoomScreen() {
 
   return (
     <KeyboardScreen>
-      <Stack.Screen options={{ title: room?.name || 'Room' }} />
+      <Stack.Screen
+        options={{
+          title: room?.name || 'Room',
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Room details"
+              hitSlop={8}
+              style={{ minHeight: touch.min, minWidth: touch.min, justifyContent: 'center', alignItems: 'flex-end' }}
+              onPress={() => router.push({ pathname: '/room-details', params: { id: String(id) } })}
+            >
+              <Text maxFontSizeMultiplier={1.3} style={{ color: theme.accentText, fontWeight: '500', fontSize: 16 }}>
+                Details
+              </Text>
+            </Pressable>
+          ),
+        }}
+      />
       {BANNER[connection] ? <Text style={styles.banner}>{BANNER[connection]}</Text> : null}
       {!loaded ? (
         <View style={styles.center}>

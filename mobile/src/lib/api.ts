@@ -111,6 +111,8 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
       throw new ApiError(401, 'session_invalid', '');
     }
     if (!response.ok) throw await errorFrom(response);
+    // A delete answers 204 with no body.
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
 
@@ -160,6 +162,12 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
     postRoomMessage: (id: number, text: string) => request<{ seq: number }>('POST', `/rooms/${id}/messages`, { text }),
     // Stops every agent working in the room.
     stopRoom: (id: number) => request<unknown>('POST', `/rooms/${id}/stop`, {}),
+    // The next four need a phone paired with "Chat, files and agents"; any other gets 403 `scope_denied`.
+    createRoom: (body: Record<string, unknown>) => request<Room>('POST', '/rooms', body),
+    updateRoom: (id: number, body: Record<string, unknown>) => request<Room>('PATCH', `/rooms/${id}`, body),
+    deleteRoom: (id: number) => request<void>('DELETE', `/rooms/${id}`),
+    // Held: the member is skipped until resumed.
+    holdRoomMember: (id: number, agentId: number, held: boolean) => request<unknown>('PATCH', `/rooms/${id}/members/${agentId}`, { held }),
     markRoomRead: (id: number, seq: number) => request<{ seq: number }>('POST', `/rooms/${id}/read`, { seq }),
     // Without saying which thread each belongs to; see `loadRoomApprovals`.
     listRoomApprovals: (id: number) => request<ApprovalRow[]>('GET', `/rooms/${id}/approvals`),

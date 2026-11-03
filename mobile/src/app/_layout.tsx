@@ -54,6 +54,8 @@ function RootStack({ ready }: { ready: boolean }) {
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="agents/index" options={{ title: 'Agents' }} />
         <Stack.Screen name="agents/[id]" options={{ title: 'Agent' }} />
+        <Stack.Screen name="room-settings" options={{ title: 'Room' }} />
+        <Stack.Screen name="room-details" options={{ title: 'Room details' }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
         <Stack.Screen name="pair" options={{ title: 'Suparagent' }} />

@@ -34,8 +34,8 @@ export function approvalModeLabel(mode: string): string {
 }
 
 /** True for a phone paired to create and edit agents ("Chat, files and agents"). The server enforces it; this only decides what to show. */
-export function canManageAgents(scopes: readonly string[]): boolean {
-  return scopes.includes('manage');
+export function canManageAgents(scopes: readonly string[] | undefined): boolean {
+  return !!scopes && scopes.includes('manage');
 }
 
 /** One line under an agent's name: its title or description, else engine and model. */

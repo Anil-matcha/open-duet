@@ -204,14 +204,15 @@ export function ActionSheet({ title, actions, onClose }: { title: string; action
   );
 }
 
-export function Button({ label, onPress, kind = 'primary', busy, disabled }: { label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'danger'; busy?: boolean; disabled?: boolean }) {
+/** `spoken` is what a screen reader says when it should say more than the words on the button ("Hold" for which member). */
+export function Button({ label, spoken, onPress, kind = 'primary', busy, disabled }: { label: string; spoken?: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'danger'; busy?: boolean; disabled?: boolean }) {
   const styles = useStyles(createStyles);
   const theme = useTheme();
   const off = disabled || busy;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={spoken ?? label}
       accessibilityState={{ disabled: !!off, busy: !!busy }}
       disabled={off}
       style={({ pressed }) => [styles.button, kind === 'primary' ? styles.buttonPrimary : kind === 'danger' ? styles.buttonDanger : styles.buttonSecondary, pressed && styles.pressed, off && styles.disabled]}
@@ -231,7 +232,8 @@ const createStyles = (p: Palette) =>
     helper: { fontSize: 13, color: p.muted },
     note: { fontSize: 13, color: p.notice },
     error: { fontSize: 13, color: p.danger },
-    input: { minHeight: touch.min, borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
+    // An explicit background also removes the underline Android draws under a text box.
+    input: { backgroundColor: p.background, minHeight: touch.min, borderWidth: 1, borderColor: p.inputBorder, borderRadius: radius.field, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: p.text },
     invalid: { borderColor: p.danger },
     section: { fontSize: 13, fontWeight: '700', letterSpacing: 0.4, color: p.muted, textTransform: 'uppercase', marginTop: 28 },
     switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: touch.min, paddingVertical: 8, marginTop: 6 },
