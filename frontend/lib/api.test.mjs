@@ -157,3 +157,30 @@ test('routine app actions use the selected routine and run endpoint', async () =
   assert.equal(actions[0].tool, 'gmail_send_email');
   assert.equal(actions[0].account_id, 'acct-1');
 });
+
+test('getVersionInfo fetches /version with optional refresh query param', async () => {
+  const requests = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return new Response(JSON.stringify({
+      current_version: '0.8.1',
+      commit: 'efb8ac3',
+      latest_version: '0.8.2',
+      update_available: true,
+      install_kind: 'git',
+      update_command: 'git pull && uv sync && (cd frontend && npm run build)',
+      release_notes_url: 'https://github.com/Anil-matcha/open-duet/releases/tag/v0.8.2',
+    }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const info1 = await api.getVersionInfo();
+  assert.equal(info1.current_version, '0.8.1');
+  assert.equal(info1.update_available, true);
+  assert.ok(requests[0].endsWith('/api/v1/version'));
+
+  const info2 = await api.getVersionInfo(true);
+  assert.equal(info2.latest_version, '0.8.2');
+  assert.ok(requests[1].endsWith('/api/v1/version?refresh=true'));
+});

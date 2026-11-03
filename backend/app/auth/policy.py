@@ -16,6 +16,7 @@ PUBLIC_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
     (frozenset(methods), re.compile(f"^{API}{path}$"))
     for methods, path in (
         ({"GET", "HEAD"}, "/health"),
+        ({"GET", "HEAD"}, "/version"),
         ({"GET", "HEAD"}, "/sandboxes/health"),
         ({"GET", "HEAD"}, "/permissions/health"),
         # Boat sandboxes call this with their own bearer (HOOK_TOKEN), checked by the route.
@@ -39,6 +40,7 @@ CHAT_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
     (frozenset(methods), re.compile(f"^{API}{path}$"))
     for methods, path in (
         ({"GET"}, "/auth/session"),
+        ({"GET"}, "/version"),
         ({"GET"}, "/team"),
         ({"GET"}, "/team/jobs"),
         ({"GET"}, f"/team/jobs/{_ID}"),
