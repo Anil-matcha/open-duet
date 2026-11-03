@@ -10,7 +10,7 @@
 // Everything that can be tested without Electron is in src/. This file only
 // connects those pieces to Electron.
 
-const { app, BrowserWindow, dialog, safeStorage, session, ipcMain, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, Menu, dialog, safeStorage, session, ipcMain, shell, systemPreferences, clipboard } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -27,8 +27,13 @@ const { lastReason, describeFailure, describeUnexpectedExit } = require("./src/m
 const { NativeControl, registerNativeControl } = require("./src/native-control");
 const { createUpdater } = require("./src/updater");
 const { registerUpdates } = require("./src/updates-ipc");
+const { registerApplicationMenu } = require("./src/application-menu");
 
 const mode = process.argv.includes("--mode=dev") ? "dev" : "start";
+// Running from source: use the app icon for the window and the dock. Installers carry the icon in the
+// executable (build/icon.icns and build/icon.ico), and build/ is not packed, so this is a no-op there.
+const iconPath = path.join(__dirname, "build", "icon.png");
+const hasIcon = fs.existsSync(iconPath);
 // An installed app carries its own frozen backend and page; a checkout uses its own folders.
 const paths = app.isPackaged ? packagedLayout(process.resourcesPath) : layout();
 
@@ -99,6 +104,7 @@ function createWindow() {
     minHeight: 480,
     title: mode === "dev" ? "Open Duet (dev)" : "Open Duet",
     backgroundColor: "#ffffff",
+    ...(hasIcon ? { icon: iconPath } : {}),
     webPreferences: {
       // The sandboxed preload exposes only the validated native path picker.
       preload: path.join(__dirname, "preload.js"),
@@ -138,6 +144,14 @@ async function main() {
   });
 
   await app.whenReady();
+  registerApplicationMenu({
+    Menu,
+    appName: app.getName(),
+    platform: process.platform,
+    getWindow: () => window,
+    getOrigin: () => backendOrigin,
+  });
+  if (hasIcon && process.platform === "darwin" && app.dock) app.dock.setIcon(iconPath);
   const nativeControlRoot = app.isPackaged ? path.join(process.resourcesPath, "native-control") : path.join(__dirname, "native-control");
   nativeControl = new NativeControl({
     root: nativeControlRoot,
@@ -153,6 +167,13 @@ async function main() {
   registerEngineSignIn({ ipcMain, openExternal: url => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerGoogleSignIn({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerComposioLink({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
+  ipcMain.handle("open-dots:copy-text", (_event, text) => {
+    if (typeof text === "string") {
+      clipboard.writeText(text);
+      return true;
+    }
+    return false;
+  });
   updater = createUpdater({
     currentVersion: app.getVersion(),
     platform: process.platform,

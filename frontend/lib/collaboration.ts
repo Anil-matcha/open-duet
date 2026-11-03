@@ -3,7 +3,7 @@ import { request, type Agent } from "@/lib/api";
 export type TeamAgent = Agent & { is_lead: boolean; state: string; delegation_enabled: boolean; created_by_agent_id?: number | null; instructions_reviewed?: boolean };
 export type TeamState = { enabled?: boolean; team: { id: number; name: string; lead_agent_id: number | null } | null; agents: TeamAgent[]; limits: Record<string, number>; lead_ready: { ok: boolean; reason?: string | null } };
 export type SharedApproval = { id: string; thread_id: number; turn_id: number; tool: string; summary: string | null; input: Record<string, unknown>; kind: string | null; status: "pending" | "allowed" | "denied" | "expired" | "cancelled" };
-export type TeamJob = { id: number; root_id: number | null; parent_id: number | null; depth: number; requester_agent_id: number; assignee_agent_id: number; assignee_thread_id: number | null; mode: string; brief: string; status: string; result?: string | null; outcome?: string | null; outcome_detail?: string | null; children?: TeamJob[]; approvals?: SharedApproval[] };
+export type TeamJob = { id: number; root_id: number | null; parent_id: number | null; depth: number; kind?: string; reply?: string; requester_agent_id: number; requester_thread_id: number | null; assignee_agent_id: number; assignee_thread_id: number | null; mode: string; brief: string; status: string; created_at: string; started_at: string | null; finished_at: string | null; result?: string | null; outcome?: string | null; outcome_detail?: string | null; question?: string | null; children?: TeamJob[]; approvals?: SharedApproval[] };
 export type RoomMember = { agent_id: number; name: string; held: boolean; member_thread_id: number | null };
 export type RoomDispatch = { id: number; agent_id: number; status: string; reason: string; turn_id: number | null; error_code: string | null };
 export type Room = { id: number; name: string; bulletin: string; thread_id: number; default_responder_kind: "member" | "everyone" | "mentions"; default_responder_agent_id: number | null; last_read_seq: number; last_seq: number; unread: number; members: RoomMember[]; dispatches: RoomDispatch[] };
@@ -26,7 +26,7 @@ export const collaboration = {
   jobs: () => request<TeamJob[]>("/team/jobs"),
   job: (id: number) => request<TeamJob>(`/team/jobs/${id}`),
   cancelJob: (id: number) => request<void>(`/team/jobs/${id}/cancel`, post({})),
-  activity: () => request<{ id: number; kind: string; agent_id?: number; job_id?: number; created_at: string }[]>("/team/activity"),
+  activity: () => request<{ id: number; kind: string; agent_id?: number; job_id?: number; thread_id?: number; created_at: string }[]>("/team/activity"),
   rooms: () => request<Room[]>("/rooms"),
   room: (id: number) => request<Room>(`/rooms/${id}`),
   createRoom: (input: RoomInput) => request<Room>("/rooms", post(input)),

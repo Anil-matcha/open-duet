@@ -5,6 +5,15 @@ import type { MarketplaceCatalog, MarketplaceConnection, MarketplaceSection, Mar
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
+export function isLocalApiEndpoint(): boolean {
+  try {
+    const hostname = new URL(API_BASE).hostname.toLowerCase();
+    return hostname === "localhost" || hostname.endsWith(".localhost") || hostname.startsWith("127.") || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 class ApiError extends Error {
   status: number;
   // The backend's machine-readable cause when it gives one (for example
@@ -502,6 +511,19 @@ export type Agent = {
   computer?: ComputerSummary | null;
 };
 
+export type OpenBotDatabaseProfilePreview = {
+  key: string;
+  name: string;
+  title: string;
+  instructions: string;
+  document: Record<string, unknown>;
+};
+
+export type OpenBotDatabasePreview = {
+  schema_version: number;
+  profiles: OpenBotDatabaseProfilePreview[];
+};
+
 export type AgentInput = {
   make_lead?: boolean;
   name: string;
@@ -528,7 +550,14 @@ export type AgentInput = {
   starter_notes?: string | null;
 };
 
-export type EngineModel = { id: string; label: string; default: boolean };
+export type EngineModel = {
+  id: string;
+  label: string;
+  default: boolean;
+  default_reasoning_effort?: string | null;
+  supported_reasoning_efforts?: string[];
+  reasoning_effort_configurable?: boolean;
+};
 export type EngineConfigField = {
   name: keyof EngineConfigInput;
   label: string;
@@ -559,6 +588,11 @@ export type Engine = {
   config_fields?: EngineConfigField[];
   // Set while the engine refuses turns for a usage or rate limit or no credits.
   limit?: EngineLimit | null;
+};
+export type EnginePreference = {
+  provider: string | null;
+  model: string | null;
+  effort?: string | null;
 };
 export type EngineLimit = {
   kind: "usage_limit" | "rate_limit" | "credits";
@@ -713,6 +747,7 @@ export type Thread = {
   title: string | null;
   provider: string;
   model: string | null;
+  effort?: string | null;
   // The folder Claude works in; saved command rules can be tied to it.
   workspace_path?: string | null;
   // The computer this conversation's tools run in (its agent's), or null.
@@ -919,6 +954,8 @@ export const api = {
   getNeedsYou: () => request<import("./needs-you").NeedsYouSnapshot>("/needs-you?refresh=true"),
   requestTeamLead: (agentId: number) => request<{ id: number; lead_agent_id: number }>("/team/lead", { method: "POST", body: JSON.stringify({ agent_id: agentId }) }),
   getEngines: (refresh = false) => request<Engine[]>(`/engines${refresh ? "?refresh=true" : ""}`),
+  getEnginePreference: () => request<EnginePreference>("/engines/preference"),
+  setEnginePreference: (preference: EnginePreference) => request<EnginePreference>("/engines/preference", { method: "PUT", body: JSON.stringify(preference) }),
   logoutClaudeEngine: () => request<void>("/engines/claude/logout", { method: "POST" }),
   logoutCodexEngine: () => request<void>("/engines/codex/logout", { method: "POST" }),
   startClaudeEngineLogin: () => request<ClaudeLoginOperation>("/engines/claude/login", { method: "POST" }),
@@ -1074,7 +1111,7 @@ export const api = {
 
   getThread: (threadId: number) => request<ThreadDetail>(`/threads/${threadId}`),
 
-  createThread: (agentId?: number | null, selection?: { provider?: string; model?: string | null }) =>
+  createThread: (agentId?: number | null, selection?: { provider?: string; model?: string | null; effort?: string | null }) =>
     request<Thread>("/threads", {
       method: "POST",
       body: JSON.stringify({ ...(agentId != null ? { agent_id: agentId } : {}), ...selection }),
@@ -1188,6 +1225,12 @@ export const api = {
       body: JSON.stringify({ document, include_notes: includeNotes }),
     }),
 
+  previewOpenBotDatabase: (file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return requestForm<OpenBotDatabasePreview>("/agents/import/openbot/preview", form);
+  },
+
   // --- Agent computers. An older backend answers 404 here: callers treat that
   // as "computers are not available" and keep working. ---
 
@@ -1267,7 +1310,7 @@ export const api = {
     request<{ status: string; turn_id: number }>(`/threads/${threadId}/stop`, { method: "POST" }),
 
   // Rename and/or archive. 409 turn_running: stop the answer first (archive only).
-  updateThread: (threadId: number, change: { title?: string; archived?: boolean; model?: string | null }) =>
+  updateThread: (threadId: number, change: { title?: string; archived?: boolean; model?: string | null; effort?: string | null }) =>
     request<Thread>(`/threads/${threadId}`, { method: "PATCH", body: JSON.stringify(change) }),
 
   // Permanent: the conversation's messages, tool calls and approvals in this app's

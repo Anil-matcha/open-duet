@@ -3,7 +3,7 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { applyTheme, parseChoice, THEME_CHOICES, writeChoice, type ThemeChoice } from "@/lib/theme";
 
 const ICONS = { system: Monitor, light: Sun, dark: Moon } as const;
@@ -23,7 +23,8 @@ const serverSnapshot = (): ThemeChoice => "system";
 
 // System / Light / Dark. The choice is remembered in this browser only; when it is "system"
 // the page follows the operating system live.
-export function ThemeToggle({ className, iconOnly = false }: { className?: string; iconOnly?: boolean }) {
+export function ThemeToggle({ className, iconOnly = false, onChange }: { className?: string; iconOnly?: boolean; onChange?: (choice: ThemeChoice) => void }) {
+  const t = useT();
   const choice = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export function ThemeToggle({ className, iconOnly = false }: { className?: strin
     writeChoice(() => window.localStorage, next);
     applyTheme(document, next, window.matchMedia(DARK_QUERY).matches);
     listeners.forEach((listener) => listener());
+    onChange?.(next);
   };
 
   return (

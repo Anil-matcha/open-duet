@@ -122,7 +122,7 @@ class GeminiAdapter(PresetAdapter):
         preferred = ["gemini-api-key"] if any(env.get(n) for n in self.credential_names) else (["vertex-ai"] if env.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1") else ["oauth-personal"])
         return next((m for m in preferred if m in ids), None)
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         # Gemini selects via argv. An explicit contradictory session report is
         # a refusal; old CLIs omit model metadata, so argv is the only contract.
         reported = session.get("models", {}).get("currentModelId") if isinstance(session.get("models"), dict) else None
@@ -193,7 +193,7 @@ class CursorAdapter(PresetAdapter):
             self._model_cache = (time.monotonic(), models[:600])
         return models[:600] or cached or self.models
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         data = session_models(session)
         current = data.get("currentModelId")
         if not model:
@@ -250,7 +250,7 @@ class OpenCodeAdapter(PresetAdapter):
             self._model_cache = (time.monotonic(), models[:600])
         return models[:600] or cached
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         option = next((o for o in session.get("configOptions", []) if isinstance(o, dict) and o.get("id") == "model"), None)
         if not option:
             if model:

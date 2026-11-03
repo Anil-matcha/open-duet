@@ -1,7 +1,9 @@
+"use client";
+
 import { AlertTriangle, CheckCircle2, Info, XCircle, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 
 type Tone = "info" | "success" | "warning" | "danger";
 
@@ -28,6 +30,7 @@ export function Banner({
   onDismiss?: () => void;
   className?: string;
 }) {
+  const t = useT();
   const { box, Icon } = TONES[tone];
   return (
     <div role={tone === "danger" || tone === "warning" ? "alert" : "status"} className={cn("flex items-start gap-3 rounded-field border px-3 py-2.5 text-sm text-ink", box, className)}>

@@ -2,6 +2,15 @@
 
 A team has a lead and specialists. Existing agents keep their settings until you choose a lead or add them to the team. A team can contain an agent on any engine; team tools are available through Claude and Codex. Choose the lead and coordinated agents in the new-agent form or existing agent settings. See [chat management](CHAT_MANAGEMENT.md) for conversational setup, supported controls and verification limits.
 
+As of Open Duet `a2e6404` (2026-11-03), Team coordination opens a full-screen
+workspace with **Agents**, **Work** and **Rooms** views. Agents shows the lead
+and specialists, their configured engine and current idle, working or waiting
+state, along with the existing membership controls. Work groups delegated jobs
+by attention, running, waiting and finished; cards show the requester, assignee,
+parent job, elapsed or completion time, and the existing approval, open-work and
+stop actions. Search narrows jobs by brief, status or agent. Rooms lists the
+shared conversations that can be opened directly.
+
 The database stores team membership, creation records, jobs, room membership and reply queues. Chat threads keep their existing kind after migration. Job and member work use their own conversation records; room conversation records hold visible messages.
 
 The foundation migration uses additive columns and new tables, with an SQLite-safe downgrade. It does not start paid work or change existing agents automatically.
@@ -50,6 +59,12 @@ the room shows replies, pending approvals, progress, failures and links to that
 work. Owners can hold or resume a member, stop work, retry a failed dispatch,
 and export the room transcript as Markdown or JSON. Tool approvals still use
 each agent's normal approval mode.
+
+The room conversation fills the workspace, with a docked message composer and
+a details panel for member controls, shared instructions and room actions. The
+reply queue shows its order and routing reason. The `@` picker supports keyboard
+selection; when agent names match, it adds the selected agent's ID to the
+mention token so the intended member receives the message.
 
 There is no model-based automatic responder for untagged messages.
 

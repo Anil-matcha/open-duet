@@ -26,6 +26,7 @@ without one. What an agent does without asking is up to the agent.
 """
 
 import asyncio
+import os
 import json
 import shlex
 import shutil
@@ -74,7 +75,7 @@ class InvalidConfig(ValueError):
 
 def split_command(command: str) -> list[str]:
     try:
-        argv = shlex.split(command)
+        argv = shlex.split(command, posix=os.name != "nt")
     except ValueError as exc:
         raise InvalidConfig(f"The command could not be read: {exc}.") from None
     if not argv:
@@ -233,7 +234,7 @@ class AcpAdapter:
     async def auth_failure_allowed(self, env: dict, config: dict) -> bool:
         return False
 
-    async def select_model(self, call, session_id: str, session: dict, model: str | None) -> str | None:
+    async def select_model(self, call, session_id: str, session: dict, model: str | None, effort: str | None = None) -> str | None:
         return None
 
     def signed_out_message(self) -> str:
@@ -322,10 +323,25 @@ class AcpAdapter:
         return result
 
 
+def normalize_effort(value: str) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.lower().replace("-", "_")
+    if normalized in ("low", "medium", "high", "xhigh", "max"):
+        return normalized
+    if normalized in ("minimal", "none", "off"):
+        return "low"
+    if normalized == "thinking":
+        return "high"
+    if normalized in ("extra_high", "very_high"):
+        return "xhigh"
+    return None
+
+
 def _initialize_params() -> dict:
     return {
         "protocolVersion": PROTOCOL_VERSION,
-        "clientInfo": {"name": "open-dots", "version": "0"},
+        "clientInfo": {"name": "zed", "title": "Open Duet", "version": "0.1.0"},
         "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False}, "terminal": False},
     }
 
@@ -525,7 +541,8 @@ class _AcpTurn:
             return self._failed("The engine could not confirm its tool approval mode.", "engine_permission_mode_unavailable")
         try:
             self.confirmed_model = await self.adapter.select_model(
-                self._call, self.session_id, session or {}, self.ctx.model or config.get("model")
+                self._call, self.session_id, session or {}, self.ctx.model or config.get("model"),
+                effort=getattr(self.ctx, "effort", None)
             )
         except (RpcError, RpcClosed, asyncio.TimeoutError, InvalidConfig):
             return self._failed("The engine could not confirm the selected model. Choose another model in Settings → Engines.", "engine_model_unavailable")

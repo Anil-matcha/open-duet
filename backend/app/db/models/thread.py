@@ -66,3 +66,7 @@ class Thread(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    @property
+    def effort(self) -> str | None:
+        return (self.provider_state or {}).get('effort') if isinstance(self.provider_state, dict) else None

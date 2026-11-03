@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, memo, useState, type ReactNode } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { parseMarkdown, type Block, type Inline } from "@/lib/markdown";
 
 function renderInline(nodes: Inline[]): ReactNode {
@@ -39,14 +40,13 @@ function renderInline(nodes: Inline[]): ReactNode {
 function CodeBlock({ lang, text, closed }: { lang: string; text: string; closed: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = await copyToClipboard(text);
+    if (ok) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard blocked: nothing to do
+      setTimeout(() => setCopied(false), 2000);
     }
   };
+
   return (
     <div className="my-3 overflow-hidden rounded-field border border-line">
       <div className="flex items-center justify-between bg-inset px-3 py-1 text-xs text-muted">

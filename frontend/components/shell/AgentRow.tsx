@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Agent } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import type { RowStatus } from "@/lib/sidebar";
 import { Avatar } from "@/components/ui/Avatar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/Menu";
@@ -39,6 +39,7 @@ export function AgentRow({
   onChangeLead?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const hasMenu = Boolean(onEdit || onChangeLead || onDelete);
   const body = (

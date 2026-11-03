@@ -12,6 +12,8 @@ import { isSetupPage } from "@/lib/settings-nav";
 import { Banner } from "./ui/Banner";
 import { Button } from "./ui/Button";
 import { Spinner } from "./ui/Spinner";
+import { LanguageSelect } from "@/components/settings/LanguageSelect";
+import { useT } from "@/lib/use-i18n";
 
 type SessionContextValue = {
   // null when the server could not say (unreachable, or the desktop app's page
@@ -29,6 +31,7 @@ export function useSession() {
 // Renders its children once the browser is known to be signed in (or is the
 // desktop app, or trusted on this machine); sends it to the sign-in page otherwise.
 export function AuthGate({ children }: { children: ReactNode }) {
+  const t = useT();
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [account, setAccount] = useState<DesktopAccountStatus | null>(null);
@@ -69,7 +72,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         if (isSignedOutError(err)) return; // the handler is already navigating
-        if (!cancelled) setProblem(err instanceof Error ? err.message : "Could not read your sign-in or setup state.");
+        if (!cancelled) setProblem(err instanceof Error ? err.message : t("auth.stateError"));
         return;
       }
       if (!cancelled) setReady(true);
@@ -87,16 +90,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (problem) {
     return (
       <main className="mx-auto max-w-md space-y-4 p-6">
-        <h1 className="text-title font-semibold">Could not open your workspace</h1>
+        <div className="flex justify-end"><LanguageSelect compact /></div>
+        <h1 className="text-title font-semibold">{t("auth.workspaceError")}</h1>
         <Banner tone="danger">{problem}</Banner>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" onClick={() => { setProblem(null); setReady(false); setRetry((value) => value + 1); }}>Try again</Button>
-          {session && <Button variant="ghost" onClick={() => { setProblem(null); setContinueWithoutSetup(true); }}>Continue without the setup guide</Button>}
+          <Button variant="primary" onClick={() => { setProblem(null); setReady(false); setRetry((value) => value + 1); }}>{t("auth.tryAgain")}</Button>
+          {session && <Button variant="ghost" onClick={() => { setProblem(null); setContinueWithoutSetup(true); }}>{t("auth.continueWithoutSetup")}</Button>}
         </div>
       </main>
     );
   }
-  if (!ready) return <div className="flex justify-center p-10 text-sm text-muted"><Spinner label="Loading…" /></div>;
+  if (!ready) return <div className="flex justify-center p-10 text-sm text-muted"><Spinner label={t("auth.loading")} /></div>;
   if (account && !account.signed_in) return <DesktopAccountLogin status={account} onSignedIn={() => { setReady(false); setRetry(value => value + 1); }} />;
   return <SessionContext.Provider value={{ session, setUserId }}>{children}</SessionContext.Provider>;
 }

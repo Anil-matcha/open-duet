@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent, Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { sidebarAgents } from "@/lib/sidebar";
+import { SETTINGS_PAGES } from "@/lib/settings-nav";
+import { SETTINGS_REGISTRY, settingsEntryHref } from "@/lib/settings-registry";
 import { Dialog } from "@/components/ui/Dialog";
 import { Kbd } from "@/components/ui/Kbd";
 
-type Command = { id: string; group: string; label: string; hint?: string; icon: ReactNode; run: () => void };
+type Command = { id: string; group: string; label: string; hint?: string; keywords?: readonly string[]; icon: ReactNode; run: () => void };
 
 const MAX_RESULTS = 30;
 
@@ -25,6 +27,7 @@ export function CommandPalette({
   threads: Thread[] | null;
   onNewChat: (agentId?: number) => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -52,6 +55,21 @@ export function CommandPalette({
       { id: "new", group: t("palette.groupActions"), label: t("palette.newChat"), icon: <MessageSquarePlus size={16} />, run: go(() => onNewChat()) },
       { id: "settings", group: t("palette.groupActions"), label: t("palette.settings"), icon: <Settings size={16} />, run: go(() => router.push("/settings/")) },
     ];
+    for (const entry of SETTINGS_REGISTRY) {
+      const page = SETTINGS_PAGES.find((item) => item.id === entry.page);
+      list.push({
+        id: `setting-${entry.id}`,
+        group: t("palette.settings"),
+        label: `${t("palette.settings")}: ${entry.title}`,
+        hint: page ? `${page.label} · ${entry.section}` : entry.section,
+        keywords: entry.keywords,
+        icon: <Settings size={16} />,
+        run: go(() => {
+          router.push(settingsEntryHref(entry));
+          window.dispatchEvent(new CustomEvent("settings:anchor", { detail: entry.anchorId }));
+        }),
+      });
+    }
     for (const agent of sidebarAgents(agents)) {
       list.push({ id: `a${agent.id}`, group: t("palette.groupAgents"), label: agent.name, hint: agent.title ?? undefined, icon: <Bot size={16} />, run: go(() => onNewChat(agent.id)) });
     }
@@ -67,13 +85,18 @@ export function CommandPalette({
       });
     }
     return list;
-  }, [agents, threads, onNewChat, router]);
+  }, [agents, threads, onNewChat, router, t]);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const found = q ? commands.filter((c) => `${c.label} ${c.hint ?? ""}`.toLowerCase().includes(q)) : commands;
-    return found.slice(0, MAX_RESULTS);
-  }, [commands, query]);
+    const q = query.trim().toLocaleLowerCase();
+    const found = q
+      ? commands.filter((c) => `${c.label} ${c.hint ?? ""} ${(c.keywords ?? []).join(" ")}`.toLocaleLowerCase().includes(q))
+      : commands;
+    if (found.length <= MAX_RESULTS) return found;
+    const settingCommands = found.filter((command) => command.group === t("palette.settings"));
+    const otherCommands = found.filter((command) => command.group !== t("palette.settings")).slice(0, MAX_RESULTS);
+    return [...settingCommands, ...otherCommands];
+  }, [commands, query, t]);
 
   const current = Math.min(active, Math.max(results.length - 1, 0));
   const optionId = (index: number) => `${listId}-${index}`;

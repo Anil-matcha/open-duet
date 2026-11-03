@@ -92,6 +92,9 @@ class ModelOption:
     id: str
     label: str
     default: bool = False
+    default_reasoning_effort: str | None = None
+    supported_reasoning_efforts: tuple[str, ...] = ()
+    reasoning_effort_configurable: bool = True
 
 
 @dataclass
@@ -164,6 +167,7 @@ class TurnContext:
     # ask | accept_edits | plan (approval_modes.py); None means ask. Set by the
     # runtime from the thread's agent; an adapter maps it onto its own provider.
     approval_mode: str | None = None
+    effort: str | None = None
     # Confined turns cannot act through alternate tools.
     draft_only: bool = False
     media_review_only: bool = False

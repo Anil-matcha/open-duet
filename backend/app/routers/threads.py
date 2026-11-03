@@ -98,6 +98,7 @@ async def create_thread(payload: ThreadCreateRequest, rt: ThreadRuntime = Depend
             # Omitted means the agent's provider, or Claude without an agent.
             provider=payload.provider if "provider" in payload.model_fields_set else None,
             model=payload.model,
+            effort=payload.effort,
             title=payload.title,
             agent_id=payload.agent_id,
         )
@@ -172,9 +173,11 @@ async def update_thread(
         if payload.title is not None:
             async with rt.session() as db:
                 thread = await store.rename_thread(db, thread_id, payload.title)
-        if "model" in payload.model_fields_set:
+        if "model" in payload.model_fields_set or "effort" in payload.model_fields_set:
+            effort = payload.effort if "effort" in payload.model_fields_set else (current.provider_state or {}).get("effort")
+            model = payload.model if "model" in payload.model_fields_set else current.model
             async with rt.session() as db:
-                thread = await store.set_model(db, thread_id, payload.model)
+                thread = await store.set_model(db, thread_id, model, effort=effort)
     except store.ThreadNotFound:
         raise HTTPException(status_code=404, detail="Thread not found")
     except store.ThreadBusy:

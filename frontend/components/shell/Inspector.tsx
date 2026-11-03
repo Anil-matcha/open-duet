@@ -3,7 +3,7 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useRef, type ReactNode } from "react";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 
 const CLOSE = "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-field text-muted hover:bg-hover hover:text-ink touch:size-11";
 
@@ -25,6 +25,7 @@ export function Inspector({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const t = useT();
   const opener = useRef<HTMLElement | null>(null);
 
   const header = (

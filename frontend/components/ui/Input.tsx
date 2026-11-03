@@ -1,5 +1,8 @@
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
+
+export { Select } from "./Select";
+export type { SelectProps, SelectOption, SelectGroup } from "./Select";
 
 // One look for every text control. 16 px on touch screens stops iOS zooming on focus.
 export const CONTROL =
@@ -12,14 +15,6 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, rows = 3, ...rest }, ref) {
   return <textarea ref={ref} rows={rows} className={cn(CONTROL, "resize-y", className)} {...rest} />;
-});
-
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, ...rest }, ref) {
-  return (
-    <select ref={ref} className={cn(CONTROL, "cursor-pointer pr-8", className)} {...rest}>
-      {children}
-    </select>
-  );
 });
 
 // Label, control, hint and error wired together. `children` receives the ids to spread on the control.

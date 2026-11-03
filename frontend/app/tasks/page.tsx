@@ -11,10 +11,9 @@ import { ConnectGitHub } from "@/components/ConnectGitHub";
 import { SubmitTask } from "@/components/SubmitTask";
 import { Banner } from "@/components/ui/Banner";
 import { SkeletonList } from "@/components/ui/Skeleton";
+import { useT } from "@/lib/use-i18n";
 
-// The original Telegram and Boat task page. It moved here when /chat became the
-// home page; nothing in it changed. It is not linked from the app: open /tasks/
-// on a server install that has Boat and Telegram configured.
+// Legacy Telegram and Boat task page, kept working for existing users of /tasks/.
 export default function TasksPage() {
   return (
     <AuthGate>
@@ -24,6 +23,7 @@ export default function TasksPage() {
 }
 
 function Home() {
+  const t = useT();
   // Who the web UI acts as comes from the signed-in session (docs/AUTH.md),
   // never from this browser's storage.
   const { session, setUserId } = useSession();
@@ -100,6 +100,12 @@ function Home() {
           </p>
           <Link href="/chat" className="mt-2 inline-block text-sm font-medium underline">
             Open chat
+          </Link>
+          <Link
+            href="/settings/channels/"
+            className="mx-auto mt-1 flex min-h-11 w-fit items-center rounded-field px-2 text-sm font-medium text-accent underline underline-offset-2 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent touch:min-h-12"
+          >
+            {t("channels.manageTelegram")}
           </Link>
         </div>
 

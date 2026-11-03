@@ -4,13 +4,14 @@ import { BarChart3, CalendarDays, Folder, Menu as MenuIcon, MoreHorizontal, Shie
 import type { ReactNode } from "react";
 import type { Agent } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu, MenuItem } from "@/components/ui/Menu";
+import { Select } from "@/components/ui/Select";
 
 const CHIP =
-  "inline-flex h-8 max-w-20 shrink-0 cursor-pointer items-center sm:max-w-52 rounded-full border border-line bg-raised px-3 text-[13px] text-ink transition-colors duration-(--dur-fast) hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 touch:h-10";
+  "inline-flex h-8 max-w-20 shrink-0 cursor-pointer items-center sm:max-w-72 rounded-full border border-line bg-raised px-3 text-[13px] text-ink transition-colors duration-(--dur-fast) hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50 touch:h-10";
 
 // The strip above a conversation: what it is (agent and title), how it runs (engine and model,
 // approval mode, computer), and a few quiet icon buttons. Everything else lives in the sidebar
@@ -51,12 +52,13 @@ export function ChatHeader({
   // Short text such as "Reconnecting…" or the engine's version.
   status?: { text: string; warn?: boolean } | null;
 }) {
+  const t = useT();
   type Action = { key: string; label: string; icon: ReactNode; run: () => void; hint?: string };
   const secondary: Action[] = [];
   if (onApprovals) secondary.push({ key: "approvals", label: t("header.approvals"), icon: <ShieldCheck size={18} />, run: onApprovals });
   if (onFiles) secondary.push({ key: "files", label: t("header.files"), icon: <Folder size={18} />, run: onFiles });
   if (onUsage) secondary.push({ key: "usage", label: t("header.usage"), icon: <BarChart3 size={18} />, run: onUsage, hint: usageHint });
-  if (onToday) secondary.push({ key: "today", label: "Today", icon: <CalendarDays size={18} />, run: onToday, hint: "Refresh today's brief" });
+  if (onToday) secondary.push({ key: "today", label: t("header.today"), icon: <CalendarDays size={18} />, run: onToday, hint: t("header.todayHint") });
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-app px-3 pt-[env(safe-area-inset-top)] sm:px-4">
@@ -70,7 +72,7 @@ export function ChatHeader({
         {agentChoice ? (
           <>
             <Avatar agentId={agentChoice.value} name={agentChoice.agents.find((a) => a.id === agentChoice.value)?.name} size="md" />
-            <select
+            <Select
               value={agentChoice.value ?? ""}
               onChange={(e) => agentChoice.onChange(e.target.value === "" ? null : Number(e.target.value))}
               aria-label={t("header.agentForChat")}
@@ -80,7 +82,7 @@ export function ChatHeader({
               {agentChoice.agents.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
-            </select>
+            </Select>
           </>
         ) : (
           <>

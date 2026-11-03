@@ -4,6 +4,33 @@
 
 ### Added
 
+- Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, common single-agent JSON, and supported OpenBot databases. Preview the name, title and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
+
+### Changed
+
+- Make a room conversation a full-screen workspace with a persistent transcript and docked composer. Move member controls, instructions and export/delete actions into a responsive details panel; show the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
+- Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
+
+## 0.8.1 - 2026-11-03
+
+### Added
+
+- Put language pickers on sign-in and chat, use English as the default, and translate common sign-in, chat, sidebar, search, audio, planner, approvals, team and room controls across the supported languages. Decision-log summaries, health-scan details, other specialized screens and engine-supplied text can still contain English.
+
+- Add an easy-to-find language picker to first-run setup and translate its main guidance and starter-agent templates (67 messages) across all 12 non-English locales. Choosing a language no longer resets setup progress.
+
+- Translate 85 additional messages across all 12 non-English locales: selected General Settings and Planner copy, Mac permission guidance, agent/team/skill/memory help, and high-impact routine access and safety notices. Many controls in these specialized screens remain English.
+
+- Redo the Agents and Edit agent screens: compact agent rows with an overflow menu for less common actions, search, one banner for engines that need sign-in, an editor with sections, a sticky Save footer, unsaved-changes and discard confirmation, and compact per-app access controls. Move the Telegram connection from the sidebar into Settings under AI > Channels.
+
+## 0.8.0 - 2026-11-03
+
+### Added
+
+- Settings tabs on the Approvals page now work with the arrow, Home and End keys, and Cmd/Ctrl+K in chat opens the command palette instead of jumping to the sidebar conversation search.
+- Make settings easier to reach and change: search every setting from the Settings page or Cmd/Ctrl+K and jump straight to it, open Settings with Cmd+, (Ctrl+, elsewhere) and from a new desktop application menu, group the settings pages under You, AI and Safety, add a "Find agent settings" card, collapse engine cards that are not in use, and show one Save, Saved and Applies pattern across settings pages.
+- Add English, Spanish, and System default language choices for text covered by the interface catalog. System default follows Spanish browser locales; unsupported languages and missing translations use English, and older untranslated text stays in English. Frontend lint, the Webpack production build, frontend .mjs checks, desktop tests, and the SQLite backend suite passed; the full PostgreSQL suite, live-browser, and packaged-app checks remain unqualified.
+- Add German, French, Italian, Japanese, Korean, Dutch, Polish, Brazilian Portuguese, Russian, Turkish, and Simplified Chinese language choices. System default follows any supported browser language; dates and numbers use browser locale formatting. Text outside the interface catalog remains in English. Live-browser and packaged-app behavior have not been run.
 - Open the files an agent made from the phone app. A pairing code can now be made with
   **Chat and files** access (a new `files` scope; `--scope files` on the CLI): the phone lists
   a conversation's workspace, previews text and images, and shares or saves any file. A
