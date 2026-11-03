@@ -51,6 +51,12 @@ work. Owners can hold or resume a member, stop work, retry a failed dispatch,
 and export the room transcript as Markdown or JSON. Tool approvals still use
 each agent's normal approval mode.
 
+The room conversation fills the workspace, with a docked message composer and
+a details panel for member controls, shared instructions and room actions. The
+reply queue shows its order and routing reason. The `@` picker supports keyboard
+selection; when agent names match, it adds the selected agent's ID to the
+mention token so the intended member receives the message.
+
 There is no model-based automatic responder for untagged messages.
 
 ## Handing work out without waiting

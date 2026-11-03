@@ -6,6 +6,10 @@
 
 - Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, common single-agent JSON, and supported OpenBot databases. Preview the name, title and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
 
+### Changed
+
+- Make a room conversation a full-screen workspace with a persistent transcript and docked composer. Move member controls, instructions and export/delete actions into a responsive details panel; show the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and an explicit identity suffix for duplicate agent names.
+
 ## 0.8.1 - 2026-11-03
 
 ### Added
