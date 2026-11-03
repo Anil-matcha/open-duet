@@ -124,6 +124,11 @@ export function ChatApp() {
   const threadId = parseThreadId(params.get("thread"));
   const roomId = parseRoom(params.get("room"));
   const [teamOpen, setTeamOpen] = useState(false);
+  const [roomTitle, setRoomTitle] = useState<{ id: number | "new"; name: string } | null>(null);
+  const updateRoomTitle = useCallback((name: string) => {
+    if (roomId === null) return;
+    setRoomTitle(current => current?.id === roomId && current.name === name ? current : { id: roomId, name });
+  }, [roomId]);
   const [teamState, setTeamState] = useState<TeamState | null>(null);
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const { session } = useSession();
@@ -710,16 +715,18 @@ export function ChatApp() {
   const computerText = threadComputer ? computerChip(threadComputer, liveComputerState) : null;
   const buildHeader = (withSidebar: boolean) => (
     <ChatHeader
-      title={thread?.title || (threadId === null ? t("shell.newChat") : "Chat")}
+      title={roomId !== null
+        ? (roomTitle?.id === roomId ? roomTitle.name : t(roomId === "new" ? "room.new" : "room.title"))
+        : thread?.title || (threadId === null ? t("shell.newChat") : "Chat")}
       agent={threadAgent ? { id: threadAgent.id, name: threadAgent.name } : null}
       onOpenSidebar={withSidebar && !sidebarInline ? () => setDrawerOpen(true) : undefined}
       agentChoice={
-        agents !== null && threadId === null
+        roomId === null && agents !== null && threadId === null
           ? { agents: choosable, value: startingAgentId, onChange: (id) => { setNewAgentId(id); setNewModel(null); setModelDraft(null); } }
           : undefined
       }
       engine={
-        ready && engines && (threadId === null || thread !== null)
+        roomId === null && ready && engines && (threadId === null || thread !== null)
           ? {
               label: (() => {
                 const baseEngine = selectedEngine?.label ?? selectedProvider;
@@ -780,7 +787,7 @@ export function ChatApp() {
         </>
       }
       status={
-        stream.connection === "reconnecting"
+        roomId !== null ? null : stream.connection === "reconnecting"
           ? { text: t("header.reconnecting"), warn: true }
           : ready && selectedEngine
             ? { text: `${selectedEngine.available ? selectedEngine.version ?? t("header.ready") : t("header.unavailable")}${selectedEngine.capabilities.tools ? "" : ` · ${t("header.chatOnly")}`}` }
@@ -803,7 +810,7 @@ export function ChatApp() {
       agents={agents}
       threads={threads}
       selectedThreadId={threadId}
-      selectedAgentId={thread?.agent_id ?? (threadId === null ? startingAgentId : null)}
+      selectedAgentId={roomId !== null ? null : thread?.agent_id ?? (threadId === null ? startingAgentId : null)}
       live={{ threadId, agentId: thread?.agent_id ?? null, working: transcript.runningTurnId !== null, waiting }}
       showArchived={showArchived}
       onToggleArchived={() => setShowArchived((on) => !on)}
@@ -927,7 +934,6 @@ export function ChatApp() {
         />
       )}
       {teamOpen && agents !== null && <TeamPanel agents={agents} onClose={() => setTeamOpen(false)} onChanged={() => setAgentTick(value => value + 1)} />}
-      {roomId !== null && agents !== null && <RoomView key={roomId} roomId={roomId} agents={agents} onClose={() => router.push("/chat")} onSelect={id => router.replace(roomHref(id))} />}
       {routinesOpen && agents !== null && (
         <RoutinesPanel key={params.get("routine")} routineId={parseThreadId(params.get("routine"))} agents={agents} onClose={() => setRoutinesOpen(false)} />
       )}
@@ -951,6 +957,18 @@ export function ChatApp() {
         />
       )}
         <main id="conversation" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
+          {/* Active rooms share the chat workspace; RoomView keeps only create/edit in a dialog. */}
+          {roomId !== null && agents !== null && (
+            <RoomView
+              key={roomId}
+              roomId={roomId}
+              agents={agents}
+              onClose={() => router.push("/chat")}
+              onSelect={id => router.replace(roomHref(id))}
+              onTitleChange={updateRoomTitle}
+            />
+          )}
+          {(roomId === null || agents === null) && <>
           {stream.connection === "failed" ? (
             <Notice title="Cannot open this conversation">{stream.error}</Notice>
           ) : (
@@ -1026,6 +1044,7 @@ export function ChatApp() {
             onToggleSkill={skillAgentId !== null ? (name) => setChosenSkills((names) => toggleSkill(names, name)) : undefined}
             onSaveAsSkill={canSaveSkill ? () => { setSkillSeed({ source: { thread_id: threadId!, turn_id: skillTurnId! }, nonce: Date.now() }); setPanel("skills"); } : undefined}
           />
+          </>}
         </main>
       </div>
       {panel === "usage" && (
