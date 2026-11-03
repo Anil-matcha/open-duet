@@ -258,17 +258,32 @@ export function Sidebar({
             {!agentsCollapsed && (
               <div className="pt-0.5">
                 {listed.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onNewAgent?.();
-                      onNavigate?.();
-                    }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
-                  >
-                    <Plus size={13} className="shrink-0 text-muted" />
-                    <span>{t("sidebar.createAgent")}</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onNewAgent?.();
+                        onNavigate?.();
+                      }}
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
+                    >
+                      <Plus size={13} className="shrink-0 text-muted" />
+                      <span>{t("sidebar.createAgent")}</span>
+                    </button>
+                    {onManageAgents && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onManageAgents();
+                          onNavigate?.();
+                        }}
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
+                      >
+                        <SlidersHorizontal size={13} className="shrink-0 text-muted" />
+                        <span>{t("sidebar.manageAgents")}</span>
+                      </button>
+                    )}
+                  </>
                 )}
                 <ul className="space-y-0.5">
                   {shownAgents.map((agent) => {
