@@ -8,7 +8,7 @@ import { api, type AppNotification, type NotificationPreferences } from "@/lib/a
 import { badgeText, formatWhen } from "@/lib/routines";
 import { useT } from "@/lib/use-i18n";
 import { IconButton } from "@/components/ui/IconButton";
-import { dispatchNotification } from "@/lib/desktop-notifications";
+import { dispatchNotification, getNewUnreadNotifications } from "@/lib/desktop-notifications";
 
 const POLL_MS = 15_000;
 
@@ -29,7 +29,7 @@ export function NotificationBell({
   const [failed, setFailed] = useState(false);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
-  const previousUnread = useRef(0);
+  const seenNotificationIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -44,19 +44,18 @@ export function NotificationBell({
       .then((r) => {
         setUnread(r.unread);
         setFailed(false);
-        if (r.unread > previousUnread.current && preferences?.desktop_enabled) {
-          // New unread item arrived; dispatch OS desktop notification if allowed
-          void api.listNotifications(10).then((latest) => {
-            for (const item of latest) {
-              if (!item.read_at) {
-                dispatchNotification(item, preferences, (threadId) => {
-                  router.push(`/chat?thread=${threadId}`);
-                });
-              }
-            }
-          }).catch(() => {});
-        }
-        previousUnread.current = r.unread;
+        // Compare IDs so a read item being replaced by a new one cannot hide the alert.
+        // The first successful list establishes a baseline without alerting old unread items.
+        void api.listNotifications(200).then((latest) => {
+          const seenIds = seenNotificationIds.current;
+          seenNotificationIds.current = new Set(latest.map((item) => item.id));
+          if (!seenIds || !preferences?.desktop_enabled) return;
+          for (const item of getNewUnreadNotifications(latest, seenIds)) {
+            dispatchNotification(item, preferences, (threadId) => {
+              router.push(`/chat?thread=${threadId}`);
+            });
+          }
+        }).catch(() => {});
       })
       .catch(() => setFailed(true));
   }, [preferences, router]);

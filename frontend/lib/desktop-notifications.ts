@@ -72,6 +72,14 @@ export function shouldNotify(item: AppNotification, prefs: NotificationPreferenc
   return true;
 }
 
+export function getNewUnreadNotifications(
+  items: readonly AppNotification[],
+  seenIds: ReadonlySet<number> | null,
+): AppNotification[] {
+  if (!seenIds) return [];
+  return items.filter((item) => !item.read_at && !seenIds.has(item.id));
+}
+
 export function showNotificationAlert({
   title,
   body,
