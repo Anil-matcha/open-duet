@@ -2,6 +2,7 @@
 
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { loadThreadReactions, saveThreadReaction, type ReactionKind, type ReactionsMap } from "@/lib/reactions";
 import type { Transcript, TranscriptItem } from "@/lib/transcript";
 import { announcement, groupToolRuns } from "@/lib/transcript-view";
 import { Avatar } from "@/components/ui/Avatar";
@@ -109,6 +110,18 @@ export function Conversation({
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
+  const [threadReactions, setThreadReactions] = useState<{ id: number | null | undefined; map: ReactionsMap }>(() => ({
+    id: threadId,
+    map: loadThreadReactions(threadId),
+  }));
+
+  const reactions = threadReactions.id === threadId ? threadReactions.map : loadThreadReactions(threadId);
+
+  const handleReact = (itemKey: string, reaction: ReactionKind) => {
+    const next = saveThreadReaction(threadId, itemKey, reaction);
+    setThreadReactions({ id: threadId, map: next });
+  };
+
   const working = transcript.runningTurnId !== null && !transcript.typing;
   const waitingOnYou = transcript.items.some((i) => i.kind === "approval" && i.status === "pending");
   const empty = transcript.items.length === 0 && transcript.typing === null && !loading;
@@ -160,8 +173,19 @@ export function Conversation({
                 return <ToolRun key={item.key} tools={item.tools as Extract<TranscriptItem, { kind: "tool" }>[]} />;
               case "user":
                 return <UserMessage key={item.key} item={item} threadId={threadId} />;
-              case "assistant":
-                return <AssistantMessage key={item.key} text={item.text} incomplete={item.incomplete} ts={item.ts} />;
+              case "assistant": {
+                return (
+                  <AssistantMessage
+                    key={item.key}
+                    text={item.text}
+                    incomplete={item.incomplete}
+                    ts={item.ts}
+                    reaction={reactions[item.key] ?? null}
+                    onReact={(r) => handleReact(item.key, r)}
+                    disabled={answering !== null}
+                  />
+                );
+              }
               case "tool":
                 return <ToolStep key={item.key} item={item} />;
               case "approval":
