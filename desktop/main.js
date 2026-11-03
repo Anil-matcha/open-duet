@@ -10,7 +10,7 @@
 // Everything that can be tested without Electron is in src/. This file only
 // connects those pieces to Electron.
 
-const { app, BrowserWindow, Menu, dialog, safeStorage, session, ipcMain, shell, systemPreferences, clipboard } = require("electron");
+const { app, BrowserWindow, Menu, dialog, safeStorage, session, ipcMain, shell, systemPreferences, clipboard, Notification } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -170,6 +170,25 @@ async function main() {
   ipcMain.handle("open-dots:copy-text", (_event, text) => {
     if (typeof text === "string") {
       clipboard.writeText(text);
+      return true;
+    }
+    return false;
+  });
+  ipcMain.handle("open-dots:show-notification", (_event, payload) => {
+    if (!payload || typeof payload.title !== "string") return false;
+    if (Notification.isSupported()) {
+      const notif = new Notification({
+        title: payload.title,
+        body: typeof payload.body === "string" ? payload.body : "",
+        silent: payload.silent === true,
+      });
+      notif.on("click", () => {
+        if (window && !window.isDestroyed()) {
+          if (window.isMinimized()) window.restore();
+          window.focus();
+        }
+      });
+      notif.show();
       return true;
     }
     return false;

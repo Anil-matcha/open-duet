@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Loader2, Square, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Loader2, Square, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import type { ReactionKind } from "@/lib/reactions";
 import { useState } from "react";
 import { canAlwaysAllow, isScreenInput } from "@/lib/approvals";
 import { isComputerTool, toolLabel } from "@/lib/computers";
@@ -72,7 +73,7 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-faint opacity-0 transition-opacity duration-(--dur-fast) hover:bg-hover hover:text-ink focus-visible:opacity-100 group-hover/msg:opacity-100 touch:size-10 touch:opacity-100",
+        "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-muted transition-colors hover:bg-hover hover:text-ink touch:size-10",
         copied && "opacity-100 text-success",
         className,
       )}
@@ -116,25 +117,68 @@ export function AssistantMessage({
   incomplete = false,
   live = false,
   ts = null,
+  reaction = null,
+  onReact,
+  disabled = false,
 }: {
   text: string;
   incomplete?: boolean;
   live?: boolean;
   ts?: string | null;
+  reaction?: ReactionKind | null;
+  onReact?: (reaction: ReactionKind) => void;
+  disabled?: boolean;
 }) {
+  const t = useT();
   const timeStr = formatMessageTime(ts);
   return (
     <div className="group/msg max-w-full text-[15px] leading-relaxed">
       <Markdown text={text} />
       {live && <span aria-hidden="true" className="animate-pulse text-muted motion-reduce:animate-none">▍</span>}
       {!live && text && (
-        <div className="-ml-1 mt-1 flex items-center gap-2">
+        <div className="-ml-1 mt-1 flex flex-wrap items-center gap-1.5">
           <CopyButton text={text} />
+          {onReact && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onReact("thumbs_up")}
+                disabled={disabled}
+                aria-label={t("chat.reaction.replyThumbsUp")}
+                aria-pressed={reaction === "thumbs_up"}
+                title={t("chat.reaction.replyThumbsUp")}
+                className={cn(
+                  "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-xs transition-colors",
+                  reaction === "thumbs_up"
+                    ? "bg-success/20 text-success font-medium"
+                    : "text-muted hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                <ThumbsUp size={14} aria-hidden="true" className={reaction === "thumbs_up" ? "fill-current" : undefined} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onReact("thumbs_down")}
+                disabled={disabled}
+                aria-label={t("chat.reaction.replyThumbsDown")}
+                aria-pressed={reaction === "thumbs_down"}
+                title={t("chat.reaction.replyThumbsDown")}
+                className={cn(
+                  "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-xs transition-colors",
+                  reaction === "thumbs_down"
+                    ? "bg-danger/20 text-danger font-medium"
+                    : "text-muted hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                <ThumbsDown size={14} aria-hidden="true" className={reaction === "thumbs_down" ? "fill-current" : undefined} />
+              </button>
+            </div>
+          )}
           {timeStr && (
             <time
               dateTime={ts ?? undefined}
               title={ts ? new Date(ts).toLocaleString() : undefined}
-              className="select-none text-[11px] text-muted/70 font-normal"
+              className="select-none px-1 text-[11px] text-muted/70 font-normal"
             >
               {timeStr}
             </time>
@@ -343,7 +387,8 @@ export function ApprovalCard({
       )}
       {pending && (
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering}>
+          <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering} title="Allow with thumbs up">
+            <ThumbsUp size={13} className="mr-1.5 inline" aria-hidden="true" />
             {screenInput ? t("approval.allowThisTurn") : t("approval.allow")}
           </Button>
           {rememberable && (
@@ -355,7 +400,8 @@ export function ApprovalCard({
               {t("approval.alwaysAllow")}
             </Button>
           )}
-          <Button onClick={() => onAnswer("deny")} disabled={answering}>
+          <Button onClick={() => onAnswer("deny")} disabled={answering} title="Deny with thumbs down">
+            <ThumbsDown size={13} className="mr-1.5 inline" aria-hidden="true" />
             {t("approval.deny")}
           </Button>
         </div>

@@ -24,6 +24,10 @@ export const SETTINGS_REGISTRY = [
   { id: "general-setup", page: "general", pageHref: pageHref.general, section: "Getting started", title: "Setup guide", keywords: ["onboarding", "first agent", "engine choice", "getting started"], anchorId: "setting-general-setup", focusLabel: "Open setup guide" },
   { id: "general-apps", page: "general", pageHref: pageHref.general, section: "Connected apps", title: "Connected apps", keywords: ["integrations", "connections", "app access", "connected services"], anchorId: "setting-general-apps", focusLabel: "Open Apps" },
 
+  { id: "notifications-desktop", page: "notifications", pageHref: pageHref.notifications, section: "Desktop alerts", title: "Desktop notifications", keywords: ["desktop", "notifications", "alerts", "os", "system", "popups"], anchorId: "setting-notifications-desktop", focusLabel: "Enable desktop notifications" },
+  { id: "notifications-categories", page: "notifications", pageHref: pageHref.notifications, section: "What notifies you", title: "Notification events", keywords: ["approval", "needs you", "failures", "task due", "reminders", "events"], anchorId: "setting-notifications-categories", focusLabel: "Agent input & approvals" },
+  { id: "notifications-sound", page: "notifications", pageHref: pageHref.notifications, section: "Alert sound", title: "Notification sound", keywords: ["sound", "audio", "chime", "beep", "volume"], anchorId: "setting-notifications-sound", focusLabel: "Notification sound" },
+
   { id: "channels-telegram", page: "channels", pageHref: pageHref.channels, section: "Telegram", title: "Telegram connection", keywords: ["telegram", "channel", "channels", "messaging", "bot", "link code"], anchorId: "setting-channels-telegram", focusLabel: "Link Telegram" },
   { id: "channels-boat-tasks", page: "channels", pageHref: pageHref.channels, section: "Boat tasks", title: "Boat tasks", keywords: ["boat", "tasks", "legacy", "sandbox", "task submission"], anchorId: "setting-channels-boat-tasks", focusLabel: "Boat tasks" },
 

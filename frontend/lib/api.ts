@@ -623,6 +623,16 @@ export type CodexLoginOperation = {
 
 export type ClaudeLoginOperation = Omit<CodexLoginOperation, "user_code"> & { code_sent?: boolean };
 
+export type VersionInfo = {
+  current_version: string;
+  commit?: string | null;
+  latest_version?: string | null;
+  update_available: boolean;
+  install_kind: "docker" | "service" | "git" | "source";
+  update_command: string;
+  release_notes_url: string;
+};
+
 export type GoogleSetupOperation = {
   id: string;
   kind: "install" | "sign_in" | "models";
@@ -949,7 +959,16 @@ export type AppNotification = {
   created_at: string;
 };
 
+export type NotificationPreferences = {
+  desktop_enabled: boolean;
+  notify_needs_you: boolean;
+  notify_failures: boolean;
+  notify_task_due: boolean;
+  sound_enabled: boolean;
+};
+
 export const api = {
+  getVersionInfo: (refresh = false) => request<VersionInfo>(`/version${refresh ? "?refresh=true" : ""}`),
   roomExportUrl: (id: number, format: "md" | "json") => requestBlobUrl(`/rooms/${id}/export?format=${format}`),
   getNeedsYou: () => request<import("./needs-you").NeedsYouSnapshot>("/needs-you?refresh=true"),
   requestTeamLead: (agentId: number) => request<{ id: number; lead_agent_id: number }>("/team/lead", { method: "POST", body: JSON.stringify({ agent_id: agentId }) }),
@@ -1459,6 +1478,9 @@ export const api = {
   unreadNotifications: () => request<{ unread: number }>("/notifications/unread-count"),
   readNotification: (id: number) => request<void>(`/notifications/${id}/read`, { method: "POST" }),
   readAllNotifications: () => request<{ unread: number }>("/notifications/read-all", { method: "POST" }),
+  getNotificationPreferences: () => request<NotificationPreferences>("/notifications/preferences"),
+  updateNotificationPreferences: (prefs: NotificationPreferences) =>
+    request<NotificationPreferences>("/notifications/preferences", { method: "PUT", body: JSON.stringify(prefs) }),
 
   // --- Everyday features (docs/EVERYDAY.md) ---
   searchConversations: (query: string, filter: SearchFilter = {}) =>

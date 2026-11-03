@@ -364,3 +364,32 @@ async def read_notification(notification_id: int, sch: service.RoutineScheduler 
         if not await notification_feed.mark_read(db, sch.owner_id, notification_id):
             raise _error(404, "notification_not_found", "Notification not found")
     return Response(status_code=204)
+
+
+from pydantic import BaseModel
+from app.services import notification_preference
+
+
+class NotificationPreferencesModel(BaseModel):
+    desktop_enabled: bool = True
+    notify_needs_you: bool = True
+    notify_failures: bool = True
+    notify_task_due: bool = True
+    sound_enabled: bool = False
+
+
+@router.get("/notifications/preferences", response_model=NotificationPreferencesModel)
+async def get_notification_preferences():
+    return notification_preference.read_preferences().to_dict()
+
+
+@router.put("/notifications/preferences", response_model=NotificationPreferencesModel)
+async def update_notification_preferences(payload: NotificationPreferencesModel):
+    prefs = notification_preference.NotificationPreferences(
+        desktop_enabled=payload.desktop_enabled,
+        notify_needs_you=payload.notify_needs_you,
+        notify_failures=payload.notify_failures,
+        notify_task_due=payload.notify_task_due,
+        sound_enabled=payload.sound_enabled,
+    )
+    return notification_preference.write_preferences(prefs).to_dict()

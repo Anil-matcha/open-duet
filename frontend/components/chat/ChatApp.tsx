@@ -498,6 +498,10 @@ export function ChatApp() {
 
   if (blockedReason === null && audioUrl.trim() && attached.length >= MAX_ATTACHMENTS) blockedReason = `Attach at most ${MAX_ATTACHMENTS} files or audio links to one message.`;
 
+  const sendingReactionReplyDisabled = threadId === null || !ready || stream.connection === "failed" || thread === null ||
+    thread.session_state === "broken" || waiting || transcript.runningTurnId !== null ||
+    (selectedEngine !== undefined && !selectedEngine.available);
+
   const addFiles = (files: File[]) => {
     const problems: string[] = [];
     const accepted = files.filter((file) => {
@@ -549,6 +553,22 @@ export function ChatApp() {
       if (err instanceof ApiError && err.code === "skill_unavailable") setSkillsTick((n) => n + 1);
     } finally {
       audioAbort.current = null;
+      setSending(false);
+      setListTick((n) => n + 1);
+    }
+  };
+
+  const sendReactionReply = async (message: string): Promise<boolean> => {
+    if (sendingReactionReplyDisabled || sending) return false;
+    setSendError(null);
+    setSending(true);
+    try {
+      await api.sendTurn(threadId!, message);
+      return true;
+    } catch (err) {
+      setSendError(sendErrorText(err));
+      return false;
+    } finally {
       setSending(false);
       setListTick((n) => n + 1);
     }
@@ -986,6 +1006,8 @@ export function ChatApp() {
               answering={answering}
               approvalErrors={approvalErrors}
               onAnswer={answer}
+              onReactionReply={sendReactionReply}
+              sendingReactionReplyDisabled={sendingReactionReplyDisabled || sending}
               remembered={remembered}
               undoneRules={undoneRules}
               onUndo={undoRule}

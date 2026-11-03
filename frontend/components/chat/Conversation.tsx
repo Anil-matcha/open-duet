@@ -2,6 +2,7 @@
 
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { formatReactionReply, isLatestAssistantMessage, loadThreadReactions, saveThreadReaction, type ReactionKind, type ReactionsMap } from "@/lib/reactions";
 import type { Transcript, TranscriptItem } from "@/lib/transcript";
 import { announcement, groupToolRuns } from "@/lib/transcript-view";
 import { Avatar } from "@/components/ui/Avatar";
@@ -57,6 +58,8 @@ export function Conversation({
   answering,
   approvalErrors,
   onAnswer,
+  onReactionReply,
+  sendingReactionReplyDisabled,
   remembered = {},
   undoneRules = [],
   onUndo,
@@ -80,6 +83,8 @@ export function Conversation({
   answering: string | null;
   approvalErrors: Record<string, string>;
   onAnswer: (approvalId: string, decision: "allow" | "deny", remember?: boolean) => void;
+  onReactionReply: (message: string) => Promise<boolean>;
+  sendingReactionReplyDisabled: boolean;
   // "Always allow" outcomes by approval id, from answers given on this page.
   remembered?: Record<string, Remembered>;
   undoneRules?: number[];
@@ -107,6 +112,24 @@ export function Conversation({
     if (!el) return;
     stuck.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  const [threadReactions, setThreadReactions] = useState<{ id: number | null | undefined; map: ReactionsMap }>(() => ({
+    id: threadId,
+    map: loadThreadReactions(threadId),
+  }));
+
+  const reactions = threadReactions.id === threadId ? threadReactions.map : loadThreadReactions(threadId);
+
+  const handleReact = async (itemKey: string, reaction: ReactionKind) => {
+    if (reactions[itemKey] === reaction) {
+      const next = saveThreadReaction(threadId, itemKey, null);
+      setThreadReactions({ id: threadId, map: next });
+      return;
+    }
+    if (!await onReactionReply(formatReactionReply(reaction))) return;
+    const next = saveThreadReaction(threadId, itemKey, reaction);
+    setThreadReactions({ id: threadId, map: next });
   };
 
   const working = transcript.runningTurnId !== null && !transcript.typing;
@@ -160,8 +183,20 @@ export function Conversation({
                 return <ToolRun key={item.key} tools={item.tools as Extract<TranscriptItem, { kind: "tool" }>[]} />;
               case "user":
                 return <UserMessage key={item.key} item={item} threadId={threadId} />;
-              case "assistant":
-                return <AssistantMessage key={item.key} text={item.text} incomplete={item.incomplete} ts={item.ts} />;
+              case "assistant": {
+                const canReplyToMessage = !item.incomplete && isLatestAssistantMessage(item.key, transcript.items);
+                return (
+                  <AssistantMessage
+                    key={item.key}
+                    text={item.text}
+                    incomplete={item.incomplete}
+                    ts={item.ts}
+                    reaction={reactions[item.key] ?? null}
+                    onReact={canReplyToMessage ? (r) => { void handleReact(item.key, r); } : undefined}
+                    disabled={answering !== null || sendingReactionReplyDisabled}
+                  />
+                );
+              }
               case "tool":
                 return <ToolStep key={item.key} item={item} />;
               case "approval":
