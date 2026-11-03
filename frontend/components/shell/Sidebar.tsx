@@ -8,7 +8,6 @@ import {
   Columns3,
   LayoutGrid,
   Plus,
-  Send,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -16,7 +15,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Agent, Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { agentTarget, recentVisible, rowStatus, sidebarAgents } from "@/lib/sidebar";
 import { ConversationSearch } from "@/components/chat/ConversationSearch";
 import { Button } from "@/components/ui/Button";
@@ -119,6 +118,7 @@ export function Sidebar({
   onNavigate?: () => void;
   collaboration?: React.ReactNode;
 }) {
+  const t = useT();
   const [searching, setSearching] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showAllAgents, setShowAllAgents] = useState(false);
@@ -188,7 +188,7 @@ export function Sidebar({
               )}
               {threads?.length === 0 && (
                 <li className="px-3 py-2 text-xs text-muted">
-                  {showArchived ? t("sidebar.emptyArchived") : "No conversations yet."}
+                  {showArchived ? t("sidebar.emptyArchived") : t("sidebar.emptyTitle")}
                 </li>
               )}
               {shownThreads.map((thread) => {
@@ -258,17 +258,32 @@ export function Sidebar({
             {!agentsCollapsed && (
               <div className="pt-0.5">
                 {listed.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onNewAgent?.();
-                      onNavigate?.();
-                    }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
-                  >
-                    <Plus size={13} className="shrink-0 text-muted" />
-                    <span>Create an agent</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onNewAgent?.();
+                        onNavigate?.();
+                      }}
+                      className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
+                    >
+                      <Plus size={13} className="shrink-0 text-muted" />
+                      <span>{t("sidebar.createAgent")}</span>
+                    </button>
+                    {onManageAgents && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onManageAgents();
+                          onNavigate?.();
+                        }}
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-field px-2.5 py-1.5 text-left text-xs text-muted transition-colors hover:bg-hover/60 hover:text-ink"
+                      >
+                        <SlidersHorizontal size={13} className="shrink-0 text-muted" />
+                        <span>{t("sidebar.manageAgents")}</span>
+                      </button>
+                    )}
+                  </>
                 )}
                 <ul className="space-y-0.5">
                   {shownAgents.map((agent) => {
@@ -332,7 +347,7 @@ export function Sidebar({
               className={cn(ROW, "hover:bg-hover/60")}
             >
               <Columns3 size={16} aria-hidden="true" className="shrink-0 text-muted" />
-              <span className="font-medium">Tasks & calendar</span>
+              <span className="font-medium">{t("sidebar.planner")}</span>
             </button>
           )}
           {onOpenRoutines && (
@@ -352,10 +367,6 @@ export function Sidebar({
             <LayoutGrid size={16} aria-hidden="true" className="shrink-0 text-muted" />
             <span className="font-medium">{t("sidebar.apps")}</span>
           </Link>
-          <Link href="/tasks/" className={cn(ROW, "hover:bg-hover/60")}>
-            <Send size={16} aria-hidden="true" className="shrink-0 text-muted" />
-            <span className="font-medium">{t("sidebar.legacyTasks")}</span>
-          </Link>
         </div>
 
         {/* Bottom bar with Settings and Theme Toggle */}
@@ -363,6 +374,7 @@ export function Sidebar({
           <Link
             href="/settings/"
             onClick={onNavigate}
+            title={`${t("sidebar.settings")} (⌘+, / Ctrl+,)`}
             className="flex items-center gap-2 rounded-field px-2.5 py-1 text-sm font-medium text-muted transition-colors duration-(--dur-fast) hover:bg-hover/60 hover:text-ink"
           >
             <Settings size={16} aria-hidden="true" className="shrink-0 text-muted" />

@@ -4,7 +4,7 @@ import { BarChart3, CalendarDays, Folder, Menu as MenuIcon, MoreHorizontal, Shie
 import type { ReactNode } from "react";
 import type { Agent } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { Avatar } from "@/components/ui/Avatar";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu, MenuItem } from "@/components/ui/Menu";
@@ -52,12 +52,13 @@ export function ChatHeader({
   // Short text such as "Reconnecting…" or the engine's version.
   status?: { text: string; warn?: boolean } | null;
 }) {
+  const t = useT();
   type Action = { key: string; label: string; icon: ReactNode; run: () => void; hint?: string };
   const secondary: Action[] = [];
   if (onApprovals) secondary.push({ key: "approvals", label: t("header.approvals"), icon: <ShieldCheck size={18} />, run: onApprovals });
   if (onFiles) secondary.push({ key: "files", label: t("header.files"), icon: <Folder size={18} />, run: onFiles });
   if (onUsage) secondary.push({ key: "usage", label: t("header.usage"), icon: <BarChart3 size={18} />, run: onUsage, hint: usageHint });
-  if (onToday) secondary.push({ key: "today", label: "Today", icon: <CalendarDays size={18} />, run: onToday, hint: "Refresh today's brief" });
+  if (onToday) secondary.push({ key: "today", label: t("header.today"), icon: <CalendarDays size={18} />, run: onToday, hint: t("header.todayHint") });
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-app px-3 pt-[env(safe-area-inset-top)] sm:px-4">

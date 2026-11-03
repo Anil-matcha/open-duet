@@ -37,7 +37,7 @@ async def usage_annual(
     rt: ThreadRuntime = Depends(get_runtime),
 ):
     """Activity and usage summary over the past year (or given days),
-    matching OpenBot's ProfileStats contract."""
+    for the Profile tab."""
     async with rt.session() as db:
         return await usage_report.annual_summary(db, rt.owner_id, days)
 

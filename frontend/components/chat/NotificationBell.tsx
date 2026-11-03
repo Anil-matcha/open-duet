@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AppNotification } from "@/lib/api";
 import { badgeText, formatWhen } from "@/lib/routines";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { IconButton } from "@/components/ui/IconButton";
 
 const POLL_MS = 15_000;
@@ -20,6 +20,7 @@ export function NotificationBell({
   elevated?: boolean;
   onOpen?: () => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);

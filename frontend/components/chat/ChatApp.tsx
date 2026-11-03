@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
@@ -17,6 +17,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { computerChip } from "@/lib/computers";
 import { AgentsPanel } from "./AgentsPanel";
 import { NotificationBell } from "./NotificationBell";
+import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { RoutinesPanel } from "./RoutinesPanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { EngineModelFields } from "./EngineModelFields";
@@ -31,7 +32,7 @@ import { CommandPalette } from "@/components/shell/CommandPalette";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Drawer } from "@/components/ui/Drawer";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { reportPresence } from "@/lib/presence";
 import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
@@ -40,7 +41,6 @@ import { RoomList } from "./RoomList";
 import { RoomView } from "./RoomView";
 import { collaboration, type TeamState } from "@/lib/collaboration";
 import { useSession } from "@/components/AuthGate";
-import { SETUP_STARTER } from "./AgentSetupEntry";
 import { onboarding } from "@/lib/onboarding";
 import { TeamPanel } from "./TeamPanel";
 import { parseRoom, roomHref } from "@/lib/rooms";
@@ -118,6 +118,7 @@ function Notice({
 // API. The page keeps nothing that matters: every conversation lives in the
 // backend, and the open one is replayed from its stored events.
 export function ChatApp() {
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const threadId = parseThreadId(params.get("thread"));
@@ -158,7 +159,16 @@ export function ChatApp() {
   // and the page behaves as before.
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [agentTick, setAgentTick] = useState(0);
-  const [agentsOpen, setAgentsOpen] = useState(false);
+  const [agentsShown, setAgentsShown] = useState(false);
+  const agentsOpen = agentsShown || params.get("view") === "agents";
+  const setAgentsOpen = useCallback((open: boolean) => {
+    setAgentsShown(open);
+    if (!open && params.get("view") === "agents") {
+      const query = new URLSearchParams(params.toString());
+      query.delete("view");
+      router.replace(query.toString() ? `/chat?${query.toString()}` : "/chat");
+    }
+  }, [params, router]);
   const [deleteAgentTarget, setDeleteAgentTarget] = useState<Agent | null>(null);
   // The Agents panel opened from New agent starts on the form.
   const [agentsCreate, setAgentsCreate] = useState(false);
@@ -379,7 +389,7 @@ export function ChatApp() {
     };
     window.addEventListener("open-dots:open-agent", openAgent);
     return () => window.removeEventListener("open-dots:open-agent", openAgent);
-  }, [agents, router]);
+  }, [agents, router, setAgentsOpen]);
 
   useEffect(() => {
     if (!ready) return;
@@ -479,7 +489,7 @@ export function ChatApp() {
     blockedReason = `${selectedEngine?.label ?? "This engine"} can't read images. Remove the image to send.`;
 
   const hasAudio = !!audioUrl.trim() || attached.some((file) => /\.(wav|mp3|m4a|ogg|flac|webm)$/i.test(file.name));
-  if (blockedReason === null && hasAudio && (!audioCapability?.available || !audioConsent)) blockedReason = !audioCapability?.available ? "Audio transcription is unavailable. Configure the transcription provider first." : "Consent to send audio to OpenAI before sending.";
+  if (blockedReason === null && hasAudio && (!audioCapability?.available || !audioConsent)) blockedReason = !audioCapability?.available ? t("chat.audioUnavailable") : t("chat.audioConsentRequired", { provider: audioCapability?.provider_label ?? "OpenAI" });
 
   if (blockedReason === null && audioUrl.trim() && attached.length >= MAX_ATTACHMENTS) blockedReason = `Attach at most ${MAX_ATTACHMENTS} files or audio links to one message.`;
 
@@ -674,7 +684,7 @@ export function ChatApp() {
     try {
       setTodaySnapshot(await api.getNeedsYou());
     } catch {
-      setTodayError("Could not refresh the Today brief. Try again.");
+      setTodayError(t("chat.refreshTodayError"));
     } finally {
       setTodayLoading(false);
     }
@@ -756,15 +766,18 @@ export function ChatApp() {
       onToday={ready ? () => void refreshToday() : undefined}
       usageHint={conversationTotal}
       trailing={
-        ready ? (
-          <NotificationBell
-            elevated={routinesOpen || panel === "usage"}
-            onOpen={() => {
-              setRoutinesOpen(false);
-              if (panel === "usage") setPanel(null);
-            }}
-          />
-        ) : undefined
+        <>
+          <LanguageSelect compact />
+          {ready ? (
+            <NotificationBell
+              elevated={routinesOpen || panel === "usage"}
+              onOpen={() => {
+                setRoutinesOpen(false);
+                if (panel === "usage") setPanel(null);
+              }}
+            />
+          ) : null}
+        </>
       }
       status={
         stream.connection === "reconnecting"
@@ -928,7 +941,7 @@ export function ChatApp() {
             setAgentTick(value => value + 1);
             setAgentsOpen(false); setEditAgent(null); setDeleteAgentTarget(null);
             const target = threads?.find(item => item.agent_id === id && !item.archived_at && item.session_state !== "broken");
-            setNewAgentId(id); setNewModel(null); setDraft(SETUP_STARTER); setFocusComposer(true);
+            setNewAgentId(id); setNewModel(null); setDraft(t("agentTeam.setupStarter")); setFocusComposer(true);
             router.push(target ? `/chat?thread=${target.id}` : `/chat?agent=${id}`);
           }}
           initialDeleteAgent={deleteAgentTarget}
@@ -969,7 +982,7 @@ export function ChatApp() {
                   session keeps the messages above but starts without them as context.
                 </p>
                 <Button variant="primary" onClick={resetSession} loading={resetting}>
-                  {resetting ? "Starting…" : "Start a new session"}
+                  {resetting ? t("common.starting") : t("chat.startNewSession")}
                 </Button>
               </div>
               {resetError && <p className="mx-auto mt-2 max-w-3xl text-xs text-danger">{resetError}</p>}
@@ -978,13 +991,13 @@ export function ChatApp() {
 
           <div className="mx-auto w-full max-w-3xl px-3 text-xs text-muted">
             <details>
-              <summary className="cursor-pointer">Audio or podcast link (25 MB, 20 minutes)</summary>
-              <p>WAV, MP3, M4A, OGG, FLAC or WebM. Attach a file or paste a direct public audio URL. Pages requiring sign-in or payment cannot be transcribed.</p>
-              <input aria-label="Direct podcast audio URL" type="url" value={audioUrl} onChange={(event) => { setAudioUrl(event.target.value); setAudioConsent(false); }} placeholder="https://example.com/episode.mp3" disabled={sending} className="my-2 w-full rounded-field border border-line bg-inset p-2" />
-              <p>{audioCapability?.available ? audioCapability.retention : "Audio transcription is unavailable: configure the provider key, ffmpeg and ffprobe on the backend."}</p>
-              <label className="my-2 flex gap-2"><input type="checkbox" checked={audioConsent} onChange={(event) => setAudioConsent(event.target.checked)} disabled={sending || !audioCapability?.available} />I consent to send this audio to {audioCapability?.provider_label ?? "OpenAI"} for transcription.</label>
-              {sending && hasAudio && <button type="button" onClick={() => audioAbort.current?.abort()} className="my-2 underline">Cancel audio processing</button>}
-              <p>Machine transcripts may contain uncertain words or names. Review the transcript before requesting later actions.</p>
+              <summary className="cursor-pointer">{t("chat.audioLink")}</summary>
+              <p>{t("chat.audioFormats")}</p>
+              <input aria-label={t("chat.directAudioUrl")} type="url" value={audioUrl} onChange={(event) => { setAudioUrl(event.target.value); setAudioConsent(false); }} placeholder="https://example.com/episode.mp3" disabled={sending} className="my-2 w-full rounded-field border border-line bg-inset p-2" />
+              <p>{audioCapability?.available ? audioCapability.retention : t("chat.audioUnavailable")}</p>
+              <label className="my-2 flex gap-2"><input type="checkbox" checked={audioConsent} onChange={(event) => setAudioConsent(event.target.checked)} disabled={sending || !audioCapability?.available} />{t("chat.audioConsent", { provider: audioCapability?.provider_label ?? "OpenAI" })}</label>
+              {sending && hasAudio && <button type="button" onClick={() => audioAbort.current?.abort()} className="my-2 underline">{t("chat.cancelAudio")}</button>}
+              <p>{t("chat.transcriptCaveat")}</p>
             </details>
           </div>
           <Composer
@@ -1040,19 +1053,19 @@ export function ChatApp() {
       <Dialog
         open={todayOpen}
         onOpenChange={setTodayOpen}
-        title="Today"
-        description="A fresh read of your local tasks, team work, routines and connected apps."
+        title={t("header.today")}
+        description={t("header.todayDescription")}
         size="wide"
         footer={(
           <>
-            <Button onClick={() => setTodayOpen(false)}>Close</Button>
+            <Button onClick={() => setTodayOpen(false)}>{t("common.close")}</Button>
             <Button variant="primary" icon={<RefreshCw size={16} />} onClick={() => void refreshToday()} loading={todayLoading}>
-              {todayLoading ? "Refreshing…" : "Refresh"}
+              {todayLoading ? t("common.refreshing") : t("common.refresh")}
             </Button>
           </>
         )}
       >
-        {todayLoading ? <p role="status" className="text-sm text-muted">Refreshing today&apos;s brief…</p> : null}
+        {todayLoading ? <p role="status" className="text-sm text-muted">{t("common.refreshingToday")}</p> : null}
         {todayError ? <p role="alert" className="text-sm text-danger">{todayError}</p> : null}
         {!todayLoading && !todayError && todayItem ? <NeedsYouCard item={todayItem} /> : null}
       </Dialog>

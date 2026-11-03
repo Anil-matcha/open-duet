@@ -7,9 +7,10 @@ import { collaboration } from "@/lib/collaboration";
 import type { TeamJobItem, TranscriptItem } from "@/lib/transcript";
 import { JobCard } from "./TeamPanel";
 import { useSession } from "@/components/AuthGate";
+import { useT } from "@/lib/use-i18n";
 
 export function DelegationCard({ item }: { item: TeamJobItem }) {
-  return <JobCard compact job={{ id: item.jobId, root_id: null, parent_id: null, depth: 0, requester_agent_id: 0, assignee_agent_id: item.agentId, assignee_thread_id: item.threadId, mode: item.mode, brief: item.brief, status: item.status, result: item.result, outcome: item.outcome }} />;
+  return <JobCard job={{ id: item.jobId, root_id: null, parent_id: null, depth: 0, requester_agent_id: 0, requester_thread_id: null, assignee_agent_id: item.agentId, assignee_thread_id: item.threadId, mode: item.mode, brief: item.brief, status: item.status, created_at: new Date().toISOString(), started_at: null, finished_at: null, result: item.result, outcome: item.outcome }} agents={[]} onChanged={() => {}} />;
 }
 export function AgentCreatedCard({ item }: { item: Extract<TranscriptItem, { kind: "agent_created" }> }) {
   const [state, setState] = useState("");
@@ -37,6 +38,7 @@ const STALE: Record<string, string> = {
 const VERB: Record<string, string> = { created: "Added", updated: "Updated", deleted: "Deleted" };
 
 export function TeamSetupCard({ item }: { item: Extract<TranscriptItem, { kind: "team_setup" }> }) {
+  const t = useT();
   const [state, setState] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { session } = useSession();
@@ -63,10 +65,10 @@ export function TeamSetupCard({ item }: { item: Extract<TranscriptItem, { kind: 
       <p><strong>Team changes applied</strong></p>
       <ul className="space-y-2 text-xs text-muted">{item.rows.map((row) => <li key={`${row.action}-${row.agentId}`}>
         {VERB[row.action] ?? row.action}: {row.name || `Agent ${row.agentId}`}
-        {row.changes && <details className="mt-1"><summary className="cursor-pointer underline">Details</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field}><dt className="font-medium">{change.field.replaceAll("_", " ")}</dt><dd className="whitespace-pre-wrap break-words"><del>{change.before == null ? "Default / empty" : String(change.before)}</del>{" → "}{change.after == null ? "Default / empty" : String(change.after)}</dd></div>)}</dl><p className="mt-2">New conversations use saved model defaults. App connections, skills, computers and routines require their own setup.</p></details>}
+        {row.changes && <details className="mt-1"><summary className="cursor-pointer underline">Details</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field}><dt className="font-medium">{change.field.replaceAll("_", " ")}</dt><dd className="whitespace-pre-wrap break-words"><del>{change.before == null ? "Default / empty" : String(change.before)}</del>{" → "}{change.after == null ? "Default / empty" : String(change.after)}</dd></div>)}</dl><p className="mt-2">{t("agentTeam.teamSavedDefaults")}</p></details>}
         {row.action !== "deleted" && <div className="mt-1 flex gap-3"><button type="button" className="underline" onClick={() => window.dispatchEvent(new CustomEvent("open-dots:open-agent", { detail: { id: row.agentId, edit: false } }))}>Start chat</button>{session?.scopes.includes("admin") && <button type="button" className="underline" onClick={() => window.dispatchEvent(new CustomEvent("open-dots:open-agent", { detail: { id: row.agentId, edit: true } }))}>Edit agent</button>}</div>}
       </li>)}</ul>
-      {item.undoAvailable && <p className="text-xs text-muted">Undo is available until a created agent is used or a changed agent is edited again. Starting its first chat can make Undo unavailable.</p>}
+      {item.undoAvailable && <p className="text-xs text-muted">{t("agentTeam.undoCaveat")}</p>}
       {availability && !availability.available && !state && <p className="text-xs text-muted">{availability.reason}</p>}
       {canUndo && <button type="button" className="text-xs underline" onClick={() => void undo()}>Undo</button>}
       {state && <p role="status" className="text-xs text-muted">{state === "busy" ? "Undoing…" : "Undone."}</p>}

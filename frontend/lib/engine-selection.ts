@@ -10,7 +10,7 @@ export const PREFERRED_ENGINE_STORAGE_KEY = "open_duet_preferred_engine";
 
 /**
  * Resolves the engine, model, and reasoning effort to start on when creating a new chat or loading the app.
- * Follows OpenBot's resolveCreationModel pattern:
+ * Resolution order:
  * 1. Checks if the saved disk/cached preference is available and ready in the live engine catalog.
  * 2. If so, uses that provider and verifies if the model is valid (or falls back to the engine's default model).
  * 3. Dynamically resolves the reasoning effort if supported by the model.

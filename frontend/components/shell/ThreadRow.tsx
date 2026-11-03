@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import type { Thread } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { relativeTime } from "@/lib/relative-time";
 import { rowStatus, type RowStatus } from "@/lib/sidebar";
 import { Avatar } from "@/components/ui/Avatar";
@@ -13,10 +13,10 @@ import { Button } from "@/components/ui/Button";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/Menu";
 import { StatusDot } from "./StatusDot";
 
-function whenLabel(iso: string): string {
+function whenLabel(iso: string, translate: (key: string, params?: Record<string, string | number>) => string): string {
   const rel = relativeTime(iso);
   if (rel === null) return "";
-  return "date" in rel ? rel.date : t(rel.key, "n" in rel ? { n: rel.n } : undefined);
+  return "date" in rel ? rel.date : translate(rel.key, "n" in rel ? { n: rel.n } : undefined);
 }
 
 export type RowActions = {
@@ -46,6 +46,7 @@ export function ThreadRow({
   actions: RowActions;
   onNavigate?: () => void;
 }) {
+  const t = useT();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -126,7 +127,7 @@ export function ThreadRow({
             <StatusDot status={shown === "reset" ? null : shown} unread={unread} />
           </span>
           <span className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="shrink-0">{whenLabel(thread.updated_at)}</span>
+            <span className="shrink-0">{whenLabel(thread.updated_at, t)}</span>
             {agentName ? <span className="min-w-0 truncate">· {agentName}</span> : null}
             {archived ? <span>· {t("sidebar.archivedTag")}</span> : null}
             {shown === "reset" ? <span className="text-warning">· {t("status.reset")}</span> : null}

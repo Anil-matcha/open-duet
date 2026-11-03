@@ -10,4 +10,6 @@ export function roomMemberName(members: { agent_id: number; name: string }[], id
 export function queueText(members: { agent_id: number; name: string }[], entries: { agent_id: number; status: string }[]): string {
   return entries.filter(entry => ["queued", "running", "needs_input"].includes(entry.status)).map(entry => `${roomMemberName(members, entry.agent_id)} ${entry.status === "running" ? "is working" : entry.status === "needs_input" ? "is waiting for approval" : "is queued"}`).join(" · ");
 }
-export function mentionToken(name: string): string { return `@${name} `; }
+export function mentionToken(name: string, disambiguatingAgentId?: number): string {
+  return disambiguatingAgentId === undefined ? `@${name} ` : `@${name} (#${disambiguatingAgentId}) `;
+}

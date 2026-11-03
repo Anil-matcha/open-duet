@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { failureNextStep, interruptedText, turnUsageText } from "@/lib/everyday";
 import { compactedLabel, recalledLabel } from "@/lib/memory";
 import type { TranscriptItem } from "@/lib/transcript";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { toolRunSummary } from "@/lib/transcript-view";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "./Markdown";
@@ -52,6 +52,7 @@ export function formatMessageTime(ts?: string | null): string | null {
 }
 
 function CopyButton({ text, className }: { text: string; className?: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -209,11 +210,11 @@ export function ToolRun({ tools }: { tools: Item<"tool">[] }) {
 }
 
 const APPROVAL_LABEL: Record<Item<"approval">["status"], string> = {
-  pending: "Waiting for you",
-  allowed: "Allowed",
-  denied: "Denied",
-  expired: "Expired: nobody answered in time, so it did not run",
-  cancelled: "Cancelled: the run ended before it was answered",
+  pending: "approval.waiting",
+  allowed: "approval.allowed",
+  denied: "approval.denied",
+  expired: "approval.expired",
+  cancelled: "approval.cancelled",
 };
 
 // What became of "Always allow this command" on this card: the saved rule
@@ -239,6 +240,7 @@ export function ApprovalCard({
   // Stop always allowing: removes the saved rule; the next such command asks.
   onUndo?: (ruleId: number) => void;
 }) {
+  const t = useT();
   const pending = item.status === "pending";
   // A decided card is one line; the input it was asked about is behind the arrow.
   const [open, setOpen] = useState(false);
@@ -260,8 +262,7 @@ export function ApprovalCard({
         {pending ? (
           isComputerTool(item.tool) ? (
             <>
-              {screenInput ? "Let your agent use this computer’s screen, keyboard and browser for this turn." : <>Your agent wants to {toolLabel(item.tool)}, an isolated machine, not this one.</>} It will not run
-              until you allow it.
+              {screenInput ? t("approval.computerRequest") : t("approval.isolatedRequest")} {t("approval.waitUntilAllowed")}
             </>
           ) : (
             <>
@@ -273,14 +274,14 @@ export function ApprovalCard({
           <>
             <span className="font-mono">{item.tool}</span>:{" "}
             {byRule && item.status === "allowed"
-              ? "Allowed by a saved rule, without asking"
+              ? t("approval.allowSaved")
               : item.resolvedBy === "computer_read"
-                ? "Allowed without asking: reading inside the agent's computer"
+                ? t("approval.allowComputerRead")
                 : item.resolvedBy === "accept_edits"
-                  ? "Allowed without asking: edits are accepted"
+                  ? t("approval.acceptedEdits")
                   : item.resolvedBy === "plan_mode"
-                    ? "Refused: plan only changes nothing"
-                    : APPROVAL_LABEL[item.status]}
+                    ? t("approval.planRefused")
+                    : t(APPROVAL_LABEL[item.status])}
             {!pending && item.summary && <span className="font-mono text-faint"> · {item.summary}</span>}
           </>
         )}
@@ -306,22 +307,21 @@ export function ApprovalCard({
                 </>
               ) : (
                 <>
-                  Your agent wants to use <span className="font-mono">{item.tool}</span>. It will not run
-                  until you allow it.
+                  {t("approval.toolRequest", { tool: item.tool })} {t("approval.waitUntilAllowed")}
                 </>
               )
             ) : (
               <>
                 <span className="font-mono">{item.tool}</span>:{" "}
                 {byRule && item.status === "allowed"
-                  ? "Allowed by a saved rule, without asking"
+                  ? t("approval.allowSaved")
                   : item.resolvedBy === "computer_read"
-                    ? "Allowed without asking: reading inside the agent's computer"
+                    ? t("approval.allowComputerRead")
                     : item.resolvedBy === "accept_edits"
-                      ? "Allowed without asking: edits are accepted"
+                      ? t("approval.acceptedEdits")
                       : item.resolvedBy === "plan_mode"
-                        ? "Refused: plan only changes nothing"
-                        : APPROVAL_LABEL[item.status]}
+                        ? t("approval.planRefused")
+                        : t(APPROVAL_LABEL[item.status])}
                 {!pending && item.summary && <span className="font-mono text-faint"> · {item.summary}</span>}
               </>
             )}
@@ -344,29 +344,29 @@ export function ApprovalCard({
       {pending && (
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering}>
-            {screenInput ? "Allow this turn" : "Allow"}
+            {screenInput ? t("approval.allowThisTurn") : t("approval.allow")}
           </Button>
           {rememberable && (
             <Button
               onClick={() => onAnswer("allow", true)}
               disabled={answering}
-              title="Allow it now, and run exactly this command in this folder without asking from now on"
+              title={t("approval.alwaysAllowHint")}
             >
-              Always allow this command
+              {t("approval.alwaysAllow")}
             </Button>
           )}
           <Button onClick={() => onAnswer("deny")} disabled={answering}>
-            Deny
+            {t("approval.deny")}
           </Button>
         </div>
       )}
-      {!pending && remembered?.error && <p className="text-xs text-muted">Allowed this once only: {remembered.error}.</p>}
-      {!pending && undone && <p className="text-xs text-muted">No longer always allowed. Next time it asks again.</p>}
+      {!pending && remembered?.error && <p className="text-xs text-muted">{t("approval.allowedOnce", { error: remembered.error })}</p>}
+      {!pending && undone && <p className="text-xs text-muted">{t("approval.noLongerAlwaysAllowed")}</p>}
       {!pending && savedRuleId != null && !undone && onUndo && (
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          {remembered?.ruleId != null ? "Always allowed in this folder from now on." : "A saved rule allows this command."}
+          {remembered?.ruleId != null ? t("approval.alwaysAllowedHere") : t("approval.savedRuleAllows")}
           <button onClick={() => onUndo(savedRuleId)} className="cursor-pointer underline hover:text-ink">
-            {remembered?.ruleId != null ? "Undo" : "Stop always allowing"}
+            {remembered?.ruleId != null ? t("common.undo") : t("approval.stopAlwaysAllowing")}
           </button>
         </p>
       )}

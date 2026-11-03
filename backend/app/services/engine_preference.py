@@ -1,6 +1,6 @@
 """Disk-backed storage for the user's preferred default engine and model.
 
-Follows OpenBot's setup-store pattern: keeps `preferredProvider` and `preferredModel`
+Keeps `preferredProvider` and `preferredModel`
 in a persistent JSON file on disk, resolved at startup and updated whenever the user
 changes their choice or signs into an engine.
 """

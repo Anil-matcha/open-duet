@@ -4,6 +4,7 @@
 // quiet conversations, and the history of changes with Undo (docs/MEMORY.md).
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Agent, type MemoryJournalRow, type MemoryProposal, type TopicDoc, type TopicList } from "@/lib/api";
+import { useT } from "@/lib/use-i18n";
 import { journalLabel, topicFileName } from "@/lib/memory";
 import { AboutMeTab, UpkeepCard } from "./MemoryUpkeep";
 import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
@@ -91,6 +92,7 @@ export function MemoryPanel({
 type Open = { doc: TopicDoc; text: string; conflict: boolean; saved: string | null };
 
 function Topics({ agentId, onError }: { agentId: number; onError: (e: string | null) => void }) {
+  const t = useT();
   const [list, setList] = useState<TopicList | null>(null);
   const [open, setOpen] = useState<Open | null>(null);
   const [newName, setNewName] = useState("");
@@ -180,7 +182,7 @@ function Topics({ agentId, onError }: { agentId: number; onError: (e: string | n
         />
         {open.conflict && (
           <div role="alert" className="rounded-md border border-warning/60 p-3 text-xs">
-            <p>The agent changed this note while you were editing. Load its version, or keep yours and overwrite it.</p>
+            <p>{t("agentTeam.topicNotesConflict")}</p>
             <div className="mt-2 flex gap-2">
               <button onClick={() => openTopic(open.doc.name)} disabled={busy} className={SMALL}>
                 Load its version
@@ -212,14 +214,12 @@ function Topics({ agentId, onError }: { agentId: number; onError: (e: string | n
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">
-        Longer notes about one subject each, in{" "}
-        <span className="font-mono break-all">{list?.folder ?? "memory/"}</span>. Only their names load into every
-        conversation; passages that match a message are recalled in front of it.
+        {t("agentTeam.topicListGuidance", { folder: list?.folder ?? "memory/" })}
       </p>
       {list === null ? (
         <LoadingState rows={3} />
       ) : list.topics.length === 0 ? (
-        <EmptyPanel title="No topic notes yet" description="The agent saves longer notes here as it learns about a subject." />
+        <EmptyPanel title={t("agentTeam.topicsEmptyTitle")} description={t("agentTeam.topicsEmptyDescription")} />
       ) : (
         <ul className="space-y-1">
           {list.topics.map((t) => (
