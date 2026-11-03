@@ -108,11 +108,12 @@ secret scanning and imported skills disabled until review.
 ### P2 — Extend templates into safe import and team sharing
 
 The bundled role gallery and single-agent import/export are shipped. Add local
-team-package import, GitHub and external-bot import, bounded project-folder
-suggestions, reusable presets and whole-team export. Preview fields, omit
-secrets, credentials, permissions, history and local paths, and import
-autonomous features disabled. A managed organization catalog is a separate
-future decision.
+team-package import, GitHub import, bounded project-folder suggestions,
+reusable presets and whole-team export. A review-first migration flow now
+accepts pasted Grok Bot exports and common single-agent JSON; it previews and
+imports only agent identity and instructions. Keep secrets, credentials,
+permissions, routines, history and local paths out of imports. A managed
+organization catalog is a separate future decision.
 
 ### P2 — Improve file and computer reach
 

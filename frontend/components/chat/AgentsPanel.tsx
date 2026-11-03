@@ -23,6 +23,12 @@ import {
   parseAgentFile,
   redactionNotice,
 } from "@/lib/agents";
+import {
+  GROK_AGENT_EXPORT_PROMPT,
+  parseExternalAgentSetup,
+  type AgentMigrationPreview,
+  type AgentMigrationSource,
+} from "@/lib/agent-migration";
 import { accountScopesToSend, scopesToSend, supportsConnectedApps, type AccountScopes, type ComposioAccount, type Scopes } from "@/lib/connected-apps";
 import { ComputerView } from "./ComputerPanel";
 import { EngineModelFields } from "./EngineModelFields";
@@ -132,7 +138,14 @@ type NotesState = {
 };
 
 type ExportState = { agent: Agent; includeNotes: boolean; notice: string | null };
-type ImportState = { document: Record<string, unknown>; name: string; hasNotes: boolean; includeNotes: boolean };
+type ImportState = {
+  document: Record<string, unknown>;
+  name: string;
+  hasNotes: boolean;
+  includeNotes: boolean;
+  migration?: AgentMigrationPreview;
+};
+type MigrationState = { source: AgentMigrationSource | null; text: string; copied: boolean };
 
 const FIELD =
   "w-full rounded-md border border-line bg-transparent px-3 py-1.5 text-sm placeholder:text-muted";
@@ -207,6 +220,7 @@ export function AgentsPanel({
   const [notes, setNotes] = useState<NotesState | null>(null);
   const [exporting, setExporting] = useState<ExportState | null>(null);
   const [importing, setImporting] = useState<ImportState | null>(null);
+  const [migration, setMigration] = useState<MigrationState | null>(null);
   const [computerOf, setComputerOf] = useState<Agent | null>(null);
   const [skillsOf, setSkillsOf] = useState<Agent | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Agent | null>(initialDeleteAgent);
@@ -439,6 +453,35 @@ export function AgentsPanel({
     }
   };
 
+  const previewMigration = () => {
+    if (!migration?.source) return;
+    setError(null);
+    try {
+      const preview = parseExternalAgentSetup(migration.text, migration.source);
+      setImporting({
+        document: preview.document,
+        name: preview.name,
+        hasNotes: false,
+        includeNotes: false,
+        migration: preview,
+      });
+      setMigration(null);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
+  const copyGrokPrompt = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
+      await navigator.clipboard.writeText(GROK_AGENT_EXPORT_PROMPT);
+      setMigration((current) => current ? { ...current, copied: true } : current);
+      setError(null);
+    } catch {
+      setError("Could not copy the prompt. Select and copy it from the box below.");
+    }
+  };
+
   const visible = agents.filter((agent) => showArchived || agent.archived_at === null);
   const engineLabels = new Map(engines.map((engine) => [engine.id, engine.label]));
   const searchEnabled = shouldShowAgentSearch(visible.length);
@@ -466,7 +509,9 @@ export function AgentsPanel({
       ? `Notes · ${notes.agent.name}`
       : exporting
         ? `Export · ${exporting.agent.name}`
-        : importing
+        : migration
+          ? "Migrate agent setup"
+          : importing
           ? "Import agent"
           : computerOf
             ? `Computer · ${computerOf.name}`
@@ -494,6 +539,7 @@ export function AgentsPanel({
     setNotes(null);
     setExporting(null);
     setImporting(null);
+    setMigration(null);
     setComputerOf(null);
     setSkillsOf(null);
     setDeleteConfirm(null);
@@ -818,12 +864,135 @@ export function AgentsPanel({
                 </button>
               </div>
             </div>
+          ) : migration ? (
+            <div className="space-y-3 text-sm">
+              {migration.source === null ? (
+                <>
+                  <p>Choose how you want to bring in a single agent setup.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMigration({ ...migration, source: "grok" })}
+                      className={BUTTON}
+                    >
+                      Grok Bot export
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMigration({ ...migration, source: "other" })}
+                      className={BUTTON}
+                    >
+                      Another agent JSON
+                    </button>
+                  </div>
+                  <button type="button" onClick={back} className={BUTTON}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <p>
+                    {migration.source === "grok"
+                      ? "Copy the prompt into Grok Bot, then paste its JSON reply below."
+                      : "Paste one agent's JSON export. We will read common name, title, description and instruction fields."}
+                  </p>
+                  {migration.source === "grok" ? (
+                    <details className="rounded-md border border-line p-3">
+                      <summary className="cursor-pointer font-medium">Export prompt</summary>
+                      <div className="mt-2 space-y-2">
+                        <textarea
+                          readOnly
+                          aria-label="Grok Bot export prompt"
+                          value={GROK_AGENT_EXPORT_PROMPT}
+                          rows={8}
+                          className={`${FIELD} font-mono text-xs`}
+                        />
+                        <button type="button" onClick={copyGrokPrompt} className={BUTTON}>
+                          {migration.copied ? "Copied" : "Copy prompt"}
+                        </button>
+                      </div>
+                    </details>
+                  ) : (
+                    <div className="rounded-md border border-line p-3 text-xs text-muted">
+                      Expected fields: name, title, description and instructions. Other settings are ignored.
+                    </div>
+                  )}
+                  <label className="block space-y-1">
+                    <span className="text-xs font-medium">Paste JSON export</span>
+                    <textarea
+                      aria-label="Paste agent setup JSON"
+                      value={migration.text}
+                      onChange={(event) => setMigration({ ...migration, text: event.target.value, copied: false })}
+                      rows={9}
+                      className={`${FIELD} font-mono text-xs`}
+                      placeholder='{"name":"Research assistant","instructions":"..."}'
+                    />
+                  </label>
+                  <p className="text-xs text-muted">
+                    Only name, title, description and instructions are imported. Skills, routines, connected apps,
+                    credentials, memories, tools, files and chat history are not transferred.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={previewMigration}
+                      disabled={!migration.text.trim() || busy}
+                      className={PRIMARY}
+                    >
+                      Review import
+                    </button>
+                    <button type="button" onClick={back} disabled={busy} className={BUTTON}>Cancel</button>
+                  </div>
+                </>
+              )}
+            </div>
           ) : importing ? (
             <div className="space-y-3 text-sm">
-              <p>
-                Add <span className="font-medium">{importing.name}</span> as a new agent. It starts on &quot;Ask first&quot;
-                with the default model and its own folder; a name already in use gets a number.
-              </p>
+              {importing.migration ? (
+                <>
+                  <div className="rounded-md border border-line p-3">
+                    <p className="font-medium">Source: {importing.migration.sourceLabel}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      The following fields will be copied to a new agent. It starts on &quot;Ask first&quot; with the
+                      default model and its own folder.
+                    </p>
+                    <dl className="mt-3 space-y-2">
+                      <div>
+                        <dt className="text-xs font-medium text-muted">Name</dt>
+                        <dd className="break-words">{importing.migration.name}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-muted">Title</dt>
+                        <dd className="break-words">{importing.migration.title || "Not provided"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-muted">Description</dt>
+                        <dd className="max-h-20 overflow-auto whitespace-pre-wrap break-words">
+                          {importing.migration.description || "Not provided"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-muted">Instructions</dt>
+                        <dd>
+                          <details className="mt-1">
+                            <summary className="cursor-pointer">Review full instructions</summary>
+                            <div className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-line p-2 text-xs">
+                              {importing.migration.instructions}
+                            </div>
+                          </details>
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Skills, routines, connected apps, credentials, memories, tools, files and chat history are not
+                    transferred. Configure those separately after reviewing the agent.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Add <span className="font-medium">{importing.name}</span> as a new agent. It starts on &quot;Ask first&quot;
+                  with the default model and its own folder; a name already in use gets a number.
+                </p>
+              )}
               {importing.hasNotes && (
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
                   <input
@@ -873,6 +1042,9 @@ export function AgentsPanel({
                 )}
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <Button onClick={() => setGallery(true)}>Templates…</Button>
+                  <Button onClick={() => { setError(null); setMigration({ source: null, text: "", copied: false }); }}>
+                    Migrate…
+                  </Button>
                   <Button onClick={() => fileInput.current?.click()}>Import…</Button>
                   <label className="flex min-h-9 cursor-pointer items-center gap-2 px-1 text-xs text-muted touch:min-h-11">
                     <input type="checkbox" checked={showArchived} onChange={() => setShowArchived((on) => !on)} />
