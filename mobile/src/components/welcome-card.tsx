@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';
+import { canManageAgents } from '@/lib/agents';
 import { useAuth } from '@/lib/auth-context';
 import { serverLabel } from '@/lib/server-url';
 import { radius, touch, useStyles, type Palette } from '@/lib/theme';
@@ -14,7 +15,9 @@ export function WelcomeCard() {
     <View style={styles.card} accessibilityLabel="Connected">
       <Text style={styles.title}>Connected to {serverLabel(state.server)}</Text>
       <Text style={styles.body}>
-        From this phone you can chat with your agents, stop an answer, and allow or deny a tool call. Agents, settings and who can sign in are managed on your server, not here.
+        {canManageAgents(state.scopes ?? [])
+          ? 'From this phone you can chat with your agents, stop an answer, allow or deny a tool call, and create and edit agents (Settings → Agents). Other settings and who can sign in are managed on your server, not here.'
+          : 'From this phone you can chat with your agents, stop an answer, and allow or deny a tool call. Agents, settings and who can sign in are managed on your server, not here.'}
       </Text>
       <Pressable accessibilityRole="button" hitSlop={8} style={styles.button} onPress={dismissWelcome}>
         <Text style={styles.buttonText}>Got it</Text>

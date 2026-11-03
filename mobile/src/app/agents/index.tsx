@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
-import { Button, SwitchRow } from '@/components/form';
+import { ActionSheet, Button, SwitchRow, type SheetAction } from '@/components/form';
 import { Text } from '@/components/text';
 import { agentSummary, approvalModeLabel, canManageAgents, type Agent } from '@/lib/agents';
 import { describeSaveError } from '@/lib/agent-draft';
@@ -25,6 +25,7 @@ export default function Agents() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [menu, setMenu] = useState<Agent | null>(null);
 
   const load = useCallback(async () => {
     if (!api || !allowed) return;
@@ -62,17 +63,16 @@ export default function Agents() {
     }
   };
 
-  const openMenu = (agent: Agent) => {
-    if (!api || busy) return;
+  const menuActions = (agent: Agent): SheetAction[] => {
+    if (!api) return [];
     const archived = !!agent.archived_at;
-    Alert.alert(agent.name, undefined, [
-      { text: 'Edit', onPress: () => router.push({ pathname: '/agents/[id]', params: { id: String(agent.id) } }) },
+    return [
+      { label: 'Edit', onPress: () => router.push({ pathname: '/agents/[id]', params: { id: String(agent.id) } }) },
       // The copy is never looser than the original: its own folder, and "Ask first" for "Accept edits".
-      { text: 'Duplicate', onPress: () => act(() => api.duplicateAgent(agent.id)) },
-      { text: agent.pinned ? 'Unpin' : 'Pin to top', onPress: () => act(() => api.updateAgent(agent.id, { pinned: !agent.pinned })) },
-      { text: archived ? 'Restore' : 'Archive', onPress: () => act(() => api.updateAgent(agent.id, { archived: !archived })) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+      { label: 'Duplicate', onPress: () => act(() => api.duplicateAgent(agent.id)) },
+      { label: agent.pinned ? 'Unpin' : 'Pin to top', onPress: () => act(() => api.updateAgent(agent.id, { pinned: !agent.pinned })) },
+      { label: archived ? 'Restore' : 'Archive', onPress: () => act(() => api.updateAgent(agent.id, { archived: !archived })) },
+    ];
   };
 
   if (!allowed) {
@@ -129,13 +129,14 @@ export default function Agents() {
                   </Text>
                 </View>
               </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={`More actions for ${item.name}`} style={styles.more} onPress={() => openMenu(item)} disabled={busy}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`More actions for ${item.name}`} style={styles.more} onPress={() => setMenu(item)} disabled={busy}>
                 <Text style={styles.moreText}>⋯</Text>
               </Pressable>
             </View>
           )}
         />
       )}
+      <ActionSheet title={menu?.name ?? ''} actions={menu ? menuActions(menu) : null} onClose={() => setMenu(null)} />
     </View>
   );
 }

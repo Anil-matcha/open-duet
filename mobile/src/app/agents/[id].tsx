@@ -125,7 +125,7 @@ export default function AgentEditor() {
     label: option.label,
     description: option.description,
     disabled: option.value === 'accept_edits',
-    note: option.value === 'accept_edits' ? 'Set in the web app. Moving this agent to another mode here cannot be undone from the phone.' : null,
+    note: option.value === 'accept_edits' ? (original?.approval_mode === 'accept_edits' ? 'Set in the web app. Moving this agent to another mode here cannot be undone from the phone.' : 'Set in the web app.') : null,
   }));
 
   const errors = validateDraft(draft);
@@ -179,7 +179,7 @@ export default function AgentEditor() {
   return (
     <KeyboardScreen>
       <Stack.Screen options={{ title: creating ? 'New agent' : 'Edit agent' }} />
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.flex} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         {!creating && agentId !== null ? (
           <View style={styles.identity}>
             <Avatar agentId={agentId} name={draft.name} />
@@ -317,6 +317,7 @@ export default function AgentEditor() {
 
 const createStyles = (p: Palette) =>
   StyleSheet.create({
+    flex: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
     container: { padding: 16, paddingBottom: 24 },
     identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },

@@ -112,31 +112,41 @@ describe('Agents list', () => {
 
   it('duplicates, pins and archives from the menu, then reads the list again', async () => {
     mockApi.listAgents.mockResolvedValue([agent(4, 'Reviewer')]);
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    await render(<Agents />);
+    const open = async () => fireEvent.press(await screen.findByLabelText('More actions for Reviewer'));
+
+    // Every action is offered, and deleting is not (Android shows only three buttons in an Alert, so this is a sheet).
+    await open();
+    for (const label of ['Edit', 'Duplicate', 'Pin to top', 'Archive']) expect(screen.getByLabelText(label)).toBeTruthy();
+    expect(screen.queryByLabelText('Delete')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('Duplicate'));
+    expect(mockApi.duplicateAgent).toHaveBeenCalledWith(4);
+    await open();
+    await fireEvent.press(screen.getByLabelText('Pin to top'));
+    expect(mockApi.updateAgent).toHaveBeenCalledWith(4, { pinned: true });
+    await open();
+    await fireEvent.press(screen.getByLabelText('Archive'));
+    expect(mockApi.updateAgent).toHaveBeenCalledWith(4, { archived: true });
+  });
+
+  it('offers Restore and Unpin for an archived, pinned agent, and Edit opens the editor', async () => {
+    mockApi.listAgents.mockResolvedValue([agent(4, 'Reviewer', { pinned: true, archived_at: '2026-11-01T00:00:00Z' })]);
     await render(<Agents />);
     await fireEvent.press(await screen.findByLabelText('More actions for Reviewer'));
-    const buttons = alert.mock.calls[0][2]!;
-    const press = async (text: string) => buttons.find((button) => button.text === text)!.onPress!();
-
-    await press('Duplicate');
-    expect(mockApi.duplicateAgent).toHaveBeenCalledWith(4);
-    await press('Pin to top');
-    expect(mockApi.updateAgent).toHaveBeenCalledWith(4, { pinned: true });
-    await press('Archive');
-    expect(mockApi.updateAgent).toHaveBeenCalledWith(4, { archived: true });
-    expect(buttons.map((button) => button.text)).not.toContain('Delete');
-    alert.mockRestore();
+    expect(screen.getByLabelText('Restore')).toBeTruthy();
+    expect(screen.getByLabelText('Unpin')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Edit'));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/agents/[id]', params: { id: '4' } });
   });
 
   it('shows why an action failed', async () => {
     mockApi.listAgents.mockResolvedValue([agent(4, 'Reviewer')]);
     mockApi.duplicateAgent.mockRejectedValue(new ApiError(403, 'scope_denied', ''));
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     await render(<Agents />);
     await fireEvent.press(await screen.findByLabelText('More actions for Reviewer'));
-    await alert.mock.calls[0][2]!.find((button) => button.text === 'Duplicate')!.onPress!();
+    await fireEvent.press(screen.getByLabelText('Duplicate'));
     expect(await screen.findByText(/Chat, files and agents/)).toBeTruthy();
-    alert.mockRestore();
   });
 });
 

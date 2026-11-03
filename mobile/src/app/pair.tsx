@@ -14,7 +14,7 @@ import { useServerCheck } from '@/lib/use-server-check';
 
 const STEPS = [
   'On your server, open Settings → Devices.',
-  'Set Access to “Chat only” (or “Chat and files” to open the files agents make) and create a pairing code.',
+  'Set Access to “Chat only” (or “Chat and files” to open the files agents make, or “Chat, files and agents” to also create and edit agents) and create a pairing code.',
   'Scan its QR code here, or type the address and code below.',
 ];
 
@@ -142,7 +142,7 @@ export default function Pair() {
         </Pressable>
 
         <Text style={styles.help}>
-          Trouble connecting? Your server has to be reachable from this phone: on the same Wi-Fi, over a VPN such as Tailscale, or at a public HTTPS address. The address must start with https://.
+          Trouble connecting? Your server has to be reachable from this phone: on the same Wi-Fi, over a VPN such as Tailscale, or at a public HTTPS address. Use an https:// address, or http:// for an address on your own network.
         </Text>
       </ScrollView>
     </KeyboardScreen>

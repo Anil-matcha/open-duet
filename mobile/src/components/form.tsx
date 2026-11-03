@@ -35,6 +35,7 @@ export function FormInput({ lines = 1, invalid, ...props }: TextInputProps & { l
     <TextInput
       placeholderTextColor={theme.muted}
       multiline={lines > 1}
+      underlineColorAndroid="transparent"
       textAlignVertical={lines > 1 ? 'top' : 'center'}
       {...props}
       style={[styles.input, lines > 1 && { minHeight: 24 * lines + 20 }, invalid && styles.invalid, props.style]}
@@ -168,6 +169,38 @@ export function PickerField<T extends string>({
         </View>
       </Modal>
     </>
+  );
+}
+
+export type SheetAction = { label: string; onPress: () => void };
+
+/** A list of actions in a sheet from the bottom of the screen. Alert.alert shows only three buttons on Android, so a menu of more is made here. */
+export function ActionSheet({ title, actions, onClose }: { title: string; actions: SheetAction[] | null; onClose: () => void }) {
+  const styles = useStyles(createStyles);
+  return (
+    <Modal visible={actions !== null} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable accessibilityLabel="Close" style={styles.scrim} onPress={onClose} />
+      <View style={styles.sheet} accessibilityViewIsModal>
+        <Text accessibilityRole="header" style={styles.sheetTitle}>
+          {title}
+        </Text>
+        {(actions ?? []).map((action) => (
+          <Pressable
+            key={action.label}
+            accessibilityRole="button"
+            accessibilityLabel={action.label}
+            style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
+            onPress={() => {
+              onClose();
+              action.onPress();
+            }}
+          >
+            <Text style={styles.optionLabel}>{action.label}</Text>
+          </Pressable>
+        ))}
+        <Button label="Cancel" kind="secondary" onPress={onClose} />
+      </View>
+    </Modal>
   );
 }
 
