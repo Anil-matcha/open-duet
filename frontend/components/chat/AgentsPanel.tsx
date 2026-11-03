@@ -1,7 +1,5 @@
 "use client";
 
-import { Select } from "@/components/ui/Select";
-
 import Link from "next/link";
 import { Ellipsis } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
