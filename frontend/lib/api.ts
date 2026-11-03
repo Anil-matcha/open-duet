@@ -959,6 +959,14 @@ export type AppNotification = {
   created_at: string;
 };
 
+export type NotificationPreferences = {
+  desktop_enabled: boolean;
+  notify_needs_you: boolean;
+  notify_failures: boolean;
+  notify_task_due: boolean;
+  sound_enabled: boolean;
+};
+
 export const api = {
   getVersionInfo: (refresh = false) => request<VersionInfo>(`/version${refresh ? "?refresh=true" : ""}`),
   roomExportUrl: (id: number, format: "md" | "json") => requestBlobUrl(`/rooms/${id}/export?format=${format}`),
@@ -1470,6 +1478,9 @@ export const api = {
   unreadNotifications: () => request<{ unread: number }>("/notifications/unread-count"),
   readNotification: (id: number) => request<void>(`/notifications/${id}/read`, { method: "POST" }),
   readAllNotifications: () => request<{ unread: number }>("/notifications/read-all", { method: "POST" }),
+  getNotificationPreferences: () => request<NotificationPreferences>("/notifications/preferences"),
+  updateNotificationPreferences: (prefs: NotificationPreferences) =>
+    request<NotificationPreferences>("/notifications/preferences", { method: "PUT", body: JSON.stringify(prefs) }),
 
   // --- Everyday features (docs/EVERYDAY.md) ---
   searchConversations: (query: string, filter: SearchFilter = {}) =>

@@ -16,6 +16,7 @@ const pageMarkupFiles = [
   "../components/settings/EnginesSettings.tsx",
   "../components/settings/ChannelsSettings.tsx",
   "../components/settings/ApprovalsSettings.tsx",
+  "../components/settings/NotificationsSettings.tsx",
   "../components/settings/AccountSettings.tsx",
 ];
 

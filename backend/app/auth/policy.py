@@ -41,6 +41,7 @@ CHAT_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
     for methods, path in (
         ({"GET"}, "/auth/session"),
         ({"GET"}, "/version"),
+        ({"GET", "PUT"}, "/notifications/preferences"),
         ({"GET"}, "/team"),
         ({"GET"}, "/team/jobs"),
         ({"GET"}, f"/team/jobs/{_ID}"),

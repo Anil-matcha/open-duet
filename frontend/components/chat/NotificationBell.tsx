@@ -4,10 +4,11 @@ import { Bell } from "lucide-react";
 import { EmptyPanel, LoadingState } from "./PanelState";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type AppNotification } from "@/lib/api";
+import { api, type AppNotification, type NotificationPreferences } from "@/lib/api";
 import { badgeText, formatWhen } from "@/lib/routines";
 import { useT } from "@/lib/use-i18n";
 import { IconButton } from "@/components/ui/IconButton";
+import { dispatchNotification } from "@/lib/desktop-notifications";
 
 const POLL_MS = 15_000;
 
@@ -26,11 +27,39 @@ export function NotificationBell({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const previousUnread = useRef(0);
+
+  useEffect(() => {
+    let alive = true;
+    api.getNotificationPreferences().then((prefs) => {
+      if (alive) setPreferences(prefs);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const refresh = useCallback(() => {
-    api.unreadNotifications().then((r) => { setUnread(r.unread); setFailed(false); }).catch(() => setFailed(true));
-  }, []);
+    api.unreadNotifications()
+      .then((r) => {
+        setUnread(r.unread);
+        setFailed(false);
+        if (r.unread > previousUnread.current && preferences?.desktop_enabled) {
+          // New unread item arrived; dispatch OS desktop notification if allowed
+          void api.listNotifications(10).then((latest) => {
+            for (const item of latest) {
+              if (!item.read_at) {
+                dispatchNotification(item, preferences, (threadId) => {
+                  router.push(`/chat?thread=${threadId}`);
+                });
+              }
+            }
+          }).catch(() => {});
+        }
+        previousUnread.current = r.unread;
+      })
+      .catch(() => setFailed(true));
+  }, [preferences, router]);
 
   useEffect(() => {
     refresh();

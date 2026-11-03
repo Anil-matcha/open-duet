@@ -184,3 +184,36 @@ test('getVersionInfo fetches /version with optional refresh query param', async 
   assert.equal(info2.latest_version, '0.8.2');
   assert.ok(requests[1].endsWith('/api/v1/version?refresh=true'));
 });
+
+test('getNotificationPreferences and updateNotificationPreferences call the right routes', async () => {
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init });
+    return new Response(JSON.stringify({
+      desktop_enabled: true,
+      notify_needs_you: true,
+      notify_failures: true,
+      notify_task_due: true,
+      sound_enabled: false,
+    }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const prefs = await api.getNotificationPreferences();
+  assert.equal(prefs.desktop_enabled, true);
+  assert.ok(requests[0].url.endsWith('/api/v1/notifications/preferences'));
+
+  await api.updateNotificationPreferences({
+    desktop_enabled: false,
+    notify_needs_you: false,
+    notify_failures: false,
+    notify_task_due: false,
+    sound_enabled: true,
+  });
+  assert.equal(requests[1].init.method, 'PUT');
+  assert.ok(requests[1].url.endsWith('/api/v1/notifications/preferences'));
+  const body = JSON.parse(requests[1].init.body);
+  assert.equal(body.desktop_enabled, false);
+  assert.equal(body.sound_enabled, true);
+});
