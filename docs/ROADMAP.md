@@ -110,7 +110,7 @@ secret scanning and imported skills disabled until review.
 The bundled role gallery and single-agent import/export are shipped. Add local
 team-package import, GitHub import, bounded project-folder suggestions,
 reusable presets and whole-team export. A review-first migration flow now
-accepts pasted Grok Bot exports and common single-agent JSON; it previews and
+accepts pasted Grok Bot and Hermes Agent exports plus common single-agent JSON; it previews and
 imports only agent identity and instructions. Keep secrets, credentials,
 permissions, routines, history and local paths out of imports. A managed
 organization catalog is a separate future decision.

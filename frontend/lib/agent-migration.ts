@@ -1,4 +1,4 @@
-export type AgentMigrationSource = "grok" | "other";
+export type AgentMigrationSource = "grok" | "hermes" | "other";
 
 export type AgentMigrationPreview = {
   document: Record<string, unknown>;
@@ -26,6 +26,20 @@ export const GROK_AGENT_EXPORT_PROMPT = [
   '  "instructions": "Full standing instructions"',
   "}",
   "Do not include API keys, passwords, tokens, private customer data, connected accounts, routines, tools, skills, or conversation history.",
+  "Use empty strings for optional fields you do not have. Do not add explanatory text outside the JSON block.",
+].join("\n");
+
+export const HERMES_AGENT_EXPORT_PROMPT = [
+  "Please export the basic setup of the Hermes Agent profile we are using so I can recreate it in another agent app.",
+  "Reply with one JSON code block in this shape. Copy the full standing persona/instructions from SOUL.md when available.",
+  "{",
+  '  "format": "open-dots.hermes-agent/1",',
+  '  "name": "Agent name",',
+  '  "title": "Short role title",',
+  '  "description": "Short description",',
+  '  "instructions": "Full standing persona and instructions"',
+  "}",
+  "Do not include API keys, passwords, tokens, private customer data, memories, connected accounts, routines, tools, skills, or conversation history.",
   "Use empty strings for optional fields you do not have. Do not add explanatory text outside the JSON block.",
 ].join("\n");
 
@@ -120,7 +134,7 @@ export function parseExternalAgentSetup(
 
   return {
     document: { format: "open-dots.agent", version: 1, agent },
-    sourceLabel: source === "grok" ? "Grok Bot" : "Another agent app",
+    sourceLabel: source === "grok" ? "Grok Bot" : source === "hermes" ? "Hermes Agent" : "Another agent app",
     name,
     title,
     description: description === instructions ? "" : description,

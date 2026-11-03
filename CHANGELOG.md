@@ -4,7 +4,7 @@
 
 ### Added
 
-- Add a review-first agent migration flow for pasted Grok Bot exports and common single-agent JSON. Preview the name, title, description and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
+- Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, plus common single-agent JSON. Preview the name, title, description and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
 
 ## 0.8.1 - 2026-11-03
 

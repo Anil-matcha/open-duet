@@ -25,6 +25,7 @@ import {
 } from "@/lib/agents";
 import {
   GROK_AGENT_EXPORT_PROMPT,
+  HERMES_AGENT_EXPORT_PROMPT,
   parseExternalAgentSetup,
   type AgentMigrationPreview,
   type AgentMigrationSource,
@@ -471,10 +472,10 @@ export function AgentsPanel({
     }
   };
 
-  const copyGrokPrompt = async () => {
+  const copyMigrationPrompt = async () => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
-      await navigator.clipboard.writeText(GROK_AGENT_EXPORT_PROMPT);
+      await navigator.clipboard.writeText(migration?.source === "hermes" ? HERMES_AGENT_EXPORT_PROMPT : GROK_AGENT_EXPORT_PROMPT);
       setMigration((current) => current ? { ...current, copied: true } : current);
       setError(null);
     } catch {
@@ -879,6 +880,13 @@ export function AgentsPanel({
                     </button>
                     <button
                       type="button"
+                      onClick={() => setMigration({ ...migration, source: "hermes" })}
+                      className={BUTTON}
+                    >
+                      Hermes Agent export
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setMigration({ ...migration, source: "other" })}
                       className={BUTTON}
                     >
@@ -892,20 +900,22 @@ export function AgentsPanel({
                   <p>
                     {migration.source === "grok"
                       ? "Copy the prompt into Grok Bot, then paste its JSON reply below."
-                      : "Paste one agent's JSON export. We will read common name, title, description and instruction fields."}
+                      : migration.source === "hermes"
+                        ? "Copy the prompt into Hermes Agent, then paste its JSON reply below."
+                        : "Paste one agent's JSON export. We will read common name, title, description and instruction fields."}
                   </p>
-                  {migration.source === "grok" ? (
+                  {migration.source !== "other" ? (
                     <details className="rounded-md border border-line p-3">
                       <summary className="cursor-pointer font-medium">Export prompt</summary>
                       <div className="mt-2 space-y-2">
                         <textarea
                           readOnly
-                          aria-label="Grok Bot export prompt"
-                          value={GROK_AGENT_EXPORT_PROMPT}
+                          aria-label={`${migration.source === "hermes" ? "Hermes Agent" : "Grok Bot"} export prompt`}
+                          value={migration.source === "hermes" ? HERMES_AGENT_EXPORT_PROMPT : GROK_AGENT_EXPORT_PROMPT}
                           rows={8}
                           className={`${FIELD} font-mono text-xs`}
                         />
-                        <button type="button" onClick={copyGrokPrompt} className={BUTTON}>
+                        <button type="button" onClick={copyMigrationPrompt} className={BUTTON}>
                           {migration.copied ? "Copied" : "Copy prompt"}
                         </button>
                       </div>
