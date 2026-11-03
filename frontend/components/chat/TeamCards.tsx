@@ -10,7 +10,7 @@ import { useSession } from "@/components/AuthGate";
 import { useT } from "@/lib/use-i18n";
 
 export function DelegationCard({ item }: { item: TeamJobItem }) {
-  return <JobCard compact job={{ id: item.jobId, root_id: null, parent_id: null, depth: 0, requester_agent_id: 0, assignee_agent_id: item.agentId, assignee_thread_id: item.threadId, mode: item.mode, brief: item.brief, status: item.status, result: item.result, outcome: item.outcome }} />;
+  return <JobCard job={{ id: item.jobId, root_id: null, parent_id: null, depth: 0, requester_agent_id: 0, requester_thread_id: null, assignee_agent_id: item.agentId, assignee_thread_id: item.threadId, mode: item.mode, brief: item.brief, status: item.status, created_at: new Date().toISOString(), started_at: null, finished_at: null, result: item.result, outcome: item.outcome }} agents={[]} onChanged={() => {}} />;
 }
 export function AgentCreatedCard({ item }: { item: Extract<TranscriptItem, { kind: "agent_created" }> }) {
   const [state, setState] = useState("");

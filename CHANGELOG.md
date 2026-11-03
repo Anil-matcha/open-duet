@@ -9,6 +9,7 @@
 ### Changed
 
 - Make a room conversation a full-screen workspace with a persistent transcript and docked composer. Move member controls, instructions and export/delete actions into a responsive details panel; show the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and an explicit identity suffix for duplicate agent names.
+- Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls.
 
 ## 0.8.1 - 2026-11-03
 

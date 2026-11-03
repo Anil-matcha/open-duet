@@ -6,13 +6,13 @@ import { useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/use-i18n";
 
-type Size = "sm" | "md" | "wide" | "lg" | "xl" | "room";
+type Size = "sm" | "md" | "wide" | "lg" | "xl" | "room" | "workspace";
 type EscapeKeyHandler = ComponentProps<typeof RadixDialog.Content>["onEscapeKeyDown"];
 
-const WIDTHS: Record<Exclude<Size, "room">, string> = { sm: "sm:max-w-md", md: "sm:max-w-xl", wide: "sm:max-w-2xl", lg: "sm:max-w-4xl", xl: "sm:max-w-7xl" };
+const WIDTHS: Record<Exclude<Size, "room" | "workspace">, string> = { sm: "sm:max-w-md", md: "sm:max-w-xl", wide: "sm:max-w-2xl", lg: "sm:max-w-4xl", xl: "sm:max-w-7xl" };
 
-// A modal. Standard sizes become a phone sheet and a centered desktop card. The room size is an
-// immersive workspace that fills the viewport; small panels belong in the inspector instead.
+// A modal. Standard sizes become a phone sheet and a centered desktop card. Workspace sizes
+// fill the viewport; smaller panels belong in the inspector instead.
 export function Dialog({
   open,
   onOpenChange,
@@ -36,7 +36,7 @@ export function Dialog({
   onEscapeKeyDown?: EscapeKeyHandler;
 }) {
   const t = useT();
-  const roomWorkspace = size === "room";
+  const fullWorkspace = size === "room" || size === "workspace";
   // The dialog is controlled and has no Radix trigger, so Radix has nothing to hand focus
   // back to. Remember what had focus when it opened and restore it on close.
   const opener = useRef<HTMLElement | null>(null);
@@ -53,10 +53,10 @@ export function Dialog({
           {...(description ? {} : { "aria-describedby": undefined })}
           className={cn(
             "fixed z-50 flex w-full flex-col border border-line bg-raised text-ink shadow-xl",
-            roomWorkspace
+            fullWorkspace
               ? "inset-0 h-[100dvh] max-h-[100dvh] border-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] shadow-none"
               : "max-h-[92dvh] inset-x-0 bottom-0 animate-sheet-in rounded-t-card pb-[env(safe-area-inset-bottom)] sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85dvh] sm:w-[calc(100vw-2rem)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:animate-pop-in sm:rounded-card sm:pb-0",
-            !roomWorkspace ? WIDTHS[size] : undefined,
+            !fullWorkspace ? WIDTHS[size] : undefined,
           )}
         >
           <header className="flex items-start gap-3 border-b border-line px-5 py-4">
