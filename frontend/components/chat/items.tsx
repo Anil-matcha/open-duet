@@ -144,9 +144,9 @@ export function AssistantMessage({
                 type="button"
                 onClick={() => onReact("thumbs_up")}
                 disabled={disabled}
-                aria-label={t("chat.reaction.thumbsUp")}
+                aria-label={t("chat.reaction.replyThumbsUp")}
                 aria-pressed={reaction === "thumbs_up"}
-                title={t("chat.reaction.thumbsUp")}
+                title={t("chat.reaction.replyThumbsUp")}
                 className={cn(
                   "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-xs transition-colors",
                   reaction === "thumbs_up"
@@ -160,9 +160,9 @@ export function AssistantMessage({
                 type="button"
                 onClick={() => onReact("thumbs_down")}
                 disabled={disabled}
-                aria-label={t("chat.reaction.thumbsDown")}
+                aria-label={t("chat.reaction.replyThumbsDown")}
                 aria-pressed={reaction === "thumbs_down"}
-                title={t("chat.reaction.thumbsDown")}
+                title={t("chat.reaction.replyThumbsDown")}
                 className={cn(
                   "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-xs transition-colors",
                   reaction === "thumbs_down"

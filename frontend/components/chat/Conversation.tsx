@@ -2,7 +2,7 @@
 
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { loadThreadReactions, saveThreadReaction, type ReactionKind, type ReactionsMap } from "@/lib/reactions";
+import { formatReactionReply, isLatestAssistantMessage, loadThreadReactions, saveThreadReaction, type ReactionKind, type ReactionsMap } from "@/lib/reactions";
 import type { Transcript, TranscriptItem } from "@/lib/transcript";
 import { announcement, groupToolRuns } from "@/lib/transcript-view";
 import { Avatar } from "@/components/ui/Avatar";
@@ -58,6 +58,8 @@ export function Conversation({
   answering,
   approvalErrors,
   onAnswer,
+  onReactionReply,
+  sendingReactionReplyDisabled,
   remembered = {},
   undoneRules = [],
   onUndo,
@@ -81,6 +83,8 @@ export function Conversation({
   answering: string | null;
   approvalErrors: Record<string, string>;
   onAnswer: (approvalId: string, decision: "allow" | "deny", remember?: boolean) => void;
+  onReactionReply: (message: string) => Promise<boolean>;
+  sendingReactionReplyDisabled: boolean;
   // "Always allow" outcomes by approval id, from answers given on this page.
   remembered?: Record<string, Remembered>;
   undoneRules?: number[];
@@ -117,7 +121,13 @@ export function Conversation({
 
   const reactions = threadReactions.id === threadId ? threadReactions.map : loadThreadReactions(threadId);
 
-  const handleReact = (itemKey: string, reaction: ReactionKind) => {
+  const handleReact = async (itemKey: string, reaction: ReactionKind) => {
+    if (reactions[itemKey] === reaction) {
+      const next = saveThreadReaction(threadId, itemKey, null);
+      setThreadReactions({ id: threadId, map: next });
+      return;
+    }
+    if (!await onReactionReply(formatReactionReply(reaction))) return;
     const next = saveThreadReaction(threadId, itemKey, reaction);
     setThreadReactions({ id: threadId, map: next });
   };
@@ -174,6 +184,7 @@ export function Conversation({
               case "user":
                 return <UserMessage key={item.key} item={item} threadId={threadId} />;
               case "assistant": {
+                const canReplyToMessage = !item.incomplete && isLatestAssistantMessage(item.key, transcript.items);
                 return (
                   <AssistantMessage
                     key={item.key}
@@ -181,8 +192,8 @@ export function Conversation({
                     incomplete={item.incomplete}
                     ts={item.ts}
                     reaction={reactions[item.key] ?? null}
-                    onReact={(r) => handleReact(item.key, r)}
-                    disabled={answering !== null}
+                    onReact={canReplyToMessage ? (r) => { void handleReact(item.key, r); } : undefined}
+                    disabled={answering !== null || sendingReactionReplyDisabled}
                   />
                 );
               }
