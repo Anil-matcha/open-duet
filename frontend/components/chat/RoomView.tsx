@@ -33,7 +33,7 @@ function routeReason(reason: string, t: (key: string) => string) {
   return reason === "chain" ? t("room.routeFollowUp") : reason.replaceAll("_", " ");
 }
 
-export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number | "new"; agents: Agent[]; onClose: () => void; onSelect: (id: number) => void }) {
+export function RoomView({ roomId, agents, onClose, onSelect, onTitleChange }: { roomId: number | "new"; agents: Agent[]; onClose: () => void; onSelect: (id: number) => void; onTitleChange: (name: string) => void }) {
   const t = useT();
   const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -93,10 +93,10 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
   const refresh = useCallback(async () => {
     if (roomId === "new") return;
     const [saved, history, waiting] = await Promise.all([collaboration.room(roomId), collaboration.messages(roomId), collaboration.roomApprovals(roomId)]);
-    setRoom(saved); setMessages(history); setApprovals(waiting);
+    setRoom(saved); onTitleChange(saved.name); setMessages(history); setApprovals(waiting);
     const seen = history.at(-1)?.seq;
     if (seen && saved.unread > 0 && !document.hidden) await collaboration.readRoom(saved.id, seen);
-  }, [roomId]);
+  }, [onTitleChange, roomId]);
 
   useEffect(() => {
     let stopped = false;
@@ -140,20 +140,18 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
   const setupMode = roomId === "new" || editing;
   const dialogTitle = roomId === "new" ? t("room.new") : room?.name ?? t("room.title");
 
-  return <Dialog
+  if (setupMode) return <Dialog
     open
     title={dialogTitle}
-    description={setupMode ? t("room.description") : undefined}
-    size={setupMode ? "lg" : "room"}
-    flush={!setupMode}
-    onOpenChange={open => { if (!open) onClose(); }}
-    onEscapeKeyDown={event => {
-      if (detailsOpen) { event.preventDefault(); closeDetails(); return; }
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && active.getAttribute("role") === "combobox" && active.getAttribute("aria-expanded") === "true") event.preventDefault();
+    description={t("room.description")}
+    size="lg"
+    onOpenChange={open => {
+      if (open) return;
+      if (roomId === "new") onClose();
+      else setEditing(false);
     }}
   >
-    {setupMode ? <div className="space-y-4">
+    <div className="space-y-4">
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {admin ? <RoomSettings
         key={roomId}
@@ -162,7 +160,21 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
         onSaved={saved => { setEditing(false); setRoom(saved); onSelect(saved.id); void refresh(); }}
         onCancel={() => { if (roomId === "new") onClose(); else setEditing(false); }}
       /> : <p className="text-sm text-muted">{t("room.fullAccessRequired")}</p>}
-    </div> : room ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    </div>
+  </Dialog>;
+
+  if (!room) return error
+    ? <p role="alert" className="m-4 text-sm text-danger">{error}</p>
+    : <p role="status" className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted">{t("room.loading")}</p>;
+
+  return <section
+    aria-label={room.name}
+    className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-raised"
+    onKeyDown={event => {
+      if (detailsOpen && event.key === "Escape") { event.preventDefault(); closeDetails(); }
+    }}
+  >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 flex-col gap-3 border-b border-line px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="min-w-0 overflow-hidden">
           <ul aria-label={t("room.members")} className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
@@ -193,7 +205,7 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
       {error && <p role="alert" className="shrink-0 border-b border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">{error}</p>}
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <main className={`min-h-0 min-w-0 flex-1 flex-col ${detailsOpen ? "hidden md:flex" : "flex"}`}>
+        <div className={`min-h-0 min-w-0 flex-1 flex-col ${detailsOpen ? "hidden md:flex" : "flex"}`}>
           {orderedWork.length > 0 && <details className="mx-3 mt-3 shrink-0 rounded-field border border-line bg-inset text-sm sm:mx-5">
             <summary className="cursor-pointer px-3 py-2 text-xs text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{queueSummary}</summary>
             <ol aria-label={t("room.title")} className="space-y-1 border-t border-line px-3 py-2">
@@ -232,28 +244,30 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
             </div>)}
           </div>
 
-          <form onSubmit={send} className="shrink-0 border-t border-line bg-raised px-3 py-3 sm:px-5">
-            <div className="mx-auto flex max-w-5xl items-end gap-2">
-              <RoomMentionComposer
-                value={draft}
-                onChange={setDraft}
-                members={room.members}
-                disabled={busy}
-                label={t("room.message")}
-                placeholder={t("room.writeMessage")}
-                everyoneLabel={t("room.everyone")}
-                rows={2}
-                maxLength={100000}
-                className="max-h-40 min-h-12 w-full resize-y rounded-field border border-line bg-raised p-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                memberToken={member => {
-                  const count = duplicateNameCounts.get(member.name.normalize("NFKC").toLocaleLowerCase()) ?? 0;
-                  return mentionToken(member.name, count > 1 ? member.agent_id : undefined);
-                }}
-              />
+          <form onSubmit={send} className="shrink-0 border-t border-line bg-raised px-4 py-3 sm:px-6">
+            <div className="mx-auto flex w-full max-w-4xl items-end gap-3">
+              <div className="min-w-0 flex-1">
+                <RoomMentionComposer
+                  value={draft}
+                  onChange={setDraft}
+                  members={room.members}
+                  disabled={busy}
+                  label={t("room.message")}
+                  placeholder={t("room.writeMessage")}
+                  everyoneLabel={t("room.everyone")}
+                  rows={2}
+                  maxLength={100000}
+                  className="mt-1 block max-h-48 min-h-16 w-full resize-y rounded-field border border-line bg-raised p-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  memberToken={member => {
+                    const count = duplicateNameCounts.get(member.name.normalize("NFKC").toLocaleLowerCase()) ?? 0;
+                    return mentionToken(member.name, count > 1 ? member.agent_id : undefined);
+                  }}
+                />
+              </div>
               <button className={`${BUTTON} mb-0.5 shrink-0 px-4 py-2`} type="submit" disabled={busy || !draft.trim()}>{busy ? t("room.sending") : t("room.send")}</button>
             </div>
           </form>
-        </main>
+        </div>
 
         {detailsOpen && <aside id="room-details-panel" role="region" aria-labelledby="room-details-title" className="flex min-h-0 w-full shrink-0 flex-col border-l border-line bg-raised md:w-80 lg:w-96">
           <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
@@ -304,6 +318,6 @@ export function RoomView({ roomId, agents, onClose, onSelect }: { roomId: number
           </div>
         </aside>}
       </div>
-    </div> : !error && <p role="status" className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted">{t("room.loading")}</p>}
-  </Dialog>;
+    </div>
+  </section>;
 }
