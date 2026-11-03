@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/text';
 import { useAuth } from '@/lib/auth-context';
-import { serverLabel } from '@/lib/server-url';
+import { isPlainHttp, NOT_ENCRYPTED_NOTICE, serverLabel } from '@/lib/server-url';
 import { radius, useStyles, type Palette } from '@/lib/theme';
 
 export default function Settings() {
@@ -30,6 +30,7 @@ export default function Settings() {
     <View style={styles.container}>
       <Text style={styles.label}>Server address</Text>
       <Text style={styles.value}>{serverLabel(state.server)}</Text>
+      {isPlainHttp(state.server) ? <Text style={styles.notice}>{NOT_ENCRYPTED_NOTICE}</Text> : null}
       <Text style={styles.label}>Device name</Text>
       <Text style={styles.value}>{state.label || 'Phone'}</Text>
       <Text style={styles.label}>Access</Text>
@@ -46,6 +47,7 @@ const createStyles = (p: Palette) =>
     container: { padding: 20, gap: 4 },
     label: { fontSize: 13, fontWeight: '600', marginTop: 12, color: p.muted },
     value: { fontSize: 16, color: p.text },
+    notice: { fontSize: 14, color: p.notice },
     danger: { marginTop: 32, borderWidth: 1, borderColor: p.danger, borderRadius: radius.field, paddingVertical: 14, alignItems: 'center' },
     dangerText: { color: p.danger, fontSize: 16, fontWeight: '600' },
     disabled: { opacity: 0.5 },

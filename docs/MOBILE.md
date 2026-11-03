@@ -87,10 +87,17 @@ more than one server. "Always allow" rules are not offered; use the web app for 
 
 ## What your server needs
 
-- **HTTPS.** The phone sends a token with every request, so release builds only
-  connect over HTTPS. Use a reverse proxy with a certificate, or Tailscale Serve;
-  see [self-hosting](SELF-HOSTING.md). Development builds also accept plain HTTP
-  (seen on Android in Expo Go, not tried on iOS).
+- **HTTPS, or plain HTTP on your own network.** The phone sends a token with every
+  request, so it connects over HTTPS, using a reverse proxy with a certificate or
+  Tailscale Serve; see [self-hosting](SELF-HOSTING.md). The one exception is plain
+  `http://` to an address on your own network: `localhost` and `127.x`, `10.x`,
+  `172.16`-`172.31.x`, `192.168.x`, `169.254.x`, IPv6 `::1` and `fc00::/7`, and
+  `.local` names (the Android emulator's `10.0.2.2` counts). Any other `http://`
+  address is refused, even a name that points at a private address, and so is the
+  `100.64.x.x` range that Tailscale uses. Pairing and Settings then say the
+  connection is not encrypted: anyone on that Wi-Fi network could read your chats.
+  The address must also be in `TRUSTED_HOSTS`. Plain HTTP was tried on Android in
+  Expo Go; a release build and iOS have not been tried.
 - **Agents turned on.** Conversations need `LOCAL_EXECUTION_ENABLED=true` on the
   server. Without it the app says "Your server has agents turned off".
 - **Your address in `TRUSTED_HOSTS`** (see [authentication](AUTH.md)). Otherwise the
@@ -126,7 +133,7 @@ in **Settings → Devices**; the app notices and returns to pairing.
 | Your server does not accept this address | Add the name to `TRUSTED_HOSTS` on the server. |
 | That address answered, but it does not look like an Open Duet server | Check the address and any proxy in front of it. |
 | Could not reach the server | Check the connection and that the HTTPS certificate is trusted by the phone. |
-| This app only connects over HTTPS | Use the server's HTTPS address. |
+| Plain http:// works only for addresses on your own network | Use the server's HTTPS address, or an address such as 192.168.1.5 on your own network. |
 | That code gives full access | Create a code with Access set to **Chat only** or **Chat and files**. |
 | This phone was paired without file access | Create a code with Access set to **Chat and files** and pair again. |
 | Your server has agents turned off | Set `LOCAL_EXECUTION_ENABLED=true` on the server. |
@@ -184,5 +191,5 @@ then repeat in a room and with the keyboard closed.
 Not checked: any of the Markdown, attachments, dark theme, agent picker and rooms
 screens on a device or emulator (only by tests and against the server, as above);
 photos and files on iOS; a room with agents actually running in it; iOS; a
-physical phone; a custom link opening the app; a release build (the HTTPS-only
-behavior); very long conversations.
+physical phone; a custom link opening the app; a release build (the HTTPS and
+local-network HTTP behavior); very long conversations.

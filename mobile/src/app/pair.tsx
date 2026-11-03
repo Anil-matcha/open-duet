@@ -5,10 +5,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { Text, TextInput } from '@/components/text';
 import { MONO } from '@/lib/fonts';
-import { ALLOW_HTTP, useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context';
 import { describePairingError, describeServerCheck, PairingError } from '@/lib/pairing-api';
 import { formatPairingCode, normalizePairingCode } from '@/lib/pairing-link';
-import { describeServerUrlProblem, normalizeServerUrl, serverLabel } from '@/lib/server-url';
+import { describeServerUrlProblem, normalizeServerUrl, NOT_ENCRYPTED_NOTICE, serverLabel } from '@/lib/server-url';
 import { radius, touch, useStyles, useTheme, type Palette } from '@/lib/theme';
 import { useServerCheck } from '@/lib/use-server-check';
 
@@ -42,7 +42,7 @@ export default function Pair() {
     }
   }
 
-  const target = normalizeServerUrl(server, { allowHttp: ALLOW_HTTP });
+  const target = normalizeServerUrl(server);
   const normalizedCode = normalizePairingCode(code);
   const canConnect = target.ok && normalizedCode !== null && !busy;
   // Asks the address, before any code is sent to it, whether it is a server this app can pair with.
@@ -105,6 +105,7 @@ export default function Pair() {
             {fromLink ? '. Make sure this is your own server before you connect.' : ''}
           </Text>
         ) : null}
+        {target.ok && !target.secure ? <Text style={styles.warn}>{NOT_ENCRYPTED_NOTICE}</Text> : null}
         {target.ok && check === 'checking' ? (
           <Text style={styles.checking} accessibilityLiveRegion="polite">
             Checking the address…

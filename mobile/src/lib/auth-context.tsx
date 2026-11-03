@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { clearCredentials, loadCredentials, saveCredentials } from './credentials';
 import { deviceLabel } from './device-label';
 import { checkSession, pairDevice, signOutOnServer } from './pairing-api';
+import { normalizeServerUrl } from './server-url';
 
 export type AuthState =
   | { status: 'loading' }
@@ -24,8 +25,7 @@ type AuthValue = {
 
 const REVOKED_NOTICE = 'Your server signed this phone out. Pair it again to continue.';
 
-// Plain HTTP only in development builds, where the platform also allows it. Release builds are HTTPS only.
-export const ALLOW_HTTP = __DEV__;
+const UNSAFE_NOTICE = 'This phone was paired with a server address the app no longer accepts. Pair it again with an https:// address.';
 
 const AuthContext = createContext<AuthValue | null>(null);
 
@@ -49,6 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState({ status: 'unpaired' });
         return;
       }
+      // A saved address must pass today's rule (https, or http on this network only); one that does not is forgotten.
+      if (!normalizeServerUrl(saved.server).ok) {
+        await clearCredentials();
+        setNotice(UNSAFE_NOTICE);
+        setState({ status: 'unpaired' });
+        return;
+      }
       setState({ status: 'paired', ...saved });
       // Open straight into the app, then find out in the background whether the server revoked this phone.
       if ((await checkSession(saved.server, saved.token)) === 'revoked' && !cancelled) {
@@ -64,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const pair = useCallback(async ({ server, code }: { server: string; code: string }) => {
     const label = deviceLabel();
-    const session = await pairDevice({ server, code, label, allowHttp: ALLOW_HTTP });
+    const session = await pairDevice({ server, code, label, });
     const credentials = { server: session.server, token: session.token, label: session.label ?? label };
     await saveCredentials(credentials);
     setNotice(null);

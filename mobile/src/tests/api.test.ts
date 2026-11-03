@@ -1,7 +1,7 @@
 import { ApiError, createApi, describeApiError } from '@/lib/api';
 import { relativeTime } from '@/lib/time';
 
-type Reply = { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown; url?: string };
 
 function fakeFetch(reply: Reply | Error) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -11,6 +11,7 @@ function fakeFetch(reply: Reply | Error) {
     return {
       status: reply.status,
       ok: reply.status >= 200 && reply.status < 300,
+      url: reply.url,
       json: async () => {
         if (reply.body === undefined) throw new Error('no body');
         return reply.body;
@@ -108,5 +109,26 @@ describe('relativeTime', () => {
     expect(relativeTime('2026-10-27T09:00:00Z', now)).toBe('3 h ago');
     expect(relativeTime('2026-10-25T12:00:00Z', now)).toBe('2 d ago');
     expect(relativeTime('not a date', now)).toBe('');
+  });
+});
+
+describe('createApi and plain http', () => {
+  it('talks to a server on the local network over http', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: [] });
+    await createApi({ server: 'http://192.168.1.5:8000', token: 'ods_t' }, { fetchImpl: impl }).listThreads();
+    expect(calls[0].url).toBe('http://192.168.1.5:8000/api/v1/threads?limit=100');
+  });
+
+  it('never sends the token to plain http outside the local network', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: [] });
+    const error = await failure(createApi({ server: 'http://dots.example.com', token: 'ods_t' }, { fetchImpl: impl }).listThreads());
+    expect(error.errorCode).toBe('unreachable');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not use a reply that came from plain http on another host', async () => {
+    const { impl } = fakeFetch({ status: 200, body: [], url: 'http://evil.example/api/v1/threads' });
+    const error = await failure(createApi({ server: 'http://192.168.1.5:8000', token: 'ods_t' }, { fetchImpl: impl }).listThreads());
+    expect(error.errorCode).toBe('unreachable');
   });
 });

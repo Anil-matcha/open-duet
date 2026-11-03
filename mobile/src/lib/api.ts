@@ -6,6 +6,7 @@ import { buildMultipart, type Attachment } from './attachments';
 import { readFolder, readPreview } from './files';
 import type { ApprovalRow, Room } from './rooms';
 import { readSearchPage, SEARCH_PAGE_SIZE } from './search';
+import { normalizeServerUrl, responseAllowed } from './server-url';
 
 export type Session = { server: string; token: string };
 
@@ -77,8 +78,11 @@ async function errorFrom(response: Response): Promise<ApiError> {
 
 export function createApi(session: Session, options: { onRevoked?: () => void; fetchImpl?: FetchLike } = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  // The token goes only to an https:// server or a plain http:// one on the person's own network.
+  const serverAllowed = normalizeServerUrl(session.server).ok;
 
   async function request<T>(method: string, path: string, body?: unknown, raw?: Raw): Promise<T> {
+    if (!serverAllowed) throw new ApiError(0, 'unreachable', '');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), raw ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     let response: Response;
@@ -94,6 +98,8 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
         body: raw ? (raw.body as unknown as BodyInit) : body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
+      // A redirect from a local http:// server to plain HTTP elsewhere is not used.
+      if (!responseAllowed(response.url)) throw new Error('response came from an unsafe address');
     } catch {
       throw new ApiError(0, 'unreachable', '');
     } finally {

@@ -1,6 +1,6 @@
 import { checkServer, checkSession, describePairingError, describeServerCheck, PairingError, pairDevice, signOutOnServer } from '@/lib/pairing-api';
 
-type Reply = { status: number; body?: unknown; headers?: Record<string, string>; badJson?: boolean };
+type Reply = { status: number; body?: unknown; headers?: Record<string, string>; badJson?: boolean; url?: string };
 
 function fakeFetch(...replies: Reply[]) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -10,6 +10,7 @@ function fakeFetch(...replies: Reply[]) {
     return {
       status: reply.status,
       ok: reply.status >= 200 && reply.status < 300,
+      url: reply.url,
       headers: { get: (name: string) => reply.headers?.[name.toLowerCase()] ?? null },
       json: async () => {
         if (reply.badJson) throw new Error('not json');
@@ -21,7 +22,7 @@ function fakeFetch(...replies: Reply[]) {
 }
 
 const chatSession = { token: 'ods_secret', session: { kind: 'device', scopes: ['chat'], label: 'My phone', session_id: 7, owner_configured: true } };
-const args = { server: 'https://dots.example.com', code: 'ABCDEFGH', label: 'My phone', allowHttp: false };
+const args = { server: 'https://dots.example.com', code: 'ABCDEFGH', label: 'My phone' };
 
 async function failure(promise: Promise<unknown>): Promise<PairingError> {
   try {
@@ -64,12 +65,23 @@ describe('pairDevice', () => {
     expect((await failure(pairDevice({ ...args, fetchImpl: impl }))).code).toBe('wrong_scope');
   });
 
-  it('never sends the code over plain http unless allowed', async () => {
+  it('never sends the code over plain http to an address outside the local network', async () => {
     const { impl, calls } = fakeFetch({ status: 200, body: chatSession });
-    expect((await failure(pairDevice({ ...args, server: 'http://192.168.1.5:8000', fetchImpl: impl }))).code).toBe('insecure');
+    expect((await failure(pairDevice({ ...args, server: 'http://dots.example.com', fetchImpl: impl }))).code).toBe('insecure');
+    expect((await failure(pairDevice({ ...args, server: 'http://8.8.8.8:8000', fetchImpl: impl }))).code).toBe('insecure');
     expect(calls).toHaveLength(0);
-    await pairDevice({ ...args, server: 'http://192.168.1.5:8000', allowHttp: true, fetchImpl: impl });
+  });
+
+  it('pairs over plain http with an address on the local network', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: chatSession });
+    const session = await pairDevice({ ...args, server: 'http://192.168.1.5:8000', fetchImpl: impl });
+    expect(session.server).toBe('http://192.168.1.5:8000');
     expect(calls).toHaveLength(1);
+  });
+
+  it('treats a reply that came from plain http on another host as unreachable', async () => {
+    const { impl } = fakeFetch({ status: 200, body: chatSession, url: 'http://evil.example/api/v1/auth/pair' });
+    expect((await failure(pairDevice({ ...args, server: 'http://192.168.1.5:8000', fetchImpl: impl }))).code).toBe('unreachable');
   });
 
   it.each([

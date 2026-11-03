@@ -8,6 +8,7 @@
 
 ### Changed
 
+- Let the phone app connect over plain `http://` to an address on your own network (`localhost`, `10.x`, `172.16`-`172.31.x`, `192.168.x`, `169.254.x`, `::1`, `fc00::/7`, `.local`); every other address still needs HTTPS. Pairing and Settings say the connection is not encrypted.
 - Keep active rooms inside the chat workspace so conversation navigation stays visible. Center and widen the docked composer with the transcript; keep member controls, instructions and export/delete actions in a responsive details panel, with the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
 - Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
 

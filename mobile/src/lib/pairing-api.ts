@@ -1,7 +1,7 @@
 // The three calls pairing needs, against the server's /api/v1/auth routes (docs/AUTH.md):
 // redeem a code for a device token, end a session, and ask whether a token still works.
 
-import { normalizeServerUrl } from './server-url';
+import { normalizeServerUrl, responseAllowed } from './server-url';
 
 export type PairingErrorCode =
   | 'insecure'
@@ -44,7 +44,10 @@ async function send(fetchImpl: FetchLike, url: string, init: RequestInit): Promi
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
+    const response = await fetchImpl(url, { ...init, signal: controller.signal });
+    // A redirect from a local http:// server to plain HTTP elsewhere is not followed to a result.
+    if (!responseAllowed(response.url)) throw new Error('response came from an unsafe address');
+    return response;
   } catch {
     throw new PairingError('unreachable');
   } finally {
@@ -74,12 +77,11 @@ export async function pairDevice(args: {
   server: string;
   code: string;
   label: string;
-  allowHttp: boolean;
   fetchImpl?: FetchLike;
 }): Promise<PairedSession> {
   const fetchImpl = args.fetchImpl ?? fetch;
   // Defence in depth: the screens validate too, but this is the call that sends the code.
-  const checked = normalizeServerUrl(args.server, { allowHttp: args.allowHttp });
+  const checked = normalizeServerUrl(args.server);
   if (!checked.ok) throw new PairingError('insecure');
   const server = checked.url;
 

@@ -9,7 +9,6 @@ let mockState: unknown = { status: 'unpaired' };
 
 jest.mock('@/lib/use-server-check', () => ({ useServerCheck: () => mockCheck }));
 jest.mock('@/lib/auth-context', () => ({
-  ALLOW_HTTP: false,
   useAuth: () => ({ state: mockState, notice: null, pair: mockPair, signOut: jest.fn() }),
 }));
 
@@ -45,7 +44,7 @@ describe('Pair', () => {
     const view = await render(<Pair />);
     // Nothing is said about an address that is not valid yet.
     mockCheck = 'checking';
-    await fireEvent.changeText(screen.getByPlaceholderText('https://dots.example.com'), 'http://192.168.1.5:8000');
+    await fireEvent.changeText(screen.getByPlaceholderText('https://dots.example.com'), 'http://dots.example.com');
     expect(screen.queryByText('Checking the address…')).toBeNull();
 
     await fireEvent.changeText(screen.getByPlaceholderText('https://dots.example.com'), 'dots.example.com');
@@ -83,10 +82,19 @@ describe('Pair', () => {
     expect(screen.getByRole('button', { name: 'Connect' }).props.accessibilityState?.disabled).toBeFalsy();
   });
 
-  it('shows why plain http is refused', async () => {
+  it('shows why plain http is refused outside the local network', async () => {
+    await render(<Pair />);
+    await fireEvent.changeText(screen.getByPlaceholderText('https://dots.example.com'), 'http://dots.example.com');
+    expect(screen.getByText(/Plain http:\/\/ works only for addresses on your own network/)).toBeTruthy();
+  });
+
+  it('accepts plain http on the local network and says it is not encrypted', async () => {
     await render(<Pair />);
     await fireEvent.changeText(screen.getByPlaceholderText('https://dots.example.com'), 'http://192.168.1.5:8000');
-    expect(screen.getByText(/only connects over HTTPS/)).toBeTruthy();
+    expect(screen.queryByText(/Plain http:\/\/ works only/)).toBeNull();
+    expect(screen.getByText(/Not encrypted/)).toBeTruthy();
+    await fireEvent.changeText(screen.getByPlaceholderText('https://dots.example.com'), 'https://dots.example.com');
+    expect(screen.queryByText(/Not encrypted/)).toBeNull();
   });
 
   it('fills the fields from a link but does not connect by itself', async () => {
