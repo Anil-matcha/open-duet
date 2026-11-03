@@ -22,9 +22,20 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 - **Conversations.** List your conversations, start a new one, open one to read its
   history. If you have agents, **New conversation** first asks which to use: the
   server's default (Claude), or one of your agents, each shown with how it asks
-  before acting (asks first, accepts file edits, or plans only). Agents are made
-  and edited in the web app, not on the phone. The list names the agent a
+  before acting (Ask first, Accept edits, or Plan only). The list names the agent a
   conversation was started from.
+- **Agents.** A phone paired with a **Chat, files and agents** code (see below) shows **Agents**
+  in Settings: your agents with their approval mode, a **New agent** button, and a ⋯ menu
+  to duplicate, pin or archive one (archived ones come back with **Show archived**). The
+  editor has the web app's fields: name, title, description and instructions (limited to
+  24,000 bytes), engine and model, a fallback engine, how the agent asks before acting,
+  and whether it uses notes (with starter notes for a new agent). On the phone an agent can
+  be **Ask first** or **Plan only**; **Accept edits**, the workspace folder, connected
+  apps, skills, notes, computers, the team lead role and deleting an agent are web-only,
+  and the server refuses them from a phone. A copy made on the phone gets its own folder
+  and **Ask first**, even from an agent set to Accept edits. After a save, a new model or
+  approval mode applies to conversations already started from their next message, while
+  new instructions in practice reach only conversations started afterwards.
 - **Chat.** Send a message and watch the answer as it is written, with one-line
   tool steps. **Stop** ends a running answer. If the connection drops, the app
   reconnects and carries on from the last event it saw. Answers are shown as
@@ -82,7 +93,7 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), creating or editing agents or rooms, engine, routine or settings management, or
+open), creating or editing rooms, deleting agents, engine, routine or settings management, or
 more than one server. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
@@ -117,8 +128,9 @@ more than one server. "Always allow" rules are not offered; use the web app for 
 The code works once and expires after five minutes. The app checks the code's
 format first, so a typo does not count as a wrong guess toward the lockout.
 
-The app accepts a **Chat only** or **Chat and files** code (choose the second to open
-files the agents made). If it is handed a full-access one, it
+The app accepts a **Chat only**, **Chat and files** or **Chat, files and agents** code (choose
+the second to open files the agents made, the third to also create and edit agents; it
+includes file access). If it is handed a full-access one, it
 refuses it and signs that session out on the server, so no full-access token is
 left behind. The token is kept in the phone's secure storage (Keychain on iOS,
 Keystore-backed storage on Android), on that device only. Revoke a phone any time
@@ -134,7 +146,8 @@ in **Settings → Devices**; the app notices and returns to pairing.
 | That address answered, but it does not look like an Open Duet server | Check the address and any proxy in front of it. |
 | Could not reach the server | Check the connection and that the HTTPS certificate is trusted by the phone. |
 | Plain http:// works only for addresses on your own network | Use the server's HTTPS address, or an address such as 192.168.1.5 on your own network. |
-| That code gives full access | Create a code with Access set to **Chat only** or **Chat and files**. |
+| That code gives full access | Create a code with Access set to **Chat only**, **Chat and files** or **Chat, files and agents**. |
+| This phone was not paired to manage agents | Create a code with Access set to **Chat, files and agents** and pair again. |
 | This phone was paired without file access | Create a code with Access set to **Chat and files** and pair again. |
 | Your server has agents turned off | Set `LOCAL_EXECUTION_ENABLED=true` on the server. |
 | Your server signed this phone out | The phone was revoked or signed out; pair it again. |

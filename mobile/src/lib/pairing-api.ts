@@ -131,25 +131,39 @@ export async function pairDevice(args: {
   };
 }
 
-/** 'revoked' only when the server says the token is no longer valid; anything else is 'unknown'. */
-export async function checkSession(server: string, token: string, fetchImpl: FetchLike = fetch): Promise<'valid' | 'revoked' | 'unknown'> {
+export type SessionRead = { status: 'valid'; scopes: string[] | null } | { status: 'revoked' | 'unknown' };
+
+/** Asks the server about this token. 'revoked' only when it says the token is no longer valid; anything else is 'unknown'. */
+export async function readSession(server: string, token: string, fetchImpl: FetchLike = fetch): Promise<SessionRead> {
   try {
     const response = await send(fetchImpl, `${server}/api/v1/auth/session`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
-    if (response.ok) return 'valid';
-    if (response.status === 401) return 'revoked';
-    return 'unknown';
+    if (response.status === 401) return { status: 'revoked' };
+    if (!response.ok) return { status: 'unknown' };
+    // The scopes are what the app shows and offers; a reply without them is still a valid session.
+    let scopes: string[] | null = null;
+    try {
+      const body = (await response.json()) as { scopes?: unknown } | null;
+      if (Array.isArray(body?.scopes) && body.scopes.every((scope) => typeof scope === 'string')) scopes = body.scopes as string[];
+    } catch {
+      scopes = null;
+    }
+    return { status: 'valid', scopes };
   } catch {
-    return 'unknown';
+    return { status: 'unknown' };
   }
+}
+
+export async function checkSession(server: string, token: string, fetchImpl: FetchLike = fetch): Promise<'valid' | 'revoked' | 'unknown'> {
+  return (await readSession(server, token, fetchImpl)).status;
 }
 
 export function describePairingError(error: PairingError): string {
   switch (error.code) {
     case 'insecure':
-      return 'This app only connects to a server over HTTPS.';
+      return 'This app connects over HTTPS, or over http:// only to an address on your own network.';
     case 'invalid_code':
       return 'That code is wrong, expired or already used. Create a new one in your server’s Settings → Devices.';
     case 'locked_out':

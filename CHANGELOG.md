@@ -6,6 +6,8 @@
 
 - Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, common single-agent JSON, and supported OpenBot databases. Preview the name, title and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
 
+- Let the phone app create and edit agents. A new **Chat, files and agents** pairing choice gives a phone the `manage` scope (chat and files, plus agents): create, edit, duplicate, pin and archive agents with the web editor's fields. The server refuses the workspace folder, Accept edits, connected apps and the lead role from any device without full access, and a copy made by such a device is never looser than the original.
+
 ### Changed
 
 - Let the phone app connect over plain `http://` to an address on your own network (`localhost`, `10.x`, `172.16`-`172.31.x`, `192.168.x`, `169.254.x`, `::1`, `fc00::/7`, `.local`); every other address still needs HTTPS. Pairing and Settings say the connection is not encrypted.

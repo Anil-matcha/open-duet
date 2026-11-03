@@ -132,3 +132,47 @@ describe('createApi and plain http', () => {
     expect(error.errorCode).toBe('unreachable');
   });
 });
+
+describe('agent calls', () => {
+  const api = (reply: Reply) => {
+    const fake = fakeFetch(reply);
+    return { api: createApi(session, { fetchImpl: fake.impl }), calls: fake.calls };
+  };
+
+  it('lists archived agents too when asked', async () => {
+    const one = api({ status: 200, body: [] });
+    await one.api.listAgents(true);
+    expect(one.calls[0].url).toBe('https://dots.example.com/api/v1/agents?include_archived=true');
+    const two = api({ status: 200, body: [] });
+    await two.api.listAgents();
+    expect(two.calls[0].url).toBe('https://dots.example.com/api/v1/agents');
+  });
+
+  it('creates, edits and duplicates an agent with the right method and body', async () => {
+    const created = api({ status: 201, body: { id: 5 } });
+    await created.api.createAgent({ name: 'Ada' });
+    expect(created.calls[0].init.method).toBe('POST');
+    expect(created.calls[0].url).toBe('https://dots.example.com/api/v1/agents');
+    expect(JSON.parse(created.calls[0].init.body as string)).toEqual({ name: 'Ada' });
+
+    const edited = api({ status: 200, body: { id: 5 } });
+    await edited.api.updateAgent(5, { archived: true });
+    expect(edited.calls[0].init.method).toBe('PATCH');
+    expect(edited.calls[0].url).toBe('https://dots.example.com/api/v1/agents/5');
+
+    const copied = api({ status: 201, body: { id: 6 } });
+    await copied.api.duplicateAgent(5);
+    expect(copied.calls[0].init.method).toBe('POST');
+    expect(copied.calls[0].url).toBe('https://dots.example.com/api/v1/agents/5/duplicate');
+  });
+
+  it('reads the engines the server has', async () => {
+    const { api: engines } = api({ status: 200, body: [{ id: 'claude', label: 'Claude Code', available: true, models: [] }] });
+    expect((await engines.listEngines())[0]).toMatchObject({ id: 'claude', label: 'Claude Code', available: true });
+  });
+
+  it('reports a phone that may not manage agents as scope_denied', async () => {
+    const { api: denied } = api({ status: 403, body: { detail: { error_code: 'scope_denied', message: 'no' } } });
+    expect((await failure(denied.createAgent({ name: 'x' }))).errorCode).toBe('scope_denied');
+  });
+});

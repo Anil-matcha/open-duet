@@ -2,13 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { clearCredentials, loadCredentials, saveCredentials } from './credentials';
 import { deviceLabel } from './device-label';
-import { checkSession, pairDevice, signOutOnServer } from './pairing-api';
+import { pairDevice, readSession, signOutOnServer } from './pairing-api';
 import { normalizeServerUrl } from './server-url';
 
 export type AuthState =
   | { status: 'loading' }
   | { status: 'unpaired' }
-  | { status: 'paired'; server: string; token: string; label: string };
+  | { status: 'paired'; server: string; token: string; label: string; scopes: string[] };
 
 type AuthValue = {
   state: AuthState;
@@ -58,10 +58,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setState({ status: 'paired', ...saved });
       // Open straight into the app, then find out in the background whether the server revoked this phone.
-      if ((await checkSession(saved.server, saved.token)) === 'revoked' && !cancelled) {
+      const read = await readSession(saved.server, saved.token);
+      if (cancelled) return;
+      if (read.status === 'revoked') {
         await clearCredentials();
         setNotice(REVOKED_NOTICE);
         setState({ status: 'unpaired' });
+      } else if (read.status === 'valid' && read.scopes && read.scopes.join(' ') !== saved.scopes.join(' ')) {
+        // The server's word on what this phone may do wins over what was kept at pairing.
+        const next = { ...saved, scopes: read.scopes };
+        await saveCredentials(next);
+        if (!cancelled) setState({ status: 'paired', ...next });
       }
     })();
     return () => {
@@ -72,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pair = useCallback(async ({ server, code }: { server: string; code: string }) => {
     const label = deviceLabel();
     const session = await pairDevice({ server, code, label, });
-    const credentials = { server: session.server, token: session.token, label: session.label ?? label };
+    const credentials = { server: session.server, token: session.token, label: session.label ?? label, scopes: session.scopes };
     await saveCredentials(credentials);
     setNotice(null);
     setWelcome(true);
