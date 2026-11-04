@@ -75,6 +75,21 @@ def redact(text: str) -> str:
     return text
 
 
+def contains_credential(text: str) -> bool:
+    """Whether text contains a credential that must not be saved in a rule.
+
+    The final log-redaction pattern also catches generic long tokens and allows
+    `/` for base64 values. That makes it match long Unix paths too, so rule
+    validation ignores those matches when they contain a path separator. Named
+    assignments and known credential formats remain covered by the patterns
+    before the generic fallback.
+    """
+    if any(pattern.search(text) for pattern in _SECRET_PATTERNS[:-1]):
+        return True
+    generic = _SECRET_PATTERNS[-1]
+    return any("/" not in match.group(0) for match in generic.finditer(text))
+
+
 def log_dir() -> Path:
     mine = tenant_paths.root()
     if mine is not None:
