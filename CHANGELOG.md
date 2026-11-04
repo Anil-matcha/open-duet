@@ -4,6 +4,74 @@
 
 ### Added
 
+- Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, common single-agent JSON, and supported OpenBot databases. Preview the name, title and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
+
+### Changed
+
+- Keep active rooms inside the chat workspace so conversation navigation stays visible. Center and widen the docked composer with the transcript; keep member controls, instructions and export/delete actions in a responsive details panel, with the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
+- Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
+
+## 0.8.1 - 2026-11-03
+
+### Added
+
+- Put language pickers on sign-in and chat, use English as the default, and translate common sign-in, chat, sidebar, search, audio, planner, approvals, team and room controls across the supported languages. Decision-log summaries, health-scan details, other specialized screens and engine-supplied text can still contain English.
+
+- Add an easy-to-find language picker to first-run setup and translate its main guidance and starter-agent templates (67 messages) across all 12 non-English locales. Choosing a language no longer resets setup progress.
+
+- Translate 85 additional messages across all 12 non-English locales: selected General Settings and Planner copy, Mac permission guidance, agent/team/skill/memory help, and high-impact routine access and safety notices. Many controls in these specialized screens remain English.
+
+- Redo the Agents and Edit agent screens: compact agent rows with an overflow menu for less common actions, search, one banner for engines that need sign-in, an editor with sections, a sticky Save footer, unsaved-changes and discard confirmation, and compact per-app access controls. Move the Telegram connection from the sidebar into Settings under AI > Channels.
+
+## 0.8.0 - 2026-11-03
+
+### Added
+
+- Settings tabs on the Approvals page now work with the arrow, Home and End keys, and Cmd/Ctrl+K in chat opens the command palette instead of jumping to the sidebar conversation search.
+- Make settings easier to reach and change: search every setting from the Settings page or Cmd/Ctrl+K and jump straight to it, open Settings with Cmd+, (Ctrl+, elsewhere) and from a new desktop application menu, group the settings pages under You, AI and Safety, add a "Find agent settings" card, collapse engine cards that are not in use, and show one Save, Saved and Applies pattern across settings pages.
+- Add English, Spanish, and System default language choices for text covered by the interface catalog. System default follows Spanish browser locales; unsupported languages and missing translations use English, and older untranslated text stays in English. Frontend lint, the Webpack production build, frontend .mjs checks, desktop tests, and the SQLite backend suite passed; the full PostgreSQL suite, live-browser, and packaged-app checks remain unqualified.
+- Add German, French, Italian, Japanese, Korean, Dutch, Polish, Brazilian Portuguese, Russian, Turkish, and Simplified Chinese language choices. System default follows any supported browser language; dates and numbers use browser locale formatting. Text outside the interface catalog remains in English. Live-browser and packaged-app behavior have not been run.
+- Open the files an agent made from the phone app. A pairing code can now be made with
+  **Chat and files** access (a new `files` scope; `--scope files` on the CLI): the phone lists
+  a conversation's workspace, previews text and images, and shares or saves any file. A
+  chat-only phone is unchanged and still cannot reach workspace files; the folder zip stays
+  admin-only. Automated tests and lint pass; not yet run on a device.
+- Add an owner-selected Uninterrupted access setting for a routine. Scheduled
+  and manual runs can use the agent's configured app accounts, granted
+  marketplace tools and attached isolated computer without per-call approval.
+  Each run records its starting capability ceilings and rechecks current
+  permission before calls. Ordinary chats retain their own approval behavior.
+  Real AppSumo research and updated installed-package qualification remain open.
+
+### Fixed
+
+- Fix the phone app's QR scanner in the Android release build. The build's code shrinking broke
+  the scanner's setup, so the camera showed but never read a code. Keep rules for ML Kit are now
+  set in `app.json`. Checked on an Android phone with a signed release build.
+
+### Changed
+
+- Stop the agent browser announcing itself as `HeadlessChrome`: its user agent,
+  client hints and `navigator.userAgentData` now agree and name Chrome, with the
+  real version and platform. Add a fixed notice when a page shows a visible
+  CAPTCHA frame or a "Just a moment" or "Access denied" page, so the agent stops
+  and asks the person to take control instead of retrying.
+- Remove the server-wide routine connected-app switch. Explicitly granted
+  scheduled and manual routine actions are eligible immediately, subject to
+  current agent permissions, active accounts and existing run restrictions.
+- Require Codex to initialize a routine's exact connected-app tools before its
+  turn starts, waiting up to 10 seconds so missing tools cannot be mistaken for
+  unchecked access. Name the authorized tools in turn instructions and direct
+  Codex to call a matching tool before reporting app access unavailable.
+
+## 0.7.0 - 2026-10-30
+
+### Added
+
+- Add a remote MCP Marketplace with Community and Tested by Open Dots sections,
+  GitHub PR catalog validation, separately stored bearer credentials, exact
+  per-agent tool grants and one-time call approvals. The source implementation
+  is present; automated, live-service and packaged-app qualification remain.
 - Add a Desktop-only Local/Cloud computer choice. Cloud uses a Boat API key
   encrypted in the local Desktop profile; the local backend sends it only to
   Boat's API over HTTPS, not to the agent or cloud computer. The cloud machine
@@ -79,7 +147,7 @@
 
 - Add a phone app (`mobile/`, Expo and React Native) that pairs with your own
   server by QR code or code as a chat-only device. It lists and starts
-  conversations, shows answers as they are written (as Markdown), attaches photos and text files, follows the phone's dark or light setting, starts a conversation from one of your agents, reads and posts to your rooms (tagging agents, stopping them and answering their approvals), stops a running answer, and
+  conversations, shows answers as they are written (as Markdown, including tables that scroll sideways when wide), attaches photos and text files, follows the phone's dark or light setting, starts a conversation from one of your agents, searches your conversations (a page at a time, opening one at the matching message), reads and posts to your rooms (tagging agents, stopping them and answering their approvals), stops a running answer, and
   asks you to allow or deny tool calls, showing every input of the call. The
   Devices screen now shows a second QR code for the app when a chat-only code is
   created. Release builds connect over HTTPS only; there are no push

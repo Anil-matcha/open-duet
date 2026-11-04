@@ -19,7 +19,8 @@ from app import composio_generic, composio_tools
 PREFIX = "mcp__composio__"
 
 
-def _generic(name: str, mode: str | None, levels: dict, arguments: object, first_use_hit: bool):
+def _generic(name: str, mode: str | None, levels: dict, arguments: object, first_use_hit: bool,
+             uninterrupted: bool = False):
     """The decision for the two generic tools (composio_generic.py). Nothing here trusts what the agent says about an
     action: an action is unknown unless the backend lists it as a reviewed read, and an unknown one needs the
     agent's Read-and-change level, is denied in plan mode, and asks a person on a card every time."""
@@ -33,6 +34,12 @@ def _generic(name: str, mode: str | None, levels: dict, arguments: object, first
         return "allowed", "composio_search"
     action = args.get("action")
     reviewed = isinstance(action, str) and action in composio_generic.REVIEWED_READS
+    if uninterrupted:
+        if not composio_tools.allows(levels[app], "read" if reviewed else "write"):
+            return "denied", "write_not_allowed"
+        if mode == "plan" and not reviewed:
+            return "denied", "plan_mode"
+        return "allowed", "routine_uninterrupted_app"
     if levels[app] != "write" and not reviewed:
         return "denied", "write_not_allowed"
     if mode == "plan" and not reviewed:
@@ -42,7 +49,8 @@ def _generic(name: str, mode: str | None, levels: dict, arguments: object, first
     return None  # a person decides: the first use of a reviewed read, and every call of anything else
 
 
-def automatic(tool: str, mode: str | None, levels: dict | None, arguments: object = None, first_use_hit: bool = False):
+def automatic(tool: str, mode: str | None, levels: dict | None, arguments: object = None,
+              first_use_hit: bool = False, uninterrupted: bool = False):
     """('allowed' | 'denied', reason) for a composio tool, None when a person must
     decide, or None for a tool that is not a composio tool. `levels` is what this
     turn's agent may do, {app: "read" | "write"}."""
@@ -52,7 +60,7 @@ def automatic(tool: str, mode: str | None, levels: dict | None, arguments: objec
         return "denied", "no_connected_apps"
     name = tool.removeprefix(PREFIX)
     if name in composio_generic.GENERIC_TOOLS:
-        return _generic(name, mode, levels, arguments, first_use_hit)
+        return _generic(name, mode, levels, arguments, first_use_hit, uninterrupted)
     if name == composio_tools.LIST_ACCOUNTS:
         return "allowed", "composio_list"
     found = composio_tools.BY_NAME.get(name)
@@ -67,4 +75,6 @@ def automatic(tool: str, mode: str | None, levels: dict | None, arguments: objec
         return "allowed", "composio_read"
     if mode == "plan":
         return "denied", "plan_mode"
+    if uninterrupted:
+        return "allowed", "routine_uninterrupted_app"
     return None  # a change: the person decides on a card

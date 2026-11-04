@@ -92,7 +92,7 @@ async def search(db: AsyncSession, owner_id: str, make_client, *, app: str, quer
 
 
 async def run(db: AsyncSession, owner_id: str, make_client, *, agent_id: int, auto_called: bool, request: dict,
-              allowed_account_ids: list[str] | None = None) -> dict:
+              allowed_account_ids: list[str] | None = None, before_execute=None) -> dict:
     """Run one generic action. `request` is generic.parse_run's result. `auto_called` is True when no card was shown
     for this call (a reviewed read), which then needs its first use on record."""
     app, action, alias = request["app"], request["action"], request["account"]
@@ -134,6 +134,10 @@ async def run(db: AsyncSession, owner_id: str, make_client, *, agent_id: int, au
             if not (reviewed and isinstance(entry, dict) and entry.get("revision") == revision):
                 await forget(db, owner_id, agent_id=agent_id, app=app)
                 return {"error": "This action needs the person's approval first. Ask again.", "code": "first_use_required"}
+        if before_execute is not None:
+            refusal = await before_execute(account.id, reviewed)
+            if refusal is not None:
+                return refusal
         session_id, record = await service._session(db, owner_id, client, record)
     except ComposioError as exc:  # nothing was sent for the action yet
         return service._agent_error(exc)

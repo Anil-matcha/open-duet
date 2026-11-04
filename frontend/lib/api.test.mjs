@@ -73,6 +73,26 @@ test('answerLocalApproval posts the decision to that one approval and nothing el
   assert.deepEqual(JSON.parse(request.init.body), { decision: 'deny' });
 });
 
+test('routine create and update preserve the per-routine uninterrupted-access choice', async () => {
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init });
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const input = {
+    agent_id: 4, name: 'Daily browser check', prompt: 'Check the site',
+    schedule_kind: 'manual', schedule_spec: {}, timezone: 'UTC', run_limit_minutes: 30,
+    approval_mode: 'ask', approval_timeout_minutes: 30, catch_up_minutes: 60,
+    retry_limit: 0, retry_delay_minutes: 5, connected_app_grants: [],
+    uninterrupted_access: false,
+  };
+  await api.createRoutine(input);
+  await api.updateRoutine(17, { agent_id: 4, uninterrupted_access: true });
+  assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), ['/api/v1/routines', '/api/v1/routines/17']);
+  assert.equal(JSON.parse(requests[0].init.body).uninterrupted_access, false);
+  assert.deepEqual(JSON.parse(requests[1].init.body), { agent_id: 4, uninterrupted_access: true });
+});
+
 test('a question that is no longer waiting surfaces as a 404 ApiError', async () => {
   rejectWith({ detail: 'That request is no longer waiting for an answer' }, 404, 'Not Found');
   await assert.rejects(api.answerLocalApproval(1, 'x', 'allow'), error => {
@@ -136,4 +156,64 @@ test('routine app actions use the selected routine and run endpoint', async () =
   assert.ok(requested.endsWith('/routines/12/runs/34/app-actions'));
   assert.equal(actions[0].tool, 'gmail_send_email');
   assert.equal(actions[0].account_id, 'acct-1');
+});
+
+test('getVersionInfo fetches /version with optional refresh query param', async () => {
+  const requests = [];
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return new Response(JSON.stringify({
+      current_version: '0.8.1',
+      commit: 'efb8ac3',
+      latest_version: '0.8.2',
+      update_available: true,
+      install_kind: 'git',
+      update_command: 'git pull && uv sync && (cd frontend && npm run build)',
+      release_notes_url: 'https://github.com/Anil-matcha/open-duet/releases/tag/v0.8.2',
+    }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const info1 = await api.getVersionInfo();
+  assert.equal(info1.current_version, '0.8.1');
+  assert.equal(info1.update_available, true);
+  assert.ok(requests[0].endsWith('/api/v1/version'));
+
+  const info2 = await api.getVersionInfo(true);
+  assert.equal(info2.latest_version, '0.8.2');
+  assert.ok(requests[1].endsWith('/api/v1/version?refresh=true'));
+});
+
+test('getNotificationPreferences and updateNotificationPreferences call the right routes', async () => {
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init });
+    return new Response(JSON.stringify({
+      desktop_enabled: true,
+      notify_needs_you: true,
+      notify_failures: true,
+      notify_task_due: true,
+      sound_enabled: false,
+    }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const prefs = await api.getNotificationPreferences();
+  assert.equal(prefs.desktop_enabled, true);
+  assert.ok(requests[0].url.endsWith('/api/v1/notifications/preferences'));
+
+  await api.updateNotificationPreferences({
+    desktop_enabled: false,
+    notify_needs_you: false,
+    notify_failures: false,
+    notify_task_due: false,
+    sound_enabled: true,
+  });
+  assert.equal(requests[1].init.method, 'PUT');
+  assert.ok(requests[1].url.endsWith('/api/v1/notifications/preferences'));
+  const body = JSON.parse(requests[1].init.body);
+  assert.equal(body.desktop_enabled, false);
+  assert.equal(body.sound_enabled, true);
 });

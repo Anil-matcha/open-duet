@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +10,7 @@ import { ApiError, type Agent } from "@/lib/api";
 import { localDateTime } from "@/lib/planner";
 import { planner, type WorkItem, type WorkRun, type WorkRunInput, type WorkEvent } from "@/lib/planner-api";
 import { browserTimezone } from "@/lib/routines";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 
 const control = "w-full rounded-field border border-line bg-surface px-3 py-2 text-sm";
 const activeStates = ["scheduled", "queued", "claimed", "running", "needs_input"];
@@ -78,23 +81,23 @@ export function WorkExecutionPanel({ item, agents, onClose, onOpenThread, onRevi
     onOpenChange={open => { if (!open && !busy) onClose(); }}>
     <div className="space-y-5">
       <p className="text-sm text-muted">Assignment, deadlines, and workflow columns do not start work. Each attempt uses a new conversation. Successful work stays in its current column until you review it.</p>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {runs === null ? <p role="status">Loading attempts…</p> : <>
+      {error && <ErrorState message={error} />}
+      {runs === null ? <LoadingState rows={3} /> : <>
         {(!active || pending) && !item.archived && <form onSubmit={event => void start(event)} className="space-y-3 rounded-field border border-line p-3">
           <h3 className="font-medium">{retrying ? "Review a new attempt" : "Start with agent"}</h3>
           {retrying && <p className="text-sm text-warning">Earlier work may be partly done. Check its conversation and adjust the prompt before trying again.</p>}
           <fieldset disabled={busy || !!pending} className="space-y-3">
             <label htmlFor={`${id}-agent`} className="block text-sm">Agent
-              <select id={`${id}-agent`} required className={control} value={agentId} onChange={event => setAgentId(Number(event.target.value))}>
+              <Select id={`${id}-agent`} required className={control} value={agentId} onChange={event => setAgentId(Number(event.target.value))}>
                 <option value={0} disabled>Choose an agent</option>
                 {agents.filter(agent => !agent.archived_at).map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-              </select></label>
+              </Select></label>
             <label htmlFor={`${id}-prompt`} className="block text-sm">Exact task prompt
               <textarea id={`${id}-prompt`} required maxLength={20000} rows={5} className={control} value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
             <label htmlFor={`${id}-mode`} className="block text-sm">Approval mode
-              <select id={`${id}-mode`} className={control} value={mode} onChange={event => setMode(event.target.value as WorkRunInput["approval_mode"])}>
+              <Select id={`${id}-mode`} className={control} value={mode} onChange={event => setMode(event.target.value as WorkRunInput["approval_mode"])}>
                 <option value="ask">Ask</option><option value="accept_edits">Accept edits</option><option value="plan">Plan</option>
-              </select></label>
+              </Select></label>
             <p className="text-xs text-muted">The stricter of this mode and the agent’s saved mode applies. Review approvals in the execution conversation.</p>
             <label htmlFor={`${id}-when`} className="block text-sm">Run once at · {timezone} (leave empty to start now)
               <input id={`${id}-when`} type="datetime-local" className={control} value={when} onChange={event => setWhen(event.target.value)} /></label>
@@ -106,7 +109,7 @@ export function WorkExecutionPanel({ item, agents, onClose, onOpenThread, onRevi
         {item.archived && <p className="text-sm text-muted">Restore this task to start another attempt.</p>}
         <div className="space-y-3" aria-live="polite">
           <h3 className="font-medium">Attempts</h3>
-          {runs.length === 0 && <p className="text-sm text-muted">No agent work has been requested.</p>}
+          {runs.length === 0 && <EmptyPanel title="No agent work yet" description="Start an attempt above to see its history here." />}
           {runs.map(run => <article key={run.id} className="space-y-2 rounded-field border border-line p-3 text-sm">
             <p className="font-medium">Attempt {run.attempt} · {run.state === "needs_input" ? "Waiting for approval" : run.state}</p>
             <p className="text-xs text-muted">{agents.find(agent => agent.id === run.agent_id)?.name ?? `Agent #${run.agent_id}`} · {run.approval_mode} · {new Date(run.scheduled_for ?? run.created_at).toLocaleString()}</p>

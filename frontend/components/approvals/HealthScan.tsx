@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import Link from "next/link";
 import { useState } from "react";
 import { api, ApiError, type SentinelReport } from "@/lib/api";
@@ -35,7 +37,7 @@ export function HealthScan() {
   return (
     <div className="space-y-3 text-sm">
       <div className="flex items-center gap-2">
-        <select
+        <Select
           aria-label="How far back"
           value={hours}
           onChange={(e) => setHours(Number(e.target.value))}
@@ -44,7 +46,7 @@ export function HealthScan() {
           <option value={1}>Last hour</option>
           <option value={24}>Last day</option>
           <option value={168}>Last week</option>
-        </select>
+        </Select>
         <button className={BUTTON} onClick={scan} disabled={busy}>
           {busy ? "Scanning…" : "Scan"}
         </button>

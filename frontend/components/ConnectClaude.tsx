@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Button, Card, ErrorText } from "./Card";
+import { Input } from "@/components/ui/Input";
 
 export function ConnectClaude({
   userId,
@@ -43,7 +44,7 @@ export function ConnectClaude({
         setStatus("idle");
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : "Could not set up sandbox.");
+        setError(err instanceof ApiError ? `Could not set up sandbox. ${err.message}` : "Could not set up sandbox.");
         setStatus("idle");
       }
     })();
@@ -63,7 +64,7 @@ export function ConnectClaude({
       setLoginUrl(login_url);
       setStatus("idle");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not start login.");
+      setError(err instanceof ApiError ? `Could not start login. ${err.message}` : "Could not start login.");
       setStatus("idle");
     }
   };
@@ -78,7 +79,7 @@ export function ConnectClaude({
       setLoginUrl(null);
       onReady(boxId);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed.");
+      setError(err instanceof ApiError ? `Login failed. ${err.message}` : "Login failed.");
     } finally {
       setStatus("idle");
     }
@@ -124,11 +125,12 @@ export function ConnectClaude({
             After logging in, paste the code it gives you:
           </p>
           <div className="flex gap-2">
-            <input
+            <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="paste code here"
-              className="w-full max-w-xs rounded-md border border-line px-3 py-2 text-sm"
+              aria-label="Claude login code"
+              className="max-w-xs"
             />
             <Button onClick={submitCode} disabled={status === "submitting" || !code.trim()}>
               {status === "submitting" ? "Submitting…" : "Submit"}

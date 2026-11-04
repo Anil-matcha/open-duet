@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "@/components/ui/Select";
+
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api, ApiError, type Agent, type Computer, type ComputerHealth, type ComputerNetwork, type ComputerKind } from "@/lib/api";
 import { LiveBrowser } from "./LiveBrowser";
@@ -389,7 +391,7 @@ function DockerComputerView({
           <button type="submit" disabled={busy} className={SMALL}>
             Save limits
           </button>
-          <select
+          <Select
             aria-label="Network"
             value={computer.network}
             disabled={busy}
@@ -401,7 +403,7 @@ function DockerComputerView({
                 {mode.label}
               </option>
             ))}
-          </select>
+          </Select>
           <label className="flex cursor-pointer items-center gap-1 text-xs text-muted">
             <input
               type="checkbox"

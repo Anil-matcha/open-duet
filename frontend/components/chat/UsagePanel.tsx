@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ApiError, type UsageSummary, type UsageTotals } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
+import { EmptyPanel, ErrorState, LoadingState } from "./PanelState";
 import { currentMonth, formatCost, formatTokens, shiftMonth } from "@/lib/everyday";
 
 function Row({ group, link }: { group: UsageTotals; link?: string }) {
@@ -53,6 +56,8 @@ export function UsageView() {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const toast = useToast();
 
   useEffect(() => {
     let alive = true;
@@ -67,7 +72,7 @@ export function UsageView() {
     return () => {
       alive = false;
     };
-  }, [month]);
+  }, [month, reload]);
 
   const exportCsv = async () => {
     setCsvError(null);
@@ -79,6 +84,7 @@ export function UsageView() {
       link.download = `open-dots-usage-${month}.csv`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast(`Exported ${month} as CSV`);
     } catch (err) {
       setCsvError(err instanceof ApiError ? err.message : "Could not export.");
     }
@@ -95,9 +101,9 @@ export function UsageView() {
         <button onClick={() => setMonth(shiftMonth(month, 1))} disabled={month >= currentMonth()} aria-label="Next month" className="cursor-pointer rounded px-3 py-1 text-sm hover:bg-hover disabled:opacity-40">›</button>
       </div>
       <div className="space-y-5">
-          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          {!error && !shown && <p className="text-sm text-muted">Loading…</p>}
-          {total && total.turns === 0 && <p className="text-sm text-muted">No finished turns in {month}.</p>}
+          {error && <ErrorState message={error} onRetry={() => { setError(null); setReload((n) => n + 1); }} />}
+          {!error && !shown && <LoadingState rows={4} />}
+          {total && total.turns === 0 && <EmptyPanel title={`No finished turns in ${month}`} description="Usage appears here once an agent finishes a turn." />}
           {total && total.turns > 0 && (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -150,10 +156,8 @@ export function UsageView() {
             </section>
           )}
           <div className="flex items-center gap-3">
-            <button onClick={() => void exportCsv()} className="cursor-pointer rounded-md border border-line px-3 py-1.5 text-xs">
-              Export {month} as CSV
-            </button>
-            {csvError && <span className="text-xs text-danger">{csvError}</span>}
+            <Button size="sm" onClick={() => void exportCsv()}>Export {month} as CSV</Button>
+            {csvError && <span role="alert" className="text-xs text-danger">{csvError}</span>}
           </div>
       </div>
     </div>

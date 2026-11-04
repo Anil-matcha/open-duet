@@ -2,9 +2,10 @@
 `codex` (tests/services/fake_codex_cli.py)."""
 
 import json
+from pathlib import Path
 import stat
 import sys
-from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete
@@ -56,9 +57,13 @@ class FakeCodex:
 def codex(monkeypatch, tmp_path):
     folder = tmp_path / "codex"
     folder.mkdir()
-    exe = tmp_path / "codex-bin"
-    exe.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE} \"$@\"\n")
-    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    if sys.platform == "win32":
+        exe = tmp_path / "codex-bin.cmd"
+        exe.write_text(f'@echo off\r\n"{sys.executable}" "{FAKE}" %*\r\n')
+    else:
+        exe = tmp_path / "codex-bin"
+        exe.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE} \"$@\"\n")
+        exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("FAKE_CODEX_DIR", str(folder))
     monkeypatch.setattr(codex_adapter, "resolve_codex_executable", lambda: exe)
     workspace = tmp_path / "ws"
@@ -104,6 +109,30 @@ def test_policy_mapping():
     assert codex_policy("accept_edits", True).approval == "untrusted"
     assert codex_policy("plan", True) == codex_adapter.CodexPolicy("never", "read-only", "readOnly")
     assert codex_policy("ask", False).sandbox == "read-only"
+
+
+async def test_codex_waits_for_the_exact_routine_connected_app_server(crt, sessions, codex, monkeypatch):
+    thread = await crt.create_thread(provider="codex")
+    adapter = crt.adapters["codex"]
+    run_turn = adapter.run_turn
+
+    async def with_routine_grant(ctx, sink, gate):
+        ctx.composio_launch = SimpleNamespace(command="composio-mcp", args=[], env={})
+        ctx.composio_apps = {"gmail": "read"}
+        ctx.composio_exact_tools = ["gmail_fetch_emails"]
+        return await run_turn(ctx, sink, gate)
+
+    monkeypatch.setattr(adapter, "run_turn", with_routine_grant)
+    await crt.send_turn(thread.id, "Search authorized Gmail.")
+    await finished(sessions, thread.id)
+
+    started = codex.received("thread/start")[0]["params"]
+    server = started["config"]["mcp_servers"]["open_dots_composio"]
+    assert server["enabled_tools"] == ["gmail_fetch_emails"]
+    assert server["required"] is True and server["startup_timeout_sec"] == 10
+    assert server["default_tools_approval_mode"] == "prompt"
+    assert "exactly these tools: gmail_fetch_emails" in started["developerInstructions"]
+    assert "call the matching tool before concluding that the app is unavailable" in started["developerInstructions"]
 
 
 async def test_a_chat_turn_then_a_resumed_one(crt, sessions, owner, codex):
@@ -375,6 +404,18 @@ async def test_probe_reports_signed_in_with_live_models(codex):
     assert probe.ready and probe.installed and probe.signed_in is True
     assert probe.version == "codex-cli 0.162.1"
     assert [(m.id, m.default) for m in probe.models] == [("gpt-fake", True), ("gpt-fake-mini", False)]
+    gpt_fake = probe.models[0]
+    assert gpt_fake.default_reasoning_effort == "medium"
+    assert gpt_fake.supported_reasoning_efforts == ("low", "medium", "high")
+    assert gpt_fake.reasoning_effort_configurable is True
+
+
+async def test_codex_turn_passes_reasoning_effort(crt, sessions, owner, codex):
+    thread = await crt.create_thread(provider="codex", effort="high")
+    await crt.send_turn(thread.id, "analyze this deeply")
+    await finished(sessions, thread.id)
+    turn = codex.received("turn/start")[0]["params"]
+    assert turn.get("effort") == "high" 
 
 
 async def test_probe_reports_signed_out(codex):

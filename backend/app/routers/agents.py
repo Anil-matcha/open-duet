@@ -11,9 +11,12 @@ Errors a client acts on carry a machine-readable code:
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
+from app.core.config import settings
 from app.schemas.agent import (
+    OpenBotDatabasePreviewResponse,
     AgentCreateRequest,
     AgentExportResponse,
     AgentImportRequest,
@@ -29,7 +32,7 @@ from app.schemas.agent import (
     TopicListResponse,
     TopicWriteRequest,
 )
-from app.services import agent_memory, agent_package, agent_skills, memory_entries, memory_journal, memory_log, memory_proposals, memory_topics
+from app.services import agent_memory, agent_package, agent_skills, memory_entries, memory_journal, memory_log, memory_proposals, memory_topics, openbot_database_import
 from app.services import agent_store as store
 from app.services.agent_removal import remove_agent
 from app.services.local_access_policy import require_local_access
@@ -835,4 +838,19 @@ async def import_agent(payload: AgentImportRequest, rt: ThreadRuntime = Depends(
     _start_imported_notes(agent.id, parsed if payload.include_notes else None)
     _start_imported_skills(agent.id, parsed["skills"] if payload.include_skills else [])
     return agent
+
+
+@router.post("/import/openbot/preview", response_model=OpenBotDatabasePreviewResponse)
+async def preview_openbot_database(file: UploadFile = File(...)):
+    """Read the local OpenBot database and return normalized agent fields for review."""
+    if settings.HOST_EXECUTION_DISABLED:
+        raise _error(403, "openbot_import_unavailable", "OpenBot migration is available only in the local Open Dots app.")
+    try:
+        data = await file.read(openbot_database_import.MAX_SOURCE_DATABASE_BYTES + 1)
+    finally:
+        await file.close()
+    try:
+        return await run_in_threadpool(openbot_database_import.preview_database, data)
+    except openbot_database_import.OpenBotDatabaseImportError as exc:
+        raise _error(422, "invalid_openbot_database", str(exc)) from None
 

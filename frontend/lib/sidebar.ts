@@ -21,14 +21,32 @@ export function sidebarAgents<T extends AgentLike>(agents: readonly T[] | null):
     .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
-export type RowStatus = "waiting" | "working" | "reset" | null;
+export type RowStatus = "waiting" | "working" | "reset" | "unread" | null;
 
 // What a row shows when several things are true at once. Waiting on the person outranks
 // everything because only they can move it on; a conversation that needs a new session is
-// next to useless until fixed.
-export function rowStatus(state: { waiting?: boolean; working?: boolean; brokenSession?: boolean }): RowStatus {
+// next to useless until fixed; unread is the quietest, shown alone only when nothing else is.
+export function rowStatus(state: { waiting?: boolean; working?: boolean; brokenSession?: boolean; unread?: boolean }): RowStatus {
   if (state.waiting) return "waiting";
   if (state.working) return "working";
   if (state.brokenSession) return "reset";
+  if (state.unread) return "unread";
   return null;
+}
+
+// Unread alongside a louder status gets its own small accent dot next to it.
+export function showsUnreadDot(status: RowStatus, unread: boolean): boolean {
+  return unread && status !== null && status !== "unread";
+}
+
+// The short default Recent list: the newest `limit` conversations, plus any that need attention
+// (kept by `keep`), in their original order. `showAll` lifts the limit.
+export function recentVisible<T extends { id: number }>(threads: readonly T[], limit: number, keep: (thread: T) => boolean, showAll: boolean): T[] {
+  if (showAll || threads.length <= limit) return [...threads];
+  let plain = 0;
+  return threads.filter((thread) => {
+    if (keep(thread)) return true;
+    plain += 1;
+    return plain <= limit;
+  });
 }

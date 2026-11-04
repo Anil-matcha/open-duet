@@ -11,7 +11,7 @@ from pathlib import Path
 
 from app.core import app_settings
 from app.services import cli_probe, local_claude_runner
-from app.services.acp_adapter import AcpAdapter, InvalidConfig, resolve_command, split_command
+from app.services.acp_adapter import AcpAdapter, InvalidConfig, normalize_effort, resolve_command, split_command
 from app.services.engine_registry import check_model_id
 from app.services.provider_adapter import EngineProbe, ModelOption
 
@@ -122,12 +122,21 @@ class GeminiAdapter(PresetAdapter):
         preferred = ["gemini-api-key"] if any(env.get(n) for n in self.credential_names) else (["vertex-ai"] if env.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1") else ["oauth-personal"])
         return next((m for m in preferred if m in ids), None)
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         # Gemini selects via argv. An explicit contradictory session report is
         # a refusal; old CLIs omit model metadata, so argv is the only contract.
         reported = session.get("models", {}).get("currentModelId") if isinstance(session.get("models"), dict) else None
         if model and reported and model != reported:
             raise InvalidConfig("The CLI selected a different model.")
+        if effort:
+            effort_opt = next((o for o in session.get("configOptions", []) if isinstance(o, dict) and o.get("id") in ("thought_level", "effort")), None)
+            if effort_opt and effort_opt.get("type") == "select":
+                current_effort = effort_opt.get("currentValue")
+                options = effort_opt.get("options", [])
+                wire_map = {normalize_effort(o.get("value", "")): o.get("value") for o in options if isinstance(o, dict)}
+                target_wire = wire_map.get(effort)
+                if target_wire and target_wire != current_effort:
+                    await call("session/set_config_option", {"sessionId": session_id, "configId": effort_opt.get("id"), "value": target_wire}, handle_incoming=True)
         return model or reported
 
 
@@ -193,7 +202,7 @@ class CursorAdapter(PresetAdapter):
             self._model_cache = (time.monotonic(), models[:600])
         return models[:600] or cached or self.models
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         data = session_models(session)
         current = data.get("currentModelId")
         if not model:
@@ -250,7 +259,7 @@ class OpenCodeAdapter(PresetAdapter):
             self._model_cache = (time.monotonic(), models[:600])
         return models[:600] or cached
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         option = next((o for o in session.get("configOptions", []) if isinstance(o, dict) and o.get("id") == "model"), None)
         if not option:
             if model:
@@ -267,4 +276,13 @@ class OpenCodeAdapter(PresetAdapter):
         confirmed = next((o.get("currentValue") for o in (result or {}).get("configOptions", []) if isinstance(o, dict) and o.get("id") == "model"), None)
         if confirmed != model:
             raise InvalidConfig("The engine did not confirm this model.")
+        if effort:
+            effort_opt = next((o for o in (result or session).get("configOptions", []) if isinstance(o, dict) and o.get("id") in ("thought_level", "effort")), None)
+            if effort_opt and effort_opt.get("type") == "select":
+                current_effort = effort_opt.get("currentValue")
+                options = effort_opt.get("options", [])
+                wire_map = {normalize_effort(o.get("value", "")): o.get("value") for o in options if isinstance(o, dict)}
+                target_wire = wire_map.get(effort)
+                if target_wire and target_wire != current_effort:
+                    await call("session/set_config_option", {"sessionId": session_id, "configId": effort_opt.get("id"), "value": target_wire}, handle_incoming=True)
         return confirmed

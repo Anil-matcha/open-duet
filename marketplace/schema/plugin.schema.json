@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-dots.dev/schemas/community-mcp-plugin.schema.json",
+  "title": "Open Dots community MCP listing",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slug", "name", "version", "summary", "publisher", "source_repo",
+    "endpoint", "auth_mode", "privacy_url", "terms_url", "license",
+    "setup_instructions", "test_instructions"
+  ],
+  "properties": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "minLength": 2, "maxLength": 64 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$", "maxLength": 64 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "publisher": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "source_repo": { "type": "string", "format": "uri", "maxLength": 300 },
+    "endpoint": { "type": "string", "format": "uri", "maxLength": 300 },
+    "auth_mode": { "enum": ["none", "bearer_token"] },
+    "privacy_url": { "type": "string", "format": "uri", "maxLength": 300 },
+    "terms_url": { "type": "string", "format": "uri", "maxLength": 300 },
+    "license": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "setup_instructions": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "test_instructions": { "type": "string", "minLength": 1, "maxLength": 4000 }
+  }
+}

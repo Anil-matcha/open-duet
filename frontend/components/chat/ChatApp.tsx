@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
@@ -17,6 +17,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { computerChip } from "@/lib/computers";
 import { AgentsPanel } from "./AgentsPanel";
 import { NotificationBell } from "./NotificationBell";
+import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { RoutinesPanel } from "./RoutinesPanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { EngineModelFields } from "./EngineModelFields";
@@ -27,18 +28,19 @@ import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { NeedsYouCard } from "./NeedsYouCard";
 import { ChatHeader } from "./ChatHeader";
+import { CommandPalette } from "@/components/shell/CommandPalette";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Drawer } from "@/components/ui/Drawer";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-media-query";
-import { t } from "@/lib/i18n";
+import { useT } from "@/lib/use-i18n";
 import { reportPresence } from "@/lib/presence";
+import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
 import { parseSkillCommand, skillErrorText, toggleSkill, learnableTurn, type SkillSummary, type SkillLearnSource } from "@/lib/skills";
 import { RoomList } from "./RoomList";
 import { RoomView } from "./RoomView";
 import { collaboration, type TeamState } from "@/lib/collaboration";
 import { useSession } from "@/components/AuthGate";
-import { SETUP_STARTER } from "./AgentSetupEntry";
 import { onboarding } from "@/lib/onboarding";
 import { TeamPanel } from "./TeamPanel";
 import { parseRoom, roomHref } from "@/lib/rooms";
@@ -116,11 +118,17 @@ function Notice({
 // API. The page keeps nothing that matters: every conversation lives in the
 // backend, and the open one is replayed from its stored events.
 export function ChatApp() {
+  const t = useT();
   const router = useRouter();
   const params = useSearchParams();
   const threadId = parseThreadId(params.get("thread"));
   const roomId = parseRoom(params.get("room"));
   const [teamOpen, setTeamOpen] = useState(false);
+  const [roomTitle, setRoomTitle] = useState<{ id: number | "new"; name: string } | null>(null);
+  const updateRoomTitle = useCallback((name: string) => {
+    if (roomId === null) return;
+    setRoomTitle(current => current?.id === roomId && current.name === name ? current : { id: roomId, name });
+  }, [roomId]);
   const [teamState, setTeamState] = useState<TeamState | null>(null);
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const { session } = useSession();
@@ -156,7 +164,16 @@ export function ChatApp() {
   // and the page behaves as before.
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [agentTick, setAgentTick] = useState(0);
-  const [agentsOpen, setAgentsOpen] = useState(false);
+  const [agentsShown, setAgentsShown] = useState(false);
+  const agentsOpen = agentsShown || params.get("view") === "agents";
+  const setAgentsOpen = useCallback((open: boolean) => {
+    setAgentsShown(open);
+    if (!open && params.get("view") === "agents") {
+      const query = new URLSearchParams(params.toString());
+      query.delete("view");
+      router.replace(query.toString() ? `/chat?${query.toString()}` : "/chat");
+    }
+  }, [params, router]);
   const [deleteAgentTarget, setDeleteAgentTarget] = useState<Agent | null>(null);
   // The Agents panel opened from New agent starts on the form.
   const [agentsCreate, setAgentsCreate] = useState(false);
@@ -196,9 +213,12 @@ export function ChatApp() {
   // The agent a new chat will start with (null: a plain chat).
   const [newAgentId, setNewAgentId] = useState<number | null>(() => parseThreadId(params.get("agent")));
   const [engines, setEngines] = useState<Engine[] | null>(null);
-  const [newProvider, setNewProvider] = useState(() => params.get("engine") || "claude");
-  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || null);
-  const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null } | null>(null);
+  const cachedPref = readCachedPreference();
+  const [newProvider, setNewProvider] = useState(() => params.get("engine") || cachedPref?.provider || "claude");
+  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || cachedPref?.model || null);
+  const [newEffort, setNewEffort] = useState<string | null>(() => params.get("effort") || cachedPref?.effort || null);
+
+  const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null; effort: string | null } | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
 
@@ -224,10 +244,39 @@ export function ChatApp() {
   }, [threadId, transcript.runningTurnId, transcript.items]);
 
   useEffect(() => {
+    let live = true;
+    api.getEnginePreference().then((saved) => {
+      if (!live || !saved?.provider) return;
+      writeCachedPreference({ provider: saved.provider, model: saved.model, effort: saved.effort });
+      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+        setNewProvider(saved.provider);
+        if (!params.get("model")) setNewModel(saved.model);
+        if (!params.get("effort")) setNewEffort(saved.effort ?? null);
+      }
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [threadId, transcript.runningTurnId, transcript.items]);
+
+  useEffect(() => {
     let cancelled = false;
     // The chat opens on the status alone; the engine list (it checks every CLI, so it can take seconds)
     // fills in when it arrives and nothing waits for it.
-    api.getEngines().then((items) => { if (!cancelled) setEngines(items); }).catch(() => { if (!cancelled) setEngines(null); });
+    api.getEngines().then((items) => {
+      if (cancelled) return;
+      setEngines(items);
+      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+        setNewProvider((current) => {
+          const resolved = resolveEngineModel({ provider: current, model: newModel, effort: newEffort }, items);
+          if (resolved.model !== newModel && !params.get("model")) {
+            setNewModel(resolved.model);
+          }
+          if (resolved.effort !== newEffort && !params.get("effort")) {
+            setNewEffort(resolved.effort ?? null);
+          }
+          return resolved.provider;
+        });
+      }
+    }).catch(() => { if (!cancelled) setEngines(null); });
     api.getLocalStatus()
       .then((status) => {
         if (cancelled) return;
@@ -345,7 +394,7 @@ export function ChatApp() {
     };
     window.addEventListener("open-dots:open-agent", openAgent);
     return () => window.removeEventListener("open-dots:open-agent", openAgent);
-  }, [agents, router]);
+  }, [agents, router, setAgentsOpen]);
 
   useEffect(() => {
     if (!ready) return;
@@ -407,6 +456,7 @@ export function ChatApp() {
   const selectedEngine = engines?.find((engine) => engine.id === selectedProvider);
   const selectedAgent = threadId === null ? startingAgent : threadAgent?.provider === thread?.provider ? threadAgent : null;
   const selectedModel = (threadId === null ? newModel : thread?.model) ?? selectedAgent?.model ?? null;
+  const selectedEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
   const skillAgent = threadId === null ? startingAgent : threadAgent;
   const skillAgentId = skillAgent?.id ?? null;
   const [skillsTick, setSkillsTick] = useState(0);
@@ -455,9 +505,13 @@ export function ChatApp() {
     blockedReason = `${selectedEngine?.label ?? "This engine"} can't read images. Remove the image to send.`;
 
   const hasAudio = !!audioUrl.trim() || attached.some((file) => /\.(wav|mp3|m4a|ogg|flac|webm)$/i.test(file.name));
-  if (blockedReason === null && hasAudio && (!audioCapability?.available || !audioConsent)) blockedReason = !audioCapability?.available ? "Audio transcription is unavailable. Configure the transcription provider first." : "Consent to send audio to OpenAI before sending.";
+  if (blockedReason === null && hasAudio && (!audioCapability?.available || !audioConsent)) blockedReason = !audioCapability?.available ? t("chat.audioUnavailable") : t("chat.audioConsentRequired", { provider: audioCapability?.provider_label ?? "OpenAI" });
 
   if (blockedReason === null && audioUrl.trim() && attached.length >= MAX_ATTACHMENTS) blockedReason = `Attach at most ${MAX_ATTACHMENTS} files or audio links to one message.`;
+
+  const sendingReactionReplyDisabled = threadId === null || !ready || stream.connection === "failed" || thread === null ||
+    thread.session_state === "broken" || waiting || transcript.runningTurnId !== null ||
+    (selectedEngine !== undefined && !selectedEngine.available);
 
   const addFiles = (files: File[]) => {
     const problems: string[] = [];
@@ -486,7 +540,11 @@ export function ChatApp() {
     try {
       let id = threadId;
       if (id === null) {
-        id = (await api.createThread(startingAgentId, startingAgentId !== null ? { model: newModel } : { provider: newProvider, model: newModel })).id;
+        id = (await api.createThread(startingAgentId, startingAgentId !== null ? { model: newModel, effort: newEffort } : { provider: newProvider, model: newModel, effort: newEffort })).id;
+        if (startingAgentId === null) {
+          writeCachedPreference({ provider: newProvider, model: newModel, effort: newEffort });
+          void api.setEnginePreference({ provider: newProvider, model: newModel, effort: newEffort }).catch(() => {});
+        }
         // Open it now: the stream replays from the start, so nothing is missed.
         router.replace(`/chat?thread=${id}`);
       }
@@ -511,19 +569,39 @@ export function ChatApp() {
     }
   };
 
+  const sendReactionReply = async (message: string): Promise<boolean> => {
+    if (sendingReactionReplyDisabled || sending) return false;
+    setSendError(null);
+    setSending(true);
+    try {
+      await api.sendTurn(threadId!, message);
+      return true;
+    } catch (err) {
+      setSendError(sendErrorText(err));
+      return false;
+    } finally {
+      setSending(false);
+      setListTick((n) => n + 1);
+    }
+  };
+
   const saveModel = async () => {
     if (!modelDraft) return;
     const target = modelDraft;
     setModelBusy(true); setModelError(null);
     const model = target.model?.trim() || null;
+    const effort = target.effort?.trim() || null;
     try {
       if (target.threadId !== null) {
-        const updated = await api.updateThread(target.threadId, { model });
+        const updated = await api.updateThread(target.threadId, { model, effort });
         setThreads((previous) => previous?.map((item) => item.id === target.threadId ? updated : item) ?? null);
         setOpenedThread((previous) => previous?.id === target.threadId ? updated : previous);
       } else {
         setNewProvider(target.provider);
         setNewModel(model);
+        setNewEffort(effort);
+        writeCachedPreference({ provider: target.provider, model, effort });
+        void api.setEnginePreference({ provider: target.provider, model, effort }).catch(() => {});
       }
       setModelDraft((previous) => previous === target ? null : previous);
     } catch (err) { setModelError(err instanceof ApiError ? err.message : "Could not change the model."); }
@@ -623,7 +701,15 @@ export function ChatApp() {
 
   const openModelDialog = () => {
     setModelError(null);
-    setModelDraft({ threadId, agentId: startingAgentId, provider: selectedProvider, model: threadId === null ? newModel : thread?.model ?? null });
+    const activeModelId = (threadId === null ? newModel : thread?.model) ?? null;
+    const activeEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
+    setModelDraft({
+      threadId,
+      agentId: startingAgentId,
+      provider: selectedProvider,
+      model: activeModelId,
+      effort: activeEffort,
+    });
   };
 
   const refreshToday = async () => {
@@ -634,7 +720,7 @@ export function ChatApp() {
     try {
       setTodaySnapshot(await api.getNeedsYou());
     } catch {
-      setTodayError("Could not refresh the Today brief. Try again.");
+      setTodayError(t("chat.refreshTodayError"));
     } finally {
       setTodayLoading(false);
     }
@@ -660,18 +746,36 @@ export function ChatApp() {
   const computerText = threadComputer ? computerChip(threadComputer, liveComputerState) : null;
   const buildHeader = (withSidebar: boolean) => (
     <ChatHeader
-      title={thread?.title || (threadId === null ? t("shell.newChat") : "Chat")}
+      title={roomId !== null
+        ? (roomTitle?.id === roomId ? roomTitle.name : t(roomId === "new" ? "room.new" : "room.title"))
+        : thread?.title || (threadId === null ? t("shell.newChat") : "Chat")}
       agent={threadAgent ? { id: threadAgent.id, name: threadAgent.name } : null}
       onOpenSidebar={withSidebar && !sidebarInline ? () => setDrawerOpen(true) : undefined}
       agentChoice={
-        agents !== null && threadId === null
+        roomId === null && agents !== null && threadId === null
           ? { agents: choosable, value: startingAgentId, onChange: (id) => { setNewAgentId(id); setNewModel(null); setModelDraft(null); } }
           : undefined
       }
       engine={
-        ready && engines && (threadId === null || thread !== null)
+        roomId === null && ready && engines && (threadId === null || thread !== null)
           ? {
-              label: `${selectedEngine?.label ?? selectedProvider} · ${modelLabel(selectedModel)}`,
+              label: (() => {
+                const baseEngine = selectedEngine?.label ?? selectedProvider;
+                const modelObj = selectedEngine?.models.find((item) => item.id === selectedModel);
+                const modelName = modelObj?.label ?? (selectedModel ? modelLabel(selectedModel) : "default");
+                const supportsEffort = Boolean(
+                  modelObj?.supported_reasoning_efforts &&
+                  modelObj.supported_reasoning_efforts.length > 1 &&
+                  modelObj.reasoning_effort_configurable !== false
+                );
+                const effortToShow = supportsEffort
+                  ? (selectedEffort ?? modelObj?.default_reasoning_effort)
+                  : null;
+                const effortPart = effortToShow
+                  ? ` · ${effortToShow.charAt(0).toUpperCase() + effortToShow.slice(1)}`
+                  : "";
+                return `${baseEngine} · ${modelName}${effortPart}`;
+              })(),
               disabled: modelBusy || sending || transcript.runningTurnId !== null,
               onClick: openModelDialog,
             }
@@ -700,18 +804,21 @@ export function ChatApp() {
       onToday={ready ? () => void refreshToday() : undefined}
       usageHint={conversationTotal}
       trailing={
-        ready ? (
-          <NotificationBell
-            elevated={routinesOpen || panel === "usage"}
-            onOpen={() => {
-              setRoutinesOpen(false);
-              if (panel === "usage") setPanel(null);
-            }}
-          />
-        ) : undefined
+        <>
+          <LanguageSelect compact />
+          {ready ? (
+            <NotificationBell
+              elevated={routinesOpen || panel === "usage"}
+              onOpen={() => {
+                setRoutinesOpen(false);
+                if (panel === "usage") setPanel(null);
+              }}
+            />
+          ) : null}
+        </>
       }
       status={
-        stream.connection === "reconnecting"
+        roomId !== null ? null : stream.connection === "reconnecting"
           ? { text: t("header.reconnecting"), warn: true }
           : ready && selectedEngine
             ? { text: `${selectedEngine.available ? selectedEngine.version ?? t("header.ready") : t("header.unavailable")}${selectedEngine.capabilities.tools ? "" : ` · ${t("header.chatOnly")}`}` }
@@ -721,23 +828,26 @@ export function ChatApp() {
   );
   const header = buildHeader(false);
 
+  // Start a conversation: with the given agent, or (no argument) with whatever is chosen now.
+  const startChat = (agentId?: number) => {
+    if (agentId !== undefined) { setNewAgentId(agentId); setNewModel(null); }
+    setModelDraft(null);
+    setFocusComposer(true);
+    router.push("/chat");
+  };
+
   const sidebar = (
     <Sidebar
       agents={agents}
       threads={threads}
       selectedThreadId={threadId}
-      selectedAgentId={thread?.agent_id ?? (threadId === null ? startingAgentId : null)}
+      selectedAgentId={roomId !== null ? null : thread?.agent_id ?? (threadId === null ? startingAgentId : null)}
       live={{ threadId, agentId: thread?.agent_id ?? null, working: transcript.runningTurnId !== null, waiting }}
       showArchived={showArchived}
       onToggleArchived={() => setShowArchived((on) => !on)}
       actions={listActions}
       error={manageError}
-      onNewChat={(agentId) => {
-        if (agentId !== undefined) { setNewAgentId(agentId); setNewModel(null); }
-        setModelDraft(null);
-        setFocusComposer(true);
-        router.push("/chat");
-      }}
+      onNewChat={startChat}
       onManageAgents={agents !== null ? () => { setEditAgent(null); setAgentsCreate(false); setAgentsOpen(true); } : undefined}
       leadAgentId={teamState?.team?.lead_agent_id ?? null}
       onChangeLead={session?.scopes.includes("admin") ? async (agent, remove) => {
@@ -813,6 +923,7 @@ export function ChatApp() {
       >
         {t("shell.skip")}
       </a>
+      {ready && <CommandPalette agents={agents} threads={threads} onNewChat={startChat} />}
       {sidebarInline ? (
         <aside className="w-72 shrink-0 border-r border-line">{sidebar}</aside>
       ) : (
@@ -823,7 +934,16 @@ export function ChatApp() {
       {modelDraft && modelDraft.threadId === threadId && (threadId !== null || modelDraft.agentId === startingAgentId) && engines && (
         <Dialog open onOpenChange={(open) => { if (!open) setModelDraft(null); }} title="Engine and model" size="sm">
           <form onSubmit={(event) => { event.preventDefault(); void saveModel(); }} className="space-y-4">
-            <EngineModelFields engines={engines} provider={modelDraft.provider} model={modelDraft.model} onChange={(provider, model) => setModelDraft({ ...modelDraft, provider, model })} disabled={modelBusy} lockProvider={threadId !== null || startingAgentId !== null} defaultLabel={selectedAgent ? `Agent default (${modelLabel(selectedAgent.model)})` : undefined} />
+            <EngineModelFields
+              engines={engines}
+              provider={modelDraft.provider}
+              model={modelDraft.model}
+              effort={modelDraft.effort}
+              onChange={(provider, model, effort) => setModelDraft({ ...modelDraft, provider, model, effort: effort ?? null })}
+              disabled={modelBusy}
+              lockProvider={threadId !== null || startingAgentId !== null}
+              defaultLabel={selectedAgent ? `Agent default (${modelLabel(selectedAgent.model)})` : undefined}
+            />
             {threadId !== null && <p className="text-xs text-muted">The model changes on the next message. This conversation keeps its engine.</p>}
             {modelError && <p role="alert" className="text-sm text-danger">{modelError}</p>}
             <div className="flex flex-wrap items-center gap-2">
@@ -845,7 +965,6 @@ export function ChatApp() {
         />
       )}
       {teamOpen && agents !== null && <TeamPanel agents={agents} onClose={() => setTeamOpen(false)} onChanged={() => setAgentTick(value => value + 1)} />}
-      {roomId !== null && agents !== null && <RoomView key={roomId} roomId={roomId} agents={agents} onClose={() => router.push("/chat")} onSelect={id => router.replace(roomHref(id))} />}
       {routinesOpen && agents !== null && (
         <RoutinesPanel key={params.get("routine")} routineId={parseThreadId(params.get("routine"))} agents={agents} onClose={() => setRoutinesOpen(false)} />
       )}
@@ -859,7 +978,7 @@ export function ChatApp() {
             setAgentTick(value => value + 1);
             setAgentsOpen(false); setEditAgent(null); setDeleteAgentTarget(null);
             const target = threads?.find(item => item.agent_id === id && !item.archived_at && item.session_state !== "broken");
-            setNewAgentId(id); setNewModel(null); setDraft(SETUP_STARTER); setFocusComposer(true);
+            setNewAgentId(id); setNewModel(null); setDraft(t("agentTeam.setupStarter")); setFocusComposer(true);
             router.push(target ? `/chat?thread=${target.id}` : `/chat?agent=${id}`);
           }}
           initialDeleteAgent={deleteAgentTarget}
@@ -869,11 +988,24 @@ export function ChatApp() {
         />
       )}
         <main id="conversation" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
+          {/* Active rooms share the chat workspace; RoomView keeps only create/edit in a dialog. */}
+          {roomId !== null && agents !== null && (
+            <RoomView
+              key={roomId}
+              roomId={roomId}
+              agents={agents}
+              onClose={() => router.push("/chat")}
+              onSelect={id => router.replace(roomHref(id))}
+              onTitleChange={updateRoomTitle}
+            />
+          )}
+          {(roomId === null || agents === null) && <>
           {stream.connection === "failed" ? (
             <Notice title="Cannot open this conversation">{stream.error}</Notice>
           ) : (
             <Conversation
               threadId={threadId}
+              loading={threadId !== null && thread === null}
               agent={threadAgent ? { id: threadAgent.id, name: threadAgent.name } : startingAgent ? { id: startingAgent.id, name: startingAgent.name } : null}
               emptyAction={signInAction}
               emptyHint={
@@ -885,6 +1017,8 @@ export function ChatApp() {
               answering={answering}
               approvalErrors={approvalErrors}
               onAnswer={answer}
+              onReactionReply={sendReactionReply}
+              sendingReactionReplyDisabled={sendingReactionReplyDisabled || sending}
               remembered={remembered}
               undoneRules={undoneRules}
               onUndo={undoRule}
@@ -899,7 +1033,7 @@ export function ChatApp() {
                   session keeps the messages above but starts without them as context.
                 </p>
                 <Button variant="primary" onClick={resetSession} loading={resetting}>
-                  {resetting ? "Starting…" : "Start a new session"}
+                  {resetting ? t("common.starting") : t("chat.startNewSession")}
                 </Button>
               </div>
               {resetError && <p className="mx-auto mt-2 max-w-3xl text-xs text-danger">{resetError}</p>}
@@ -908,16 +1042,17 @@ export function ChatApp() {
 
           <div className="mx-auto w-full max-w-3xl px-3 text-xs text-muted">
             <details>
-              <summary className="cursor-pointer">Audio or podcast link (25 MB, 20 minutes)</summary>
-              <p>WAV, MP3, M4A, OGG, FLAC or WebM. Attach a file or paste a direct public audio URL. Pages requiring sign-in or payment cannot be transcribed.</p>
-              <input aria-label="Direct podcast audio URL" type="url" value={audioUrl} onChange={(event) => { setAudioUrl(event.target.value); setAudioConsent(false); }} placeholder="https://example.com/episode.mp3" disabled={sending} className="my-2 w-full rounded-field border border-line bg-inset p-2" />
-              <p>{audioCapability?.available ? audioCapability.retention : "Audio transcription is unavailable: configure the provider key, ffmpeg and ffprobe on the backend."}</p>
-              <label className="my-2 flex gap-2"><input type="checkbox" checked={audioConsent} onChange={(event) => setAudioConsent(event.target.checked)} disabled={sending || !audioCapability?.available} />I consent to send this audio to {audioCapability?.provider_label ?? "OpenAI"} for transcription.</label>
-              {sending && hasAudio && <button type="button" onClick={() => audioAbort.current?.abort()} className="my-2 underline">Cancel audio processing</button>}
-              <p>Machine transcripts may contain uncertain words or names. Review the transcript before requesting later actions.</p>
+              <summary className="cursor-pointer">{t("chat.audioLink")}</summary>
+              <p>{t("chat.audioFormats")}</p>
+              <input aria-label={t("chat.directAudioUrl")} type="url" value={audioUrl} onChange={(event) => { setAudioUrl(event.target.value); setAudioConsent(false); }} placeholder="https://example.com/episode.mp3" disabled={sending} className="my-2 w-full rounded-field border border-line bg-inset p-2" />
+              <p>{audioCapability?.available ? audioCapability.retention : t("chat.audioUnavailable")}</p>
+              <label className="my-2 flex gap-2"><input type="checkbox" checked={audioConsent} onChange={(event) => setAudioConsent(event.target.checked)} disabled={sending || !audioCapability?.available} />{t("chat.audioConsent", { provider: audioCapability?.provider_label ?? "OpenAI" })}</label>
+              {sending && hasAudio && <button type="button" onClick={() => audioAbort.current?.abort()} className="my-2 underline">{t("chat.cancelAudio")}</button>}
+              <p>{t("chat.transcriptCaveat")}</p>
             </details>
           </div>
           <Composer
+            draftKey={threadId === null ? "new" : String(threadId)}
             focusRequested={focusComposer}
             onFocused={() => setFocusComposer(false)}
             value={draft}
@@ -942,6 +1077,7 @@ export function ChatApp() {
             onToggleSkill={skillAgentId !== null ? (name) => setChosenSkills((names) => toggleSkill(names, name)) : undefined}
             onSaveAsSkill={canSaveSkill ? () => { setSkillSeed({ source: { thread_id: threadId!, turn_id: skillTurnId! }, nonce: Date.now() }); setPanel("skills"); } : undefined}
           />
+          </>}
         </main>
       </div>
       {panel === "usage" && (
@@ -969,19 +1105,19 @@ export function ChatApp() {
       <Dialog
         open={todayOpen}
         onOpenChange={setTodayOpen}
-        title="Today"
-        description="A fresh read of your local tasks, team work, routines and connected apps."
+        title={t("header.today")}
+        description={t("header.todayDescription")}
         size="wide"
         footer={(
           <>
-            <Button onClick={() => setTodayOpen(false)}>Close</Button>
+            <Button onClick={() => setTodayOpen(false)}>{t("common.close")}</Button>
             <Button variant="primary" icon={<RefreshCw size={16} />} onClick={() => void refreshToday()} loading={todayLoading}>
-              {todayLoading ? "Refreshing…" : "Refresh"}
+              {todayLoading ? t("common.refreshing") : t("common.refresh")}
             </Button>
           </>
         )}
       >
-        {todayLoading ? <p role="status" className="text-sm text-muted">Refreshing today&apos;s brief…</p> : null}
+        {todayLoading ? <p role="status" className="text-sm text-muted">{t("common.refreshingToday")}</p> : null}
         {todayError ? <p role="alert" className="text-sm text-danger">{todayError}</p> : null}
         {!todayLoading && !todayError && todayItem ? <NeedsYouCard item={todayItem} /> : null}
       </Dialog>

@@ -30,6 +30,7 @@ NEEDS_YOU_TABLES = {"needs_you_state"}
 NOTICE_TABLES = {"team_notice"}
 PLANNER_TABLES = {"work_board", "work_column", "work_item"}
 WORK_EXECUTION_TABLES = {"work_item_run", "work_item_event"}
+COMMUNITY_MCP_TABLES = {"community_mcp_connection", "community_mcp_tool_grant"}
 
 
 def postgres_ddl(table_names: set[str]) -> str:
@@ -66,7 +67,23 @@ def test_thread_tables_compile_to_their_reviewed_postgres_schema():
 
 
 def test_every_table_is_covered_by_one_of_the_snapshots():
-    assert original_tables() | F04_TABLES | SETTINGS_TABLES | AGENT_TABLES | COMPUTER_TABLES | AUTH_TABLES | ROUTINE_TABLES | TEAM_TABLES | ROOM_TABLES | NEEDS_YOU_TABLES | NOTICE_TABLES | PLANNER_TABLES | WORK_EXECUTION_TABLES == set(Base.metadata.tables)
+    covered_tables = (
+        original_tables()
+        | F04_TABLES
+        | SETTINGS_TABLES
+        | AGENT_TABLES
+        | COMPUTER_TABLES
+        | AUTH_TABLES
+        | ROUTINE_TABLES
+        | TEAM_TABLES
+        | ROOM_TABLES
+        | NEEDS_YOU_TABLES
+        | NOTICE_TABLES
+        | PLANNER_TABLES
+        | WORK_EXECUTION_TABLES
+        | COMMUNITY_MCP_TABLES
+    )
+    assert covered_tables == set(Base.metadata.tables)
     assert not original_tables() & F04_TABLES
 
 
@@ -76,6 +93,10 @@ def test_settings_tables_compile_to_their_reviewed_postgres_schema():
 
 def test_agent_table_compiles_to_its_reviewed_postgres_schema():
     assert postgres_ddl(AGENT_TABLES) == snapshot_text(HERE / "postgres_schema_agents.sql")
+
+
+def test_community_mcp_tables_compile_to_their_reviewed_postgres_schema():
+    assert postgres_ddl(COMMUNITY_MCP_TABLES) == snapshot_text(HERE / "postgres_schema_community_mcp.sql")
 
 
 def test_computer_table_compiles_to_its_reviewed_postgres_schema():

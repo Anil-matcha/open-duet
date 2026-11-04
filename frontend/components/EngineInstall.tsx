@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { request } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Banner } from "@/components/ui/Banner";
 
 type EngineId = "claude" | "codex" | "opencode";
 type Operation = {
@@ -15,7 +17,6 @@ type Operation = {
 };
 type Status = { engine: EngineId; installed: boolean; operation: Operation | null };
 
-const BUTTON = "rounded-md border border-line px-3 py-2 text-sm font-medium disabled:opacity-50";
 
 export function EngineInstall({ engine, installed, onChanged }: {
   engine: EngineId;
@@ -43,7 +44,7 @@ export function EngineInstall({ engine, installed, onChanged }: {
         onChangedRef.current();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not check install status.");
+      setError(err instanceof Error ? `Could not check install status. ${err.message}` : "Could not check install status.");
     }
   }, [engine]);
 
@@ -69,7 +70,7 @@ export function EngineInstall({ engine, installed, onChanged }: {
         method: "POST", body: JSON.stringify({ action }),
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start the install.");
+      setError(err instanceof Error ? `Could not start the install. ${err.message}` : "Could not start the install.");
     } finally { setBusy(false); }
   };
 
@@ -79,21 +80,21 @@ export function EngineInstall({ engine, installed, onChanged }: {
       await request<void>(`/engine-install/${engine}`, { method: "DELETE" });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not cancel the install.");
+      setError(err instanceof Error ? `Could not cancel the install. ${err.message}` : "Could not cancel the install.");
     } finally { setBusy(false); }
   };
 
   return <section className="space-y-2">
     <div className="flex flex-wrap gap-2">
-      {!managedInstalled ? <button type="button" className={BUTTON} disabled={busy || running} onClick={() => void start("install")}>{installed ? "Install app-managed copy" : "Install"}</button>
-        : <button type="button" className={BUTTON} disabled={busy || running} onClick={() => void start("update")}>Update</button>}
-      {running && <button type="button" className={BUTTON} disabled={busy} onClick={() => void cancel()}>Cancel</button>}
-      {operation?.status === "failed" && <button type="button" className={BUTTON} disabled={busy} onClick={() => void start(managedInstalled ? "update" : "install")}>Retry</button>}
+      {!managedInstalled ? <Button type="button" disabled={busy || running} onClick={() => void start("install")}>{installed ? "Install app-managed copy" : "Install"}</Button>
+        : <Button type="button" disabled={busy || running} onClick={() => void start("update")}>Update</Button>}
+      {running && <Button type="button" disabled={busy} onClick={() => void cancel()}>Cancel</Button>}
+      {operation?.status === "failed" && <Button type="button" disabled={busy} onClick={() => void start(managedInstalled ? "update" : "install")}>Retry</Button>}
     </div>
     {installed && !managedInstalled && <p className="text-xs text-muted">The app-managed copy is stored in its own runtime folder. Existing CLI installs outside the app data folder are left in place.</p>}
     {operation && <p role="status" className="text-xs text-muted">{operation.progress}</p>}
-    {operation?.error && <p role="alert" className="text-xs text-warning">{operation.error}</p>}
-    {error && <p role="alert" className="text-xs text-warning">{error}</p>}
+    {operation?.error && <Banner tone="warning">{operation.error}</Banner>}
+    {error && <Banner tone="warning">{error}</Banner>}
     {operation?.output && <details className="text-xs"><summary className="cursor-pointer">Installer output</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-muted">{operation.output}</pre></details>}
   </section>;
 }

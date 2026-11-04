@@ -9,10 +9,11 @@ import { ConnectTelegram } from "@/components/ConnectTelegram";
 import { ConnectClaude } from "@/components/ConnectClaude";
 import { ConnectGitHub } from "@/components/ConnectGitHub";
 import { SubmitTask } from "@/components/SubmitTask";
+import { Banner } from "@/components/ui/Banner";
+import { SkeletonList } from "@/components/ui/Skeleton";
+import { useT } from "@/lib/use-i18n";
 
-// The original Telegram and Boat task page. It moved here when /chat became the
-// home page; nothing in it changed. It is not linked from the app: open /tasks/
-// on a server install that has Boat and Telegram configured.
+// Legacy Telegram and Boat task page, kept working for existing users of /tasks/.
 export default function TasksPage() {
   return (
     <AuthGate>
@@ -22,6 +23,7 @@ export default function TasksPage() {
 }
 
 function Home() {
+  const t = useT();
   // Who the web UI acts as comes from the signed-in session (docs/AUTH.md),
   // never from this browser's storage.
   const { session, setUserId } = useSession();
@@ -71,7 +73,7 @@ function Home() {
       const { user_id } = await auth.setIdentity(identity);
       setUserId(user_id);
     } catch (err) {
-      setIdentityError(err instanceof ApiError ? err.message : "Could not save who you are.");
+      setIdentityError(err instanceof ApiError ? `Could not save who you are. ${err.message}` : "Could not save who you are.");
     }
   };
 
@@ -80,7 +82,7 @@ function Home() {
     try {
       await auth.clearIdentity();
     } catch (err) {
-      setIdentityError(err instanceof ApiError ? err.message : "Could not start over.");
+      setIdentityError(err instanceof ApiError ? `Could not start over. ${err.message}` : "Could not start over.");
       return;
     }
     setUserId(null);
@@ -99,6 +101,12 @@ function Home() {
           <Link href="/chat" className="mt-2 inline-block text-sm font-medium underline">
             Open chat
           </Link>
+          <Link
+            href="/settings/channels/"
+            className="mx-auto mt-1 flex min-h-11 w-fit items-center rounded-field px-2 text-sm font-medium text-accent underline underline-offset-2 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent touch:min-h-12"
+          >
+            {t("channels.manageTelegram")}
+          </Link>
         </div>
 
         {backendProblem ? (
@@ -107,11 +115,11 @@ function Home() {
             <p className="mt-1 text-sm text-muted">{backendProblem}</p>
           </section>
         ) : boatEnabled === null ? (
-          <p className="text-center text-sm text-muted">Loading…</p>
+          <SkeletonList rows={3} />
         ) : (
           <>
             <ConnectTelegram userId={userId} onLinked={handleLinked} onReset={handleReset} />
-            {identityError && <p role="alert" className="text-sm text-danger">{identityError}</p>}
+            {identityError && <Banner tone="danger">{identityError}</Banner>}
 
             {boatEnabled ? (
               <>

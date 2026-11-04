@@ -302,7 +302,7 @@ class EngineRegistry:
             "signed_in": probe.signed_in,
             "available": bool(probe.ready),
             "reason": None if probe.ready else (probe.reason or "This engine is not ready."),
-            "models": [{"id": m.id, "label": m.label, "default": m.default} for m in models],
+            "models": [{"id": m.id, "label": m.label, "default": m.default, "default_reasoning_effort": getattr(m, "default_reasoning_effort", None), "supported_reasoning_efforts": list(getattr(m, "supported_reasoning_efforts", ())), "reasoning_effort_configurable": getattr(m, "reasoning_effort_configurable", True)} for m in models],
             "default_model": default,
             "custom_models": accepts_custom_models(adapter),
             "capabilities": capabilities_of(adapter).as_dict(),

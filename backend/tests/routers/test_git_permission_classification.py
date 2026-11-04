@@ -43,7 +43,6 @@ async def test_git_hook_uses_mutation_policy(db_session, monkeypatch, command, b
     assert response.status_code == 200, response.text
     assert response.json()["hookSpecificOutput"]["decision"]["behavior"] == behavior
 
-
 async def test_a_hook_token_is_good_for_only_its_own_user_and_task(db_session, monkeypatch):
     """A token found inside one sandbox must not answer a check for another
     task or another user."""
@@ -82,3 +81,36 @@ async def test_a_hook_token_is_good_for_only_its_own_user_and_task(db_session, m
     assert wrong_task.status_code == 401
     assert wrong_user.status_code == 401
     assert bare.status_code == 401  # the raw install token is not a hook token
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status; touch x",
+        "git log $(touch x)",
+        "git -c core.pager=x log",
+        "git diff --output=out.txt",
+    ],
+)
+async def test_read_allow_rule_does_not_cover_other_commands(db_session, monkeypatch, command):
+    owner = "git_policy_" + uuid4().hex
+    db_session.add_all([
+        PermissionRule(user_id=owner, bucket="read", decision="allow"),
+        PermissionRule(user_id=owner, bucket="read", connector="github", decision="allow"),
+        PermissionRule(user_id=owner, bucket="system", decision="deny"),
+    ])
+    await db_session.flush()
+
+    async def session():
+        yield db_session
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, session)
+    good = hook_token.scoped_token(settings.HOOK_TOKEN, owner, 1)
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://localhost") as client:
+        response = await client.post(
+            f"/api/v1/permissions/check/{owner}/1",
+            headers={"Authorization": f"Bearer {good}"},
+            json={"tool_name": "Bash", "tool_input": {"command": command}},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["hookSpecificOutput"]["decision"]["behavior"] == "deny"

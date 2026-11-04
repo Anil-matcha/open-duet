@@ -8,9 +8,12 @@ import { auth } from "@/lib/auth";
 import { encodeQr, qrSvgPath } from "@/lib/qr";
 import type { Device, PairingCode } from "@/lib/session";
 import { useSession } from "./AuthGate";
+import { Button } from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
+import { Banner } from "@/components/ui/Banner";
+import { SkeletonList } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 
-const inputClass = "block w-full rounded-md border border-line bg-transparent px-3 py-2 text-sm";
-const buttonClass = "cursor-pointer rounded-md border border-line px-3 py-2 text-sm hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50";
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -49,22 +52,22 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
             <QrCode text={link} />
             <div>
               <p className="font-mono text-2xl font-semibold tracking-widest" data-testid="pairing-code">{code.display_code}</p>
-              <p className="text-xs text-muted">{code.scope === "admin" ? "Full access" : "Chat only"} · works once · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</p>
+              <p className="text-xs text-muted">{code.scope === "admin" ? "Full access" : code.scope === "files" ? "Chat and files" : "Chat only"} · works once · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</p>
             </div>
           </div>
-          {code.scope === "chat" ? (
+          {code.scope !== "admin" ? (
             <div className="space-y-2" data-testid="app-pairing">
               <p className="text-sm">In the phone app, scan this code instead, or open <span className="break-all font-mono text-xs">{appLink}</span></p>
               <QrCode text={appLink} label="Phone app pairing QR code" testId="app-pairing-qr" />
             </div>
           ) : (
-            <p className="text-xs text-muted">The phone app only accepts a Chat only code. Create one to pair the app.</p>
+            <p className="text-xs text-muted">The phone app only accepts a Chat only or Chat and files code. Create one to pair the app.</p>
           )}
         </>
       ) : (
         <p className="text-sm text-muted">That code has expired.</p>
       )}
-      <button type="button" className={buttonClass} onClick={onDone}>Done</button>
+      <Button type="button" onClick={onDone}>Done</Button>
     </div>
   );
 }
@@ -75,7 +78,7 @@ export function DevicesSection() {
   const router = useRouter();
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [scope, setScope] = useState<"admin" | "chat">("chat");
+  const [scope, setScope] = useState<"admin" | "chat" | "files">("chat");
   const [label, setLabel] = useState("");
   const [code, setCode] = useState<PairingCode | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,7 +91,7 @@ export function DevicesSection() {
       setDevices(await auth.devices());
       setError(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load devices.");
+      setError(err instanceof ApiError ? `Could not load devices. ${err.message}` : "Could not load devices.");
     }
   }, []);
 
@@ -106,7 +109,7 @@ export function DevicesSection() {
       setCode(await auth.createPairingCode(scope, label));
       setLabel("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create a pairing code.");
+      setError(err instanceof ApiError ? `Could not create a pairing code. ${err.message}` : "Could not create a pairing code.");
     } finally {
       setBusy(false);
     }
@@ -127,7 +130,7 @@ export function DevicesSection() {
       }
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not revoke that device.");
+      setError(err instanceof ApiError ? `Could not revoke that device. ${err.message}` : "Could not revoke that device.");
     } finally {
       setBusy(false);
     }
@@ -141,14 +144,14 @@ export function DevicesSection() {
     <section className="space-y-4 rounded-lg border border-line p-5" aria-labelledby="devices-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="devices-heading" className="font-semibold">Devices</h3>
-        {session.kind === "browser" && <button type="button" className={buttonClass} onClick={signOut}>Sign out</button>}
+        {session.kind === "browser" && <Button type="button" onClick={signOut}>Sign out</Button>}
       </div>
       <p className="text-xs text-muted">
         {session.kind === "loopback"
           ? "This request is trusted because it comes from this machine (LOOPBACK_TRUST)."
           : `Signed in as ${session.label ?? "this browser"} · ${session.scopes.includes("admin") ? "full access" : "chat only"}.`}
       </p>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {error && <Banner tone="danger">{error}</Banner>}
       {admin && (
         <>
           {code ? (
@@ -159,34 +162,35 @@ export function DevicesSection() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label htmlFor="pair-scope" className="block text-sm font-medium">Access</label>
-                  <select id="pair-scope" className={inputClass} value={scope} onChange={(e) => setScope(e.target.value as "admin" | "chat")}>
+                  <Select id="pair-scope" value={scope} onChange={(e) => setScope(e.target.value as "admin" | "chat" | "files")}>
                     <option value="chat">Chat only</option>
+                    <option value="files">Chat and files (open files the agent made)</option>
                     <option value="admin">Full access (settings, devices)</option>
-                  </select>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="pair-label" className="block text-sm font-medium">Name (optional)</label>
-                  <input id="pair-label" className={inputClass} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My phone" maxLength={80} />
+                  <Input id="pair-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="My phone" maxLength={80} />
                 </div>
               </div>
-              <button type="button" className={buttonClass} onClick={create} disabled={busy}>Create pairing code</button>
+              <Button type="button" onClick={create} disabled={busy}>Create pairing code</Button>
             </div>
           )}
           <div>
             <h4 className="mb-2 text-sm font-medium">Signed in</h4>
-            {devices === null ? <p className="text-sm text-muted">Loading…</p> : devices.length === 0 ? (
-              <p className="text-sm text-muted">No signed-in browsers or paired devices.</p>
+            {devices === null ? <SkeletonList rows={3} /> : devices.length === 0 ? (
+              <EmptyState title="No signed-in browsers or paired devices." description="Create a pairing code above to add your phone." className="py-6" />
             ) : (
               <ul className="divide-y divide-line">
                 {devices.map((device) => (
                   <li key={device.id} className="flex flex-wrap items-center justify-between gap-2 py-2" data-testid="device-row">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{device.label}{device.current && <span className="ml-2 rounded bg-inset px-1.5 py-0.5 text-xs font-normal">this browser</span>}</p>
-                      <p className="text-xs text-muted">{device.kind === "browser" ? "Browser" : "Device token"} · {device.scopes.includes("admin") ? "full access" : "chat only"} · last seen {when(device.last_seen_at)} · since {when(device.created_at)}</p>
+                      <p className="text-xs text-muted">{device.kind === "browser" ? "Browser" : "Device token"} · {device.scopes.includes("admin") ? "full access" : device.scopes.includes("files") ? "chat and files" : "chat only"} · last seen {when(device.last_seen_at)} · since {when(device.created_at)}</p>
                     </div>
-                    <button type="button" className={buttonClass} disabled={busy} onClick={() => revoke(device)} aria-label={`Revoke ${device.label}`}>
+                    <Button type="button" disabled={busy} onClick={() => revoke(device)} aria-label={`Revoke ${device.label}`}>
                       {confirming === device.id ? "Confirm revoke" : "Revoke"}
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>

@@ -1,8 +1,18 @@
 import type { SkillDoc, SkillPreview, SkillSave, SkillSummary, SkillLearnPreview, SkillLearnSource } from "./skills";
 import type { TemplateCatalog, TemplateSkill } from "./templates";
 import type { ComposioAccount, ComposioApp, ComposioLink } from "./connected-apps";
+import type { MarketplaceCatalog, MarketplaceConnection, MarketplaceSection, MarketplaceTool } from "./marketplace";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+
+export function isLocalApiEndpoint(): boolean {
+  try {
+    const hostname = new URL(API_BASE).hostname.toLowerCase();
+    return hostname === "localhost" || hostname.endsWith(".localhost") || hostname.startsWith("127.") || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
 
 class ApiError extends Error {
   status: number;
@@ -500,6 +510,19 @@ export type Agent = {
   computer?: ComputerSummary | null;
 };
 
+export type OpenBotDatabaseProfilePreview = {
+  key: string;
+  name: string;
+  title: string;
+  instructions: string;
+  document: Record<string, unknown>;
+};
+
+export type OpenBotDatabasePreview = {
+  schema_version: number;
+  profiles: OpenBotDatabaseProfilePreview[];
+};
+
 export type AgentInput = {
   make_lead?: boolean;
   name: string;
@@ -526,7 +549,14 @@ export type AgentInput = {
   starter_notes?: string | null;
 };
 
-export type EngineModel = { id: string; label: string; default: boolean };
+export type EngineModel = {
+  id: string;
+  label: string;
+  default: boolean;
+  default_reasoning_effort?: string | null;
+  supported_reasoning_efforts?: string[];
+  reasoning_effort_configurable?: boolean;
+};
 export type EngineConfigField = {
   name: keyof EngineConfigInput;
   label: string;
@@ -558,6 +588,11 @@ export type Engine = {
   // Set while the engine refuses turns for a usage or rate limit or no credits.
   limit?: EngineLimit | null;
 };
+export type EnginePreference = {
+  provider: string | null;
+  model: string | null;
+  effort?: string | null;
+};
 export type EngineLimit = {
   kind: "usage_limit" | "rate_limit" | "credits";
   resets_at: string | null;
@@ -586,6 +621,16 @@ export type CodexLoginOperation = {
 };
 
 export type ClaudeLoginOperation = Omit<CodexLoginOperation, "user_code"> & { code_sent?: boolean };
+
+export type VersionInfo = {
+  current_version: string;
+  commit?: string | null;
+  latest_version?: string | null;
+  update_available: boolean;
+  install_kind: "docker" | "service" | "git" | "source";
+  update_command: string;
+  release_notes_url: string;
+};
 
 export type GoogleSetupOperation = {
   id: string;
@@ -711,6 +756,7 @@ export type Thread = {
   title: string | null;
   provider: string;
   model: string | null;
+  effort?: string | null;
   // The folder Claude works in; saved command rules can be tied to it.
   workspace_path?: string | null;
   // The computer this conversation's tools run in (its agent's), or null.
@@ -876,6 +922,7 @@ export type Routine = {
   webhook_enabled: boolean;
   latest_run: RoutineRun | null;
   connected_app_grants: ConnectedAppGrant[];
+  uninterrupted_access: boolean;
 };
 
 export type RoutineInput = {
@@ -893,6 +940,7 @@ export type RoutineInput = {
   retry_limit: number;
   retry_delay_minutes: number;
   connected_app_grants: ConnectedAppGrant[];
+  uninterrupted_access: boolean;
 };
 
 export type SchedulePreview = { summary: string; next_dates: string[] };
@@ -910,11 +958,22 @@ export type AppNotification = {
   created_at: string;
 };
 
+export type NotificationPreferences = {
+  desktop_enabled: boolean;
+  notify_needs_you: boolean;
+  notify_failures: boolean;
+  notify_task_due: boolean;
+  sound_enabled: boolean;
+};
+
 export const api = {
+  getVersionInfo: (refresh = false) => request<VersionInfo>(`/version${refresh ? "?refresh=true" : ""}`),
   roomExportUrl: (id: number, format: "md" | "json") => requestBlobUrl(`/rooms/${id}/export?format=${format}`),
   getNeedsYou: () => request<import("./needs-you").NeedsYouSnapshot>("/needs-you?refresh=true"),
   requestTeamLead: (agentId: number) => request<{ id: number; lead_agent_id: number }>("/team/lead", { method: "POST", body: JSON.stringify({ agent_id: agentId }) }),
   getEngines: (refresh = false) => request<Engine[]>(`/engines${refresh ? "?refresh=true" : ""}`),
+  getEnginePreference: () => request<EnginePreference>("/engines/preference"),
+  setEnginePreference: (preference: EnginePreference) => request<EnginePreference>("/engines/preference", { method: "PUT", body: JSON.stringify(preference) }),
   logoutClaudeEngine: () => request<void>("/engines/claude/logout", { method: "POST" }),
   logoutCodexEngine: () => request<void>("/engines/codex/logout", { method: "POST" }),
   startClaudeEngineLogin: () => request<ClaudeLoginOperation>("/engines/claude/login", { method: "POST" }),
@@ -947,6 +1006,29 @@ export const api = {
   connectComposioApp: (toolkit: string, alias?: string) =>
     request<ComposioLink>("/integrations/composio/connect", { method: "POST", body: JSON.stringify(alias ? { toolkit, alias } : { toolkit }) }),
   disconnectComposioAccount: (id: string) => request<void>(`/integrations/composio/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  // Community MCP marketplace. Credentials are sent only to the signed-in backend.
+  getMarketplaceCatalog: () => request<MarketplaceCatalog>("/integrations/marketplace"),
+  listMarketplaceConnections: () => request<MarketplaceConnection[]>("/integrations/marketplace/connections"),
+  installMarketplaceListing: (section: MarketplaceSection, slug: string, manifestDigest: string) =>
+    request<MarketplaceConnection>(`/integrations/marketplace/${section}/${encodeURIComponent(slug)}/install`, {
+      method: "POST", body: JSON.stringify({ manifest_digest: manifestDigest }),
+    }),
+  disconnectMarketplaceListing: (connectionId: string) =>
+    request<void>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" }),
+  discoverMarketplaceTools: (connectionId: string) =>
+    request<MarketplaceTool[]>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/tools`),
+  saveMarketplaceCredential: (connectionId: string, credential: string) =>
+    request<MarketplaceConnection>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/credential`, {
+      method: "PUT", body: JSON.stringify({ credential }),
+    }),
+  removeMarketplaceCredential: (connectionId: string) =>
+    request<void>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/credential`, { method: "DELETE" }),
+  getMarketplaceAgentGrants: (connectionId: string, agentId: number) =>
+    request<{ tool_names: string[] }>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/agents/${agentId}/grants`),
+  saveMarketplaceAgentGrants: (connectionId: string, agentId: number, tools: { name: string; schema_digest: string }[]) =>
+    request<{ tool_names: string[] }>(`/integrations/marketplace/connections/${encodeURIComponent(connectionId)}/agents/${agentId}/grants`, {
+      method: "PUT", body: JSON.stringify({ tools }),
+    }),
   getDesktopSettings: () => request<DesktopSettings>("/settings"),
   saveDesktopSetting: (key: string, value: unknown, expectedVersion: number) =>
     request<ApplicationSetting>(`/settings/${encodeURIComponent(key)}`, {
@@ -1047,7 +1129,7 @@ export const api = {
 
   getThread: (threadId: number) => request<ThreadDetail>(`/threads/${threadId}`),
 
-  createThread: (agentId?: number | null, selection?: { provider?: string; model?: string | null }) =>
+  createThread: (agentId?: number | null, selection?: { provider?: string; model?: string | null; effort?: string | null }) =>
     request<Thread>("/threads", {
       method: "POST",
       body: JSON.stringify({ ...(agentId != null ? { agent_id: agentId } : {}), ...selection }),
@@ -1161,6 +1243,12 @@ export const api = {
       body: JSON.stringify({ document, include_notes: includeNotes }),
     }),
 
+  previewOpenBotDatabase: (file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return requestForm<OpenBotDatabasePreview>("/agents/import/openbot/preview", form);
+  },
+
   // --- Agent computers. An older backend answers 404 here: callers treat that
   // as "computers are not available" and keep working. ---
 
@@ -1240,7 +1328,7 @@ export const api = {
     request<{ status: string; turn_id: number }>(`/threads/${threadId}/stop`, { method: "POST" }),
 
   // Rename and/or archive. 409 turn_running: stop the answer first (archive only).
-  updateThread: (threadId: number, change: { title?: string; archived?: boolean; model?: string | null }) =>
+  updateThread: (threadId: number, change: { title?: string; archived?: boolean; model?: string | null; effort?: string | null }) =>
     request<Thread>(`/threads/${threadId}`, { method: "PATCH", body: JSON.stringify(change) }),
 
   // Permanent: the conversation's messages, tool calls and approvals in this app's
@@ -1389,6 +1477,9 @@ export const api = {
   unreadNotifications: () => request<{ unread: number }>("/notifications/unread-count"),
   readNotification: (id: number) => request<void>(`/notifications/${id}/read`, { method: "POST" }),
   readAllNotifications: () => request<{ unread: number }>("/notifications/read-all", { method: "POST" }),
+  getNotificationPreferences: () => request<NotificationPreferences>("/notifications/preferences"),
+  updateNotificationPreferences: (prefs: NotificationPreferences) =>
+    request<NotificationPreferences>("/notifications/preferences", { method: "PUT", body: JSON.stringify(prefs) }),
 
   // --- Everyday features (docs/EVERYDAY.md) ---
   searchConversations: (query: string, filter: SearchFilter = {}) =>

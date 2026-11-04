@@ -11,6 +11,12 @@ test('paragraphs, headings and rules', () => {
   assert.equal(blocks[3].level, 3);
 });
 
+test('a heading drops only a closing # run that follows a space', () => {
+  const text = (source) => parseMarkdown(source)[0].children[0].text;
+  assert.equal(text('## Using C#'), 'Using C#');
+  assert.equal(text('# Title ##'), 'Title');
+});
+
 test('a fenced code block keeps its text and language, and may be unclosed while streaming', () => {
   const closed = parseMarkdown('```js\nconst a = 1;\n# not a heading\n```\nafter');
   assert.deepEqual(kinds(closed), ['code', 'paragraph']);
@@ -70,6 +76,9 @@ test('links: only http, https and mailto become clickable', () => {
   assert.equal(safeHref('data:text/html,hi'), null);
   assert.equal(safeHref('/relative'), null);
   assert.equal(safeHref('mailto:a@b.co'), 'mailto:a@b.co');
+  const wiki = parseInline('[Foo](https://en.wikipedia.org/wiki/Foo_(bar)) after');
+  assert.equal(wiki[0].href, 'https://en.wikipedia.org/wiki/Foo_(bar)');
+  assert.deepEqual(wiki[1], { type: 'text', text: ' after' });
   const bare = parseInline('see https://example.com/x.');
   assert.equal(bare[1].href, 'https://example.com/x');
 });
@@ -83,4 +92,21 @@ test('HTML in an answer stays plain text', () => {
 test('re-parsing every prefix of a streamed answer never throws', () => {
   const full = '# Hi\n\n- a **b\n- c `d\n\n```ts\nlet x\n\n| a | b |\n|--|--|\n| [l](http://x';
   for (let n = 0; n <= full.length; n += 1) parseMarkdown(full.slice(0, n));
+});
+
+test('nested lists attach to the item above, and indented text still continues it', () => {
+  const [ul] = parseMarkdown('- a\n  - a1\n  - a2\n    deeper\n- b\n  more');
+  assert.equal(ul.type, 'list');
+  assert.equal(ul.items.length, 2);
+  assert.equal(ul.sub[0][0].type, 'list');
+  assert.equal(ul.sub[0][0].items.length, 2);
+  assert.equal(ul.sub[1].length, 0);
+  const [ol] = parseMarkdown('1. one\n    - x\n2. two');
+  assert.equal(ol.items.length, 2);
+  assert.equal(ol.sub[0][0].items.length, 1);
+});
+
+test('a table inside a half-written answer keeps its alignment row', () => {
+  const [t] = parseMarkdown('| a | b |\n|:-:|--:|\n| 1 | 2 |');
+  assert.deepEqual(t.align, ['center', 'right']);
 });

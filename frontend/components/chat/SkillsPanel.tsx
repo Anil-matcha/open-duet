@@ -5,6 +5,7 @@
 // picks it for a message (the Composer's skill picker); nothing here sends or runs anything.
 import { useCallback, useEffect, useState } from "react";
 import { api, type Agent } from "@/lib/api";
+import { useT } from "@/lib/use-i18n";
 import {
   isSkillName,
   skillErrorText,
@@ -51,6 +52,7 @@ export function SkillsPanel({
   learnFrom?: SkillLearnSource | null;
   onChanged?: () => void;
 }) {
+  const t = useT();
   const agentId = agent.id;
   const [skills, setSkills] = useState<SkillSummary[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -306,7 +308,7 @@ export function SkillsPanel({
       {skills === null ? (
         <p className="text-xs text-muted">Loading…</p>
       ) : skills.length === 0 ? (
-        <p className="text-xs text-muted">No skills yet. Write one, import a SKILL.md, or use Save as skill after a conversation that went well.</p>
+        <p className="text-xs text-muted">{t("agentTeam.skillsEmpty")}</p>
       ) : (
         <ul className="space-y-2">
           {skills.map((skill) => (

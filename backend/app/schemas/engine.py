@@ -5,6 +5,9 @@ class EngineModel(BaseModel):
     id: str
     label: str
     default: bool = False
+    default_reasoning_effort: str | None = None
+    supported_reasoning_efforts: list[str] = Field(default_factory=list)
+    reasoning_effort_configurable: bool = True
 
 
 class EngineCapabilities(BaseModel):
@@ -88,3 +91,12 @@ class EngineConfigRequest(BaseModel):
     # OpenAI-compatible: the model's context window in tokens; long
     # conversations are folded at 80% of it (docs/MEMORY.md).
     context_tokens: int | None = None
+
+
+class EnginePreference(BaseModel):
+    """The user's preferred default engine and model, persisted to disk."""
+
+    provider: str | None = None
+    model: str | None = None
+    effort: str | None = None
+

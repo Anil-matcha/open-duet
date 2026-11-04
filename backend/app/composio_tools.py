@@ -300,7 +300,7 @@ def generic_apps(levels: dict) -> tuple[list[str], list[str]]:
     return sorted(other), sorted(app for app in other if levels[app] == "write" or composio_generic.REVIEWED_READS)
 
 
-def mcp_tools(levels: dict, *, routine_tools: bool = False) -> list[dict]:
+def mcp_tools(levels: dict, *, routine_tools: bool = False, uninterrupted: bool = False) -> list[dict]:
     """The tool list the shim shows: only what this agent may use, by app and level."""
     shown = [ACCOUNTS_TOOL]
     for tool in TOOLS:
@@ -315,7 +315,7 @@ def mcp_tools(levels: dict, *, routine_tools: bool = False) -> list[dict]:
                                 "required": list(tool.required), "additionalProperties": False},
             })
     searchable, runnable = generic_apps(levels)
-    return shown + composio_generic.mcp_tools(searchable, runnable)
+    return shown + composio_generic.mcp_tools(searchable, runnable, uninterrupted=uninterrupted)
 
 
 def tool_note(levels: dict) -> str:

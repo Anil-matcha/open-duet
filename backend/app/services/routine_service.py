@@ -1095,10 +1095,15 @@ class RoutineScheduler:
             if routine.quiet_reporting else ""
         )
         try:
+            from app.services import routine_uninterrupted
+            async with self.session() as db:
+                current = await db.get(Routine, routine.id)
+                uninterrupted = bool(current and current.uninterrupted_access and run.trigger in ("schedule", "manual"))
+                capabilities = await routine_uninterrupted.snapshot(db, self.owner_id, routine.agent_id) if uninterrupted else {}
             thread = await rt.create_thread(agent_id=agent.id, title=title)
             await self._set(run.id, thread_id=thread.id, prompt=prompt_text, connected_app_grants=(
-                routine.connected_app_grants if run.trigger in ("schedule", "manual") else []
-            ))
+                routine.connected_app_grants if not uninterrupted and run.trigger in ("schedule", "manual") else []
+            ), uninterrupted_access=uninterrupted, capability_snapshot=capabilities)
             turn = await rt.send_turn(
                 thread.id,
                 prompt_text,

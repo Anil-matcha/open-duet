@@ -10,7 +10,10 @@ from sqlalchemy import delete, select
 from app.core.config import settings
 from app.db.models.user_credential import UserCredential
 from app.routers import integrations
+from app.routers.agents import get_runtime as agents_runtime
 from app.services.composio_client import ComposioClient
+from app.services.thread_hub import ThreadHub
+from app.services.thread_runtime import ThreadRuntime
 from tests.auth.test_auth_api import (  # noqa: F401
     app, factory, auth_settings, client, login, pairing_code, set_owner,
 )
@@ -394,7 +397,11 @@ async def test_an_app_composio_does_not_list_or_a_blocked_one_is_refused(admin, 
     assert composio.accounts == []
 
 
-async def test_connecting_an_app_does_not_give_any_agent_access(admin, composio):
+async def test_connecting_an_app_does_not_give_any_agent_access(app, factory, owner_id, admin, composio):
+    # The default runtime's pooled connections belong to whichever test loop first used
+    # them, so give the agents route a runtime on this test's own engine.
+    rt = ThreadRuntime(hub=ThreadHub(), adapters={}, status_ttl=0, _session_factory=factory, owner_id=owner_id)
+    app.dependency_overrides[agents_runtime] = lambda: rt
     await admin.put(f"{PATH}/key", json={"api_key": KEY})
     await admin.post(f"{PATH}/connect", json={"toolkit": "notion"})
     agents = (await admin.get("/api/v1/agents")).json()

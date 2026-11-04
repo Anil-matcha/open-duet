@@ -225,6 +225,19 @@ class AgentImportRequest(BaseModel):
     include_skills: bool = True
 
 
+class OpenBotDatabaseProfilePreview(BaseModel):
+    key: str
+    name: str
+    title: str
+    instructions: str
+    document: dict
+
+
+class OpenBotDatabasePreviewResponse(BaseModel):
+    schema_version: int
+    profiles: list[OpenBotDatabaseProfilePreview]
+
+
 # --- topic notes, the journal and proposed notes (docs/MEMORY.md) ------------------------
 
 

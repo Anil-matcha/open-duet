@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { request } from "@/lib/api";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Input";
 
 type Kind = "reset" | "delete";
 
@@ -34,21 +37,19 @@ export function DesktopAccountDanger({ kind, onDone }: { kind: Kind; onDone: () 
       await request(copy.path, { method: "POST", body: JSON.stringify({ confirm: copy.word }) });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not finish. Nothing was lost; try again.");
+      setError(err instanceof Error ? `Could not finish. Nothing was lost; try again. ${err.message}` : "Could not finish. Nothing was lost; try again.");
       setBusy(false);
     }
   }
 
-  if (!open) return <button type="button" className="text-sm underline" onClick={() => setOpen(true)}>{copy.open}</button>;
+  if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>{copy.open}</Button>;
   return <div className="space-y-3 rounded-md border border-line p-4">
-    <p role="alert" className="text-sm">{copy.warning}</p>
-    <label className="block text-sm">Type {copy.word} to confirm
-      <input className="mt-1 w-full rounded-md border border-line bg-transparent px-3 py-2" autoComplete="off" value={typed} disabled={busy} onChange={event => setTyped(event.target.value)} />
-    </label>
-    {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+    <Banner tone="warning">{copy.warning}</Banner>
+    <Field label={`Type ${copy.word} to confirm`}>{(props) => <Input {...props} autoComplete="off" value={typed} disabled={busy} onChange={event => setTyped(event.target.value)} />}</Field>
+    {error && <Banner tone="danger">{error}</Banner>}
     <div className="flex gap-3">
-      <button type="button" className="rounded-md border border-line px-4 py-2 text-sm disabled:opacity-50" disabled={busy || typed !== copy.word} onClick={() => void run()}>{busy ? "Please wait…" : copy.open}</button>
-      <button type="button" className="text-sm underline" disabled={busy} onClick={() => { setOpen(false); setTyped(""); setError(null); }}>Cancel</button>
+      <Button variant="danger" disabled={busy || typed !== copy.word} onClick={() => void run()}>{busy ? "Please wait…" : copy.open}</Button>
+      <Button variant="ghost" disabled={busy} onClick={() => { setOpen(false); setTyped(""); setError(null); }}>Cancel</Button>
     </div>
   </div>;
 }

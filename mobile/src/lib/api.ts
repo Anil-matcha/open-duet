@@ -3,7 +3,9 @@
 
 import type { Agent } from './agents';
 import { buildMultipart, type Attachment } from './attachments';
+import { readFolder, readPreview } from './files';
 import type { ApprovalRow, Room } from './rooms';
+import { readSearchPage, SEARCH_PAGE_SIZE } from './search';
 
 export type Session = { server: string; token: string };
 
@@ -15,6 +17,7 @@ export type Thread = {
   session_state: string;
   /** The agent this conversation was started from, or null (none, or since deleted). */
   agent_id?: number | null;
+  workspace_path?: string | null;
   last_seq: number;
   archived_at: string | null;
   created_at: string;
@@ -107,6 +110,9 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
   return {
     session,
     listThreads: () => request<Thread[]>('GET', '/threads?limit=100'),
+    // Titles and messages containing every word, newest first, a page at a time (`offset` is the page's start).
+    searchConversations: async (query: string, offset = 0, limit = SEARCH_PAGE_SIZE) =>
+      readSearchPage(await request<unknown>('GET', `/search?q=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`), query),
     // Engine and model are left out, so the server's own default (or the agent's) applies.
     createThread: (agentId?: number) => request<Thread>('POST', '/threads', agentId === undefined ? {} : { agent_id: agentId }),
     // Not archived ones, pinned first.
@@ -122,6 +128,14 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
     /** Where an attached image can be fetched from; the request needs the same bearer token. */
     attachmentSource: (id: number, attachmentId: string) => ({
       uri: `${session.server}/api/v1/threads/${id}/attachments/${attachmentId}`,
+      headers: { Authorization: `Bearer ${session.token}` },
+    }),
+    // Workspace files need a pairing code made with "Chat and files"; without it the server answers 403 `scope_denied`.
+    listFiles: async (id: number, path = '') => readFolder(await request<unknown>('GET', `/threads/${id}/files?path=${encodeURIComponent(path)}`)),
+    previewFile: async (id: number, path: string) => readPreview(await request<unknown>('GET', `/threads/${id}/files/content?path=${encodeURIComponent(path)}`)),
+    /** Where an image's bytes (or any file's, for a download) can be fetched from; the request needs the same bearer token. */
+    fileSource: (id: number, path: string, kind: 'raw' | 'download') => ({
+      uri: `${session.server}/api/v1/threads/${id}/files/${kind}?path=${encodeURIComponent(path)}`,
       headers: { Authorization: `Bearer ${session.token}` },
     }),
     stopTurn: (id: number) => request<{ turn_id: number }>('POST', `/threads/${id}/stop`, {}),
@@ -173,4 +187,15 @@ export function describeApiError(error: unknown): string {
     default:
       return error.status >= 500 ? 'Your server hit an error. Try again in a moment.' : message || 'Something went wrong. Try again.';
   }
+}
+
+/** Says what went wrong with a workspace file, using the server's own wording where it gives a reason. */
+export function describeFileError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.errorCode === 'scope_denied') {
+      return 'This phone was paired without file access. On your server open Settings → Devices, create a code with Access set to “Chat and files”, and pair again.';
+    }
+    if (error.status > 0 && error.status < 500 && error.status !== 401 && error.message) return error.message;
+  }
+  return describeApiError(error);
 }

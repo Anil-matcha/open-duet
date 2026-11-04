@@ -314,3 +314,48 @@ def test_broker_sends_loopback_and_metadata_through_the_proxy(monkeypatch):
     assert "--proxy-bypass-list=<-loopback>" in flags
     monkeypatch.delenv("OD_BROWSER_PROXY")
     assert not any(f.startswith("--proxy") for f in broker.extra_flags())
+
+
+HEADLESS = {"product": "HeadlessChrome/131.0.6778.86", "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/131.0.6778.86 Safari/537.36"}
+
+
+def test_broker_identity_drops_only_the_headless_word():
+    broker = _load_broker()
+    identity = broker.browser_identity(HEADLESS, "/usr/bin/chromium")
+    assert "Headless" not in identity["userAgent"]
+    assert identity["userAgent"] == HEADLESS["userAgent"].replace("HeadlessChrome/", "Chrome/")
+    meta = identity["userAgentMetadata"]
+    assert meta["platform"] == "Linux" and meta["mobile"] is False
+    assert {b["brand"] for b in meta["brands"]} >= {"Chromium"}
+    assert not any("Headless" in b["brand"] for b in meta["brands"] + meta["fullVersionList"])
+    # the short and full lists name the same brands, with the real major and full version for each real brand
+    assert [b["brand"] for b in meta["brands"]] == [b["brand"] for b in meta["fullVersionList"]]
+    assert {(b["brand"], b["version"]) for b in meta["fullVersionList"] if b["brand"] == "Chromium"} == {("Chromium", "131.0.6778.86")}
+
+
+def test_broker_identity_names_google_chrome_only_for_a_chrome_binary():
+    broker = _load_broker()
+    chrome = broker.browser_identity(HEADLESS, "/usr/bin/google-chrome")["userAgentMetadata"]["brands"]
+    chromium = broker.browser_identity(HEADLESS, "/usr/bin/chromium")["userAgentMetadata"]["brands"]
+    assert "Google Chrome" in {b["brand"] for b in chrome}
+    assert "Google Chrome" not in {b["brand"] for b in chromium}
+
+
+def test_broker_identity_is_left_alone_for_a_normal_or_unreadable_browser():
+    broker = _load_broker()
+    assert broker.browser_identity({"product": "Chrome/131.0.6778.86", "userAgent": "Mozilla/5.0 Chrome/131.0.6778.86"}) is None
+    assert broker.browser_identity({"product": "HeadlessChrome/x", "userAgent": "HeadlessChrome/x"}) is None
+    assert broker.browser_identity({}) is None
+
+
+def test_broker_recognises_bot_checks_without_copying_page_text():
+    broker = _load_broker()
+    assert broker.challenge_title("Just a moment...")
+    assert broker.challenge_title("Attention Required! | Cloudflare")
+    assert not broker.challenge_title("Justice, a moment of calm")
+    assert not broker.challenge_title("")
+    assert broker.challenge_frame("https://www.google.com/recaptcha/api2/anchor?k=1")
+    assert broker.challenge_frame("https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile")
+    assert not broker.challenge_frame("https://www.google.com/recaptcha/api2/anchor?k=1&size=invisible")
+    assert not broker.challenge_frame("https://example.com/")
+    assert "<" not in broker.CHALLENGE_NOTICE and "Do not try to solve or bypass" in broker.CHALLENGE_NOTICE

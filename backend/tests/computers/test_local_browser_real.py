@@ -6,6 +6,7 @@ Chrome against a throwaway local page and checks the whole process group is gone
 import functools
 import http.server
 import importlib.util
+import json
 import os
 import re
 import signal
@@ -87,6 +88,88 @@ def test_real_open_snapshot_click_and_release_kills_the_group(browser, page):
         time.sleep(.1)
     assert group_gone(pgid), "broker and Chrome should be gone after release"
     assert not browser.running()
+
+
+IDENTITY_HTML = """<!doctype html><title>Identity</title><pre id="out"></pre>
+<script>document.getElementById("out").textContent = JSON.stringify({
+  ua: navigator.userAgent, brands: (navigator.userAgentData || {brands: []}).brands.map(b => b.brand + "/" + b.version),
+  mobile: navigator.userAgentData && navigator.userAgentData.mobile});</script>"""
+
+
+@pytest.fixture
+def echo(tmp_path):
+    """A loopback site that writes back the headers each request carried, and a few pages that look like bot checks."""
+    seen = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a, **k):
+            pass
+
+        def do_GET(self):
+            path = self.path.split("?")[0]
+            if path == "/echo":
+                seen.update({k.lower(): v for k, v in self.headers.items()})
+                body = IDENTITY_HTML
+            elif path == "/moment":
+                body = "<!doctype html><title>Just a moment...</title><p>Checking your browser</p>"
+            elif path == "/captcha":
+                body = '<!doctype html><title>Sign in</title><iframe src="/hcaptcha/frame" style="width:300px;height:80px"></iframe>'
+            elif path == "/invisible":
+                body = '<!doctype html><title>Sign in</title><iframe src="/recaptcha/anchor?size=invisible" style="width:300px;height:80px"></iframe>'
+            elif path.startswith(("/hcaptcha/", "/recaptcha/")):
+                body = "<!doctype html><p>frame</p>"
+            else:
+                body = "<!doctype html><title>Plain</title><h1>Plain page</h1>"
+            data = body.encode()
+            self.send_response(200)
+            self.send_header("content-type", "text/html; charset=utf-8")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}", seen
+    finally:
+        server.shutdown()
+
+
+def test_real_headless_browser_does_not_announce_itself_in_header_or_javascript(browser, echo):
+    base, seen = echo
+    result, text = call(browser, "browser_open", {"url": base + "/echo"})
+    assert not result.get("isError")
+    _, page_text = call(browser, "browser_read")
+    values = json.loads(page_text.split("\n", 1)[1])
+    assert "Headless" not in seen["user-agent"] and "Headless" not in values["ua"]
+    assert seen["user-agent"] == values["ua"]
+    assert not any("Headless" in brand for brand in values["brands"])
+    header_brands = [part.split(";v=")[0].strip().strip('"') for part in seen["sec-ch-ua"].split(",")]
+    assert header_brands == [brand.split("/")[0] for brand in values["brands"]], "client hints must match navigator.userAgentData"
+    assert values["mobile"] is False
+
+
+def test_real_identity_applies_to_a_new_tab_too(browser, echo):
+    base, seen = echo
+    call(browser, "browser_open", {"url": base + "/plain"})
+    call(browser, "browser_tabs", {"action": "new"})
+    call(browser, "browser_open", {"url": base + "/echo"})
+    assert "Headless" not in seen["user-agent"]
+
+
+def test_real_bot_check_pages_get_a_notice_and_ordinary_pages_do_not(browser, echo):
+    base, _ = echo
+    for path in ("/moment", "/captcha"):
+        result, text = call(browser, "browser_open", {"url": base + path})
+        assert not result.get("isError")
+        assert text.startswith("BROWSER NOTICE:"), (path, text[:200])
+        _, snapshot = call(browser, "browser_snapshot")
+        assert snapshot.startswith("BROWSER NOTICE:")
+    for path in ("/plain", "/invisible"):
+        _, text = call(browser, "browser_open", {"url": base + path})
+        assert "BROWSER NOTICE" not in text, path
+        _, read = call(browser, "browser_read")
+        assert "BROWSER NOTICE" not in read
 
 
 def test_the_egress_check_blocks_loopback_and_metadata_urls(page):

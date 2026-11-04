@@ -98,6 +98,7 @@ async def create_thread(payload: ThreadCreateRequest, rt: ThreadRuntime = Depend
             # Omitted means the agent's provider, or Claude without an agent.
             provider=payload.provider if "provider" in payload.model_fields_set else None,
             model=payload.model,
+            effort=payload.effort,
             title=payload.title,
             agent_id=payload.agent_id,
         )
@@ -166,13 +167,18 @@ async def update_thread(
     try:
         # All changes in one transaction: a failure in any part applies none,
         # so the client never sees "failed" with a renamed or archived thread.
+        touched_model = "model" in payload.model_fields_set or "effort" in payload.model_fields_set
+        model = payload.model if "model" in payload.model_fields_set else current.model
+        effort = payload.effort if "effort" in payload.model_fields_set else (current.provider_state or {}).get("effort")
         async with rt.session() as db:
             thread = await store.update_thread_fields(
                 db,
                 thread_id,
                 title=payload.title,
-                model=payload.model,
-                model_set="model" in payload.model_fields_set,
+                model=model,
+                model_set=touched_model,
+                effort=effort,
+                effort_set=touched_model,
                 archived=payload.archived,
             )
     except store.ThreadNotFound:

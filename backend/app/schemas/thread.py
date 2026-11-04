@@ -12,6 +12,8 @@ class ThreadCreateRequest(BaseModel):
     # What the person asked for; omitted means the engine's default. Checked
     # against the engine (422 `unknown_model`).
     model: str | None = Field(default=None, max_length=200)
+    effort: str | None = Field(default=None, max_length=64)
+    effort: str | None = Field(default=None, max_length=64)
     # Omitted: set from the first prompt.
     title: str | None = Field(default=None, max_length=200)
     # Start the conversation from a named agent: its provider is used (naming a
@@ -30,6 +32,7 @@ class ThreadUpdateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     archived: bool | None = None
     model: str | None = Field(default=None, max_length=200)
+    effort: str | None = Field(default=None, max_length=64)
 
     @field_validator("title")
     @classmethod
@@ -43,7 +46,7 @@ class ThreadUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _something_to_change(self):
-        if self.title is None and self.archived is None and "model" not in self.model_fields_set:
+        if self.title is None and self.archived is None and "model" not in self.model_fields_set and "effort" not in self.model_fields_set:
             raise ValueError("send a title, archived, model, or several")
         return self
 
@@ -55,6 +58,7 @@ class ThreadResponse(BaseModel):
     title: str | None
     provider: str
     model: str | None
+    effort: str | None = None
     workspace_path: str | None = None
     # The agent this conversation was started from; null if none, or if it
     # was deleted.

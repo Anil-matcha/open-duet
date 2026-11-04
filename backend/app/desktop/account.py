@@ -173,7 +173,18 @@ class AccountManager:
                     "account_required": True, "profile_bound": True}
         if not binding:
             self._write_secret(self._binding_path, {"tenant_id": tenant_id, "email": email})
-        self._cached_user = {"email": email, "tenantId": tenant_id}
+        user_name = user.get("name") if isinstance(user.get("name"), str) else None
+        user_avatar = (
+            user.get("avatarUrl")
+            if isinstance(user.get("avatarUrl"), str)
+            else (user.get("avatar_url") if isinstance(user.get("avatar_url"), str) else None)
+        )
+        self._cached_user = {
+            "email": email,
+            "tenantId": tenant_id,
+            "name": user_name,
+            "avatar_url": user_avatar,
+        }
         session = self._read_secret(self._session_path)
         expires_epoch = self._expiry_epoch(session["expires_at"]) if session else time.time()
         self._cache_until = time.monotonic() + min(SESSION_CACHE_SECONDS, max(0, expires_epoch - time.time()))
@@ -229,7 +240,18 @@ class AccountManager:
             if not binding:
                 self._write_secret(self._binding_path, {"tenant_id": tenant_id, "email": email_value})
             self._write_secret(self._session_path, {"token": token, "expires_at": expires_at})
-            self._cached_user = {"email": email_value, "tenantId": tenant_id}
+            user_name = user.get("name") if isinstance(user.get("name"), str) else None
+            user_avatar = (
+                user.get("avatarUrl")
+                if isinstance(user.get("avatarUrl"), str)
+                else (user.get("avatar_url") if isinstance(user.get("avatar_url"), str) else None)
+            )
+            self._cached_user = {
+                "email": email_value,
+                "tenantId": tenant_id,
+                "name": user_name,
+                "avatar_url": user_avatar,
+            }
             self._cache_until = time.monotonic() + min(SESSION_CACHE_SECONDS, expires_epoch - time.time())
             return {"signed_in": True, "email": email_value, "tenantId": tenant_id,
                     "account_required": True, "profile_bound": True}

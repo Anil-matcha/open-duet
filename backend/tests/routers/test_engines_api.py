@@ -203,3 +203,25 @@ async def test_engines_without_computer_support_are_refused(api):
     async with rt.session() as db:
         await db.execute(delete(Computer).where(Computer.owner_id == rt.owner_id))
         await db.commit()
+
+
+async def test_engine_preference_api(api, tmp_path, monkeypatch):
+    from app.services import engine_preference
+
+    test_file = tmp_path / "engine-preference.json"
+    monkeypatch.setattr(engine_preference, "preference_file_path", lambda: test_file)
+
+    get_res = await api.get("/api/v1/engines/preference")
+    assert get_res.status_code == 200
+    assert get_res.json() == {"provider": None, "model": None, "effort": None}
+
+    put_res = await api.put("/api/v1/engines/preference", json={"provider": "claude", "model": "haiku", "effort": "high"})
+    assert put_res.status_code == 200
+    assert put_res.json() == {"provider": "claude", "model": "haiku", "effort": "high"}
+
+    get_res2 = await api.get("/api/v1/engines/preference")
+    assert get_res2.status_code == 200
+    assert get_res2.json() == {"provider": "claude", "model": "haiku", "effort": "high"}
+
+    bad_res = await api.put("/api/v1/engines/preference", json={"provider": "nonexistent_engine"})
+    assert bad_res.status_code == 404

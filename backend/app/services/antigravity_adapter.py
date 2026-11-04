@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from app.services import antigravity_runtime as runtime
 from app.services import local_claude_runner
-from app.services.acp_adapter import AcpAdapter, InvalidConfig, _initialize_params
+from app.services.acp_adapter import AcpAdapter, InvalidConfig, _initialize_params, normalize_effort
 from app.services.engine_registry import check_model_id
 from app.services.provider_adapter import EngineProbe, ModelOption, TurnOutcome
 from app.services.stdio_rpc import StdioRpc
@@ -101,11 +101,35 @@ def callback_url(raw, redirect, state):
 
 def option(session, name):
     options = session.get("configOptions")
-    return next((o for o in options if isinstance(o, dict) and o.get("id") == name), {}) if isinstance(options, list) else {}
+    if not isinstance(options, list):
+        return {}
+    return next((o for o in options if isinstance(o, dict) and (o.get("id") == name or o.get("category") == name)), {})
 
 
 def catalog(session):
     model = option(session, "model")
+    thought = option(session, "thinking_level") or option(session, "thought_level")
+
+    global_efforts = []
+    default_effort = None
+    if thought and thought.get("type") == "select":
+        choices = thought.get("options", [])
+        wire_efforts = [normalize_effort(c.get("value", "")) for c in choices if isinstance(c, dict)]
+        global_efforts = [e for e in ("low", "medium", "high", "xhigh", "max") if e in wire_efforts]
+        curr = normalize_effort(thought.get("currentValue", ""))
+        default_effort = curr if curr in global_efforts else (global_efforts[0] if global_efforts else None)
+
+    models_meta = {}
+    models_block = session.get("models")
+    if isinstance(models_block, dict):
+        avail = models_block.get("availableModels")
+        if isinstance(avail, list):
+            for item in avail:
+                if isinstance(item, dict) and isinstance(item.get("modelId"), str):
+                    mid = item["modelId"].strip()
+                    meta = item.get("_meta") if isinstance(item.get("_meta"), dict) else {}
+                    models_meta[mid] = meta
+
     values = []
     def visit(items, depth=0):
         if not isinstance(items, list) or depth > 8:
@@ -125,7 +149,42 @@ def catalog(session):
                 continue
             if identifier not in {m.id for m in values} and len(values) < 600:
                 label = item.get("name")
-                values.append(ModelOption(identifier, label[:200] if isinstance(label, str) and label else identifier, identifier == model.get("currentValue")))
+                meta = models_meta.get(identifier, {})
+                lower_id = identifier.lower()
+                lower_label = (label or "").lower()
+                if meta.get("supportsReasoningEffort") is False:
+                    model_efforts = ()
+                    configurable = False
+                elif isinstance(meta.get("reasoningEfforts"), list):
+                    me_list = [normalize_effort(e.get("value", "")) for e in meta["reasoningEfforts"] if isinstance(e, dict)]
+                    model_efforts = tuple(e for e in ("low", "medium", "high", "xhigh", "max") if e in me_list)
+                    configurable = len(model_efforts) > 1
+                elif "(medium)" in lower_label:
+                    model_efforts = ("medium",)
+                    configurable = False
+                elif "(thinking)" in lower_label:
+                    model_efforts = ("high",)
+                    configurable = False
+                elif global_efforts:
+                    model_efforts = tuple(global_efforts)
+                    configurable = len(model_efforts) > 1
+                elif lower_id.startswith("gemini-") or "gemini" in lower_label:
+                    model_efforts = ("low", "medium", "high")
+                    configurable = True
+                else:
+                    model_efforts = ()
+                    configurable = False
+
+                model_default = default_effort if (default_effort and default_effort in model_efforts) else (model_efforts[0] if model_efforts else None)
+
+                values.append(ModelOption(
+                    id=identifier,
+                    label=label[:200] if isinstance(label, str) and label else identifier,
+                    default=(identifier == model.get("currentValue")),
+                    default_reasoning_effort=model_default,
+                    supported_reasoning_efforts=model_efforts,
+                    reasoning_effort_configurable=configurable,
+                ))
     visit(model.get("options"))
     return values
 
@@ -154,8 +213,39 @@ class AntigravityAdapter(AcpAdapter):
     def models(self):
         try:
             data = json.loads((profile_dir(self.config or {}) / "models.json").read_text())
-            return [ModelOption(**m) for m in data]
-        except (OSError, ValueError, TypeError):
+            result = []
+            for m in data:
+                efforts = m.get("supported_reasoning_efforts")
+                configurable = m.get("reasoning_effort_configurable")
+                default_effort = m.get("default_reasoning_effort")
+                if efforts is None:
+                    lower_id = m.get("id", "").lower()
+                    lower_label = m.get("label", "").lower()
+                    if "(medium)" in lower_label:
+                        efforts = ("medium",)
+                        configurable = False
+                        default_effort = default_effort or "medium"
+                    elif "(thinking)" in lower_label:
+                        efforts = ("high",)
+                        configurable = False
+                        default_effort = default_effort or "high"
+                    elif lower_id.startswith("gemini-") or "gemini" in lower_label:
+                        efforts = ("low", "medium", "high")
+                        configurable = True
+                        default_effort = default_effort or "high"
+                    else:
+                        efforts = ()
+                        configurable = False
+                result.append(ModelOption(
+                    id=m["id"],
+                    label=m["label"],
+                    default=bool(m.get("default")),
+                    default_reasoning_effort=default_effort,
+                    supported_reasoning_efforts=tuple(efforts),
+                    reasoning_effort_configurable=bool(configurable),
+                ))
+            return result
+        except (OSError, ValueError, TypeError, KeyError):
             return []
 
     def validate_config(self, payload, current):
@@ -200,20 +290,38 @@ class AntigravityAdapter(AcpAdapter):
         if option(result or {}, "mode").get("currentValue") != "default":
             raise InvalidConfig("Antigravity did not confirm tool approval mode.")
 
-    async def select_model(self, call, session_id, session, model):
+    async def select_model(self, call, session_id, session, model, effort=None):
         offered = catalog(session)
         current = option(session, "model").get("currentValue")
         if not model:
             if current not in {m.id for m in offered}:
                 raise InvalidConfig("Antigravity did not return its current model.")
-            return current
-        if model not in {m.id for m in offered}:
-            raise InvalidConfig("The account did not offer this model.")
-        if model != current:
-            result = await call("session/set_config_option", {"sessionId": session_id, "configId": "model", "value": model}, handle_incoming=True)
-            if option(result or {}, "model").get("currentValue") != model:
+            selected_model = current
+        else:
+            if model not in {m.id for m in offered}:
+                raise InvalidConfig("The account did not offer this model.")
+            selected_model = model
+        if selected_model != current:
+            result = await call("session/set_config_option", {"sessionId": session_id, "configId": "model", "value": selected_model}, handle_incoming=True)
+            if option(result or {}, "model").get("currentValue") != selected_model:
                 raise InvalidConfig("The engine did not confirm this model.")
-        return model
+            session = result or session
+
+        if effort:
+            thought_opt = option(session, "thinking_level") or option(session, "thought_level")
+            if thought_opt and thought_opt.get("type") == "select":
+                current_effort = thought_opt.get("currentValue")
+                options = thought_opt.get("options", [])
+                wire_map = {normalize_effort(o.get("value", "")): o.get("value") for o in options if isinstance(o, dict)}
+                target_wire = wire_map.get(effort)
+                if target_wire and target_wire != current_effort:
+                    cfg_id = thought_opt.get("id") or "thinking_level"
+                    try:
+                        await call("session/set_config_option", {"sessionId": session_id, "configId": cfg_id, "value": target_wire}, handle_incoming=True)
+                    except Exception:
+                        pass
+
+        return selected_model
 
     async def probe(self, *, handshake=True):
         try:
@@ -282,7 +390,18 @@ class AntigravityAdapter(AcpAdapter):
             if not models:
                 raise InvalidConfig("Antigravity did not offer any models to this account.")
             path = profile_dir(config) / "models.json"
-            path.write_text(json.dumps([{"id": m.id, "label": m.label, "default": m.default} for m in models]))
+            payload = [
+                {
+                    "id": m.id,
+                    "label": m.label,
+                    "default": m.default,
+                    "default_reasoning_effort": m.default_reasoning_effort,
+                    "supported_reasoning_efforts": list(m.supported_reasoning_efforts),
+                    "reasoning_effort_configurable": m.reasoning_effort_configurable,
+                }
+                for m in models
+            ]
+            path.write_text(json.dumps(payload))
             path.chmod(0o600)
         finally:
             await rpc.close(grace_seconds=self.exit_grace_seconds)

@@ -150,11 +150,16 @@ async def rename_thread(db: AsyncSession, thread_id: int, title: str) -> Thread:
     return await _change_quietly(db, thread_id, title=title)
 
 
-async def set_model(db: AsyncSession, thread_id: int, model: str | None) -> Thread:
+async def set_model(db: AsyncSession, thread_id: int, model: str | None, effort: str | None = None) -> Thread:
     """Change the model the next turns ask for (None: the engine's default).
     Not activity: the list order does not change. Raises ThreadNotFound."""
-    await _locked_thread(db, thread_id)
-    return await _change_quietly(db, thread_id, model=model)
+    thread = await _locked_thread(db, thread_id)
+    state = dict(thread.provider_state or {})
+    if effort is not None:
+        state["effort"] = effort
+    elif "effort" in state and model is None:
+        state.pop("effort", None)
+    return await _change_quietly(db, thread_id, model=model, provider_state=state)
 
 
 async def set_archived(db: AsyncSession, thread_id: int, archived: bool) -> Thread:
@@ -175,6 +180,8 @@ async def update_thread_fields(
     title: str | None = None,
     model: str | None = None,
     model_set: bool = False,
+    effort: str | None = None,
+    effort_set: bool = False,
     archived: bool | None = None,
 ) -> Thread:
     """Rename, change the model and/or archive a thread in one transaction, so
@@ -183,7 +190,7 @@ async def update_thread_fields(
     the archive check is made, and every change is committed together.
     Raises ThreadNotFound, or ThreadBusy when archiving a thread whose turn is
     running."""
-    await _locked_thread(db, thread_id)
+    thread = await _locked_thread(db, thread_id)
     if archived and await _has_running_turn(db, thread_id):
         await db.rollback()
         raise ThreadBusy(thread_id)
@@ -193,8 +200,16 @@ async def update_thread_fields(
         values["archived_at"] = utcnow() if archived else None
     if title is not None:
         values["title"] = title
-    if model_set:
-        values["model"] = model
+    if model_set or effort_set:
+        if model_set:
+            values["model"] = model
+        state = dict(thread.provider_state or {})
+        if effort is not None:
+            state["effort"] = effort
+        elif "effort" in state and model is None:
+            state.pop("effort", None)
+        if state != (thread.provider_state or {}):
+            values["provider_state"] = state
 
     if len(values) > 1:  # something other than the updated_at passthrough
         await db.execute(
@@ -411,6 +426,7 @@ async def create_thread(
     kind: str = "chat",
     job_id: int | None = None,
     room_id: int | None = None,
+    effort: str | None = None,
     commit: bool = True,
 ) -> Thread:
     if not provider.strip():
@@ -419,6 +435,9 @@ async def create_thread(
     if workspace_path is None:
         from app.services.local_claude_runner import workspace_dir
         workspace_path = str(workspace_dir().resolve())
+    if effort:
+        provider_state = dict(provider_state or {})
+        provider_state["effort"] = effort
     await begin_write(db)
     now = utcnow()
     thread = Thread(
@@ -919,6 +938,29 @@ async def mark_allow_delivered(db: AsyncSession, approval_id: str, owner_token: 
     )
     await db.commit()
     return result.rowcount == 1
+
+
+async def deny_undelivered_allow(db: AsyncSession, approval_id: str, owner_token: str, *, source: str) -> bool:
+    """Withdraw an automatic Allow before it reaches the provider after revocation."""
+    await begin_write(db)
+    owned = exists().where(
+        Turn.id == Approval.turn_id, Turn.status == "running", Turn.owner_token == owner_token
+    )
+    updated = await db.execute(
+        update(Approval).where(Approval.id == approval_id, Approval.status == "allowed",
+                               Approval.delivered_at.is_(None), owned)
+        .values(status="denied", decided_at=utcnow())
+        .returning(Approval.thread_id, Approval.turn_id)
+        .execution_options(synchronize_session=False)
+    )
+    row = updated.one_or_none()
+    if row is None:
+        await db.rollback()
+        return False
+    await _add_event(db, row.thread_id, "approval.resolved",
+                     {"approval_id": approval_id, "status": "denied", "by": source}, row.turn_id)
+    await db.commit()
+    return True
 
 
 async def _cancel_open_approvals(db: AsyncSession, thread_id: int, turn_id: int) -> None:

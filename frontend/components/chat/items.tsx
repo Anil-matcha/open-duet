@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, ChevronRight, Loader2, Square, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Loader2, Square, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import type { ReactionKind } from "@/lib/reactions";
 import { useState } from "react";
 import { canAlwaysAllow, isScreenInput } from "@/lib/approvals";
 import { isComputerTool, toolLabel } from "@/lib/computers";
@@ -8,9 +9,11 @@ import { cn } from "@/lib/cn";
 import { failureNextStep, interruptedText, turnUsageText } from "@/lib/everyday";
 import { compactedLabel, recalledLabel } from "@/lib/memory";
 import type { TranscriptItem } from "@/lib/transcript";
+import { useT } from "@/lib/use-i18n";
 import { toolRunSummary } from "@/lib/transcript-view";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "./Markdown";
+import { copyToClipboard } from "@/lib/clipboard";
 import { MessageAttachments } from "./Attachments";
 
 type Item<K extends TranscriptItem["kind"]> = Extract<TranscriptItem, { kind: K }>;
@@ -41,13 +44,65 @@ function LongText({ value }: { value: string }) {
   );
 }
 
-export function UserMessage({ item, threadId = null }: { item: Item<"user">; threadId?: number | null }) {
+// Copies a message's text. Revealed on hover or keyboard focus, and always visible on touch screens.
+export function formatMessageTime(ts?: string | null): string | null {
+  if (!ts) return null;
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function CopyButton({ text, className }: { text: string; className?: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const copy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const label = copied ? t("chat.copied") : t("chat.copy");
   return (
-    <div className="flex flex-col items-end gap-2">
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-muted transition-colors hover:bg-hover hover:text-ink touch:size-10",
+        copied && "opacity-100 text-success",
+        className,
+      )}
+    >
+      {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+    </button>
+  );
+}
+
+export function UserMessage({ item, threadId = null }: { item: Item<"user">; threadId?: number | null }) {
+  const timeStr = formatMessageTime(item.ts);
+  return (
+    <div className="group/msg flex flex-col items-end gap-1">
       <MessageAttachments threadId={threadId} items={item.attachments ?? []} />
-      <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-bubble px-4 py-2.5 text-[15px] leading-relaxed text-ink sm:max-w-[80%]">
-        {item.text}
-      </p>
+      <div className="flex max-w-[88%] items-end gap-1.5 sm:max-w-[80%]">
+        {item.text && <CopyButton text={item.text} />}
+        <p className="min-w-0 whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-bubble px-4 py-2.5 text-[15px] leading-relaxed text-ink">
+          {item.text}
+        </p>
+      </div>
+      {timeStr && (
+        <time
+          dateTime={item.ts ?? undefined}
+          title={item.ts ? new Date(item.ts).toLocaleString() : undefined}
+          className="select-none px-1 text-[11px] text-muted/70 font-normal"
+        >
+          {timeStr}
+        </time>
+      )}
       {item.skills && item.skills.length > 0 && (
         <p className="max-w-[88%] break-words text-xs text-muted sm:max-w-[80%]">
           Skill: <span className="font-mono">{item.skills.map((name) => `/${name}`).join(" ")}</span>
@@ -61,15 +116,75 @@ export function AssistantMessage({
   text,
   incomplete = false,
   live = false,
+  ts = null,
+  reaction = null,
+  onReact,
+  disabled = false,
 }: {
   text: string;
   incomplete?: boolean;
   live?: boolean;
+  ts?: string | null;
+  reaction?: ReactionKind | null;
+  onReact?: (reaction: ReactionKind) => void;
+  disabled?: boolean;
 }) {
+  const t = useT();
+  const timeStr = formatMessageTime(ts);
   return (
-    <div className="max-w-full text-[15px] leading-relaxed">
+    <div className="group/msg max-w-full text-[15px] leading-relaxed">
       <Markdown text={text} />
-      {live && <span aria-hidden="true" className="animate-pulse text-muted">▍</span>}
+      {live && <span aria-hidden="true" className="animate-pulse text-muted motion-reduce:animate-none">▍</span>}
+      {!live && text && (
+        <div className="-ml-1 mt-1 flex flex-wrap items-center gap-1.5">
+          <CopyButton text={text} />
+          {onReact && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onReact("thumbs_up")}
+                disabled={disabled}
+                aria-label={t("chat.reaction.replyThumbsUp")}
+                aria-pressed={reaction === "thumbs_up"}
+                title={t("chat.reaction.replyThumbsUp")}
+                className={cn(
+                  "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-xs transition-colors",
+                  reaction === "thumbs_up"
+                    ? "bg-success/20 text-success font-medium"
+                    : "text-muted hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                <ThumbsUp size={14} aria-hidden="true" className={reaction === "thumbs_up" ? "fill-current" : undefined} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onReact("thumbs_down")}
+                disabled={disabled}
+                aria-label={t("chat.reaction.replyThumbsDown")}
+                aria-pressed={reaction === "thumbs_down"}
+                title={t("chat.reaction.replyThumbsDown")}
+                className={cn(
+                  "inline-flex size-7 cursor-pointer items-center justify-center rounded-field text-xs transition-colors",
+                  reaction === "thumbs_down"
+                    ? "bg-danger/20 text-danger font-medium"
+                    : "text-muted hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                <ThumbsDown size={14} aria-hidden="true" className={reaction === "thumbs_down" ? "fill-current" : undefined} />
+              </button>
+            </div>
+          )}
+          {timeStr && (
+            <time
+              dateTime={ts ?? undefined}
+              title={ts ? new Date(ts).toLocaleString() : undefined}
+              className="select-none px-1 text-[11px] text-muted/70 font-normal"
+            >
+              {timeStr}
+            </time>
+          )}
+        </div>
+      )}
       {incomplete && <p className="mt-1 text-xs text-muted">This message stopped before it was finished.</p>}
     </div>
   );
@@ -139,11 +254,11 @@ export function ToolRun({ tools }: { tools: Item<"tool">[] }) {
 }
 
 const APPROVAL_LABEL: Record<Item<"approval">["status"], string> = {
-  pending: "Waiting for you",
-  allowed: "Allowed",
-  denied: "Denied",
-  expired: "Expired: nobody answered in time, so it did not run",
-  cancelled: "Cancelled: the run ended before it was answered",
+  pending: "approval.waiting",
+  allowed: "approval.allowed",
+  denied: "approval.denied",
+  expired: "approval.expired",
+  cancelled: "approval.cancelled",
 };
 
 // What became of "Always allow this command" on this card: the saved rule
@@ -169,7 +284,10 @@ export function ApprovalCard({
   // Stop always allowing: removes the saved rule; the next such command asks.
   onUndo?: (ruleId: number) => void;
 }) {
+  const t = useT();
   const pending = item.status === "pending";
+  // A decided card is one line; the input it was asked about is behind the arrow.
+  const [open, setOpen] = useState(false);
   const rememberable = canAlwaysAllow(item.tool, item.input);
   const screenInput = isScreenInput(item.tool);
   const byRule = item.resolvedBy === "saved_rule";
@@ -179,16 +297,16 @@ export function ApprovalCard({
     <div
       className={cn(
         "space-y-2.5 rounded-card border p-3.5 text-sm",
-        pending ? "border-warning/60 bg-warning/10" : "border-line bg-raised/40",
+        pending ? "border-warning/60 bg-warning/10" : "border-line bg-raised/40 py-2.5",
       )}
     >
-      <p className={cn("text-xs font-medium", pending ? "text-ink" : "text-muted")}>
+      {pending ? (
+        <p className="text-xs font-medium text-ink">
         {isComputerTool(item.tool) && <ComputerBadge />}
         {pending ? (
           isComputerTool(item.tool) ? (
             <>
-              {screenInput ? "Let your agent use this computer’s screen, keyboard and browser for this turn." : <>Your agent wants to {toolLabel(item.tool)}, an isolated machine, not this one.</>} It will not run
-              until you allow it.
+              {screenInput ? t("approval.computerRequest") : t("approval.isolatedRequest")} {t("approval.waitUntilAllowed")}
             </>
           ) : (
             <>
@@ -200,19 +318,62 @@ export function ApprovalCard({
           <>
             <span className="font-mono">{item.tool}</span>:{" "}
             {byRule && item.status === "allowed"
-              ? "Allowed by a saved rule, without asking"
+              ? t("approval.allowSaved")
               : item.resolvedBy === "computer_read"
-                ? "Allowed without asking: reading inside the agent's computer"
+                ? t("approval.allowComputerRead")
                 : item.resolvedBy === "accept_edits"
-                  ? "Allowed without asking: edits are accepted"
+                  ? t("approval.acceptedEdits")
                   : item.resolvedBy === "plan_mode"
-                    ? "Refused: plan only changes nothing"
-                    : APPROVAL_LABEL[item.status]}
+                    ? t("approval.planRefused")
+                    : t(APPROVAL_LABEL[item.status])}
             {!pending && item.summary && <span className="font-mono text-faint"> · {item.summary}</span>}
           </>
         )}
-      </p>
-      {pending && (
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          title={open ? t("chat.approval.hide") : t("chat.approval.show")}
+          className="flex w-full cursor-pointer items-center gap-2 text-left text-xs font-medium text-muted touch:min-h-9"
+        >
+          <span aria-hidden="true" className={cn("inline-flex shrink-0", item.status === "allowed" ? "text-success" : item.status === "denied" ? "text-danger" : "text-faint")}>
+            {item.status === "allowed" ? <Check size={13} /> : <X size={13} />}
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+        {isComputerTool(item.tool) && <ComputerBadge />}
+            {pending ? (
+              isComputerTool(item.tool) ? (
+                <>
+                  {screenInput ? "Let your agent use this computer’s screen, keyboard and browser for this turn." : <>Your agent wants to {toolLabel(item.tool)}, an isolated machine, not this one.</>} It will not run
+                  until you allow it.
+                </>
+              ) : (
+                <>
+                  {t("approval.toolRequest", { tool: item.tool })} {t("approval.waitUntilAllowed")}
+                </>
+              )
+            ) : (
+              <>
+                <span className="font-mono">{item.tool}</span>:{" "}
+                {byRule && item.status === "allowed"
+                  ? t("approval.allowSaved")
+                  : item.resolvedBy === "computer_read"
+                    ? t("approval.allowComputerRead")
+                    : item.resolvedBy === "accept_edits"
+                      ? t("approval.acceptedEdits")
+                      : item.resolvedBy === "plan_mode"
+                        ? t("approval.planRefused")
+                        : t(APPROVAL_LABEL[item.status])}
+                {!pending && item.summary && <span className="font-mono text-faint"> · {item.summary}</span>}
+              </>
+            )}
+              </span>
+          <ChevronRight size={14} aria-hidden="true" className={cn("shrink-0 text-faint transition-transform", open && "rotate-90")} />
+        </button>
+      )}
+      {(pending || open) && (
         <dl className="space-y-1.5">
           {Object.entries(item.input).map(([key, value]) => (
             <div key={key}>
@@ -225,35 +386,33 @@ export function ApprovalCard({
         </dl>
       )}
       {pending && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering}>
-            {screenInput ? "Allow this turn" : "Allow"}
-          </Button>
-          <Button onClick={() => onAnswer("deny")} disabled={answering}>
-            Deny
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => onAnswer("allow")} disabled={answering} title="Allow with thumbs up">
+            <ThumbsUp size={13} className="mr-1.5 inline" aria-hidden="true" />
+            {screenInput ? t("approval.allowThisTurn") : t("approval.allow")}
           </Button>
           {rememberable && (
-            <>
-              <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
-              <Button
-                variant="warning"
-                onClick={() => onAnswer("allow", true)}
-                disabled={answering}
-                title="Allow it now, and run exactly this command in this folder without asking from now on"
-              >
-                Always allow this command
-              </Button>
-            </>
+            <Button
+              onClick={() => onAnswer("allow", true)}
+              disabled={answering}
+              title={t("approval.alwaysAllowHint")}
+            >
+              {t("approval.alwaysAllow")}
+            </Button>
           )}
+          <Button onClick={() => onAnswer("deny")} disabled={answering} title="Deny with thumbs down">
+            <ThumbsDown size={13} className="mr-1.5 inline" aria-hidden="true" />
+            {t("approval.deny")}
+          </Button>
         </div>
       )}
-      {!pending && remembered?.error && <p className="text-xs text-muted">Allowed this once only: {remembered.error}.</p>}
-      {!pending && undone && <p className="text-xs text-muted">No longer always allowed. Next time it asks again.</p>}
+      {!pending && remembered?.error && <p className="text-xs text-muted">{t("approval.allowedOnce", { error: remembered.error })}</p>}
+      {!pending && undone && <p className="text-xs text-muted">{t("approval.noLongerAlwaysAllowed")}</p>}
       {!pending && savedRuleId != null && !undone && onUndo && (
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          {remembered?.ruleId != null ? "Always allowed in this folder from now on." : "A saved rule allows this command."}
+          {remembered?.ruleId != null ? t("approval.alwaysAllowedHere") : t("approval.savedRuleAllows")}
           <button onClick={() => onUndo(savedRuleId)} className="cursor-pointer underline hover:text-ink">
-            {remembered?.ruleId != null ? "Undo" : "Stop always allowing"}
+            {remembered?.ruleId != null ? t("common.undo") : t("approval.stopAlwaysAllowing")}
           </button>
         </p>
       )}

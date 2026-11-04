@@ -92,6 +92,9 @@ class ModelOption:
     id: str
     label: str
     default: bool = False
+    default_reasoning_effort: str | None = None
+    supported_reasoning_efforts: tuple[str, ...] = ()
+    reasoning_effort_configurable: bool = True
 
 
 @dataclass
@@ -164,6 +167,7 @@ class TurnContext:
     # ask | accept_edits | plan (approval_modes.py); None means ask. Set by the
     # runtime from the thread's agent; an adapter maps it onto its own provider.
     approval_mode: str | None = None
+    effort: str | None = None
     # Confined turns cannot act through alternate tools.
     draft_only: bool = False
     media_review_only: bool = False
@@ -188,7 +192,14 @@ class TurnContext:
     # The MCP server giving the turn read access to connected apps (composio_bridge.py)
     # and the apps it was started for. Both None unless the agent was allowed some.
     composio_launch: object | None = None
+    # Per-turn local MCP shim for exact grants from the public MCP marketplace.
+    # It receives only bounded tool metadata; remote credentials stay in backend.
+    community_launch: object | None = None
+    community_tools: list[str] = field(default_factory=list)
+    community_prompt_note: str | None = None
+    community_bridge: object | None = None
     composio_exact_tools: list[str] | None = None
+    routine_uninterrupted: bool = False
     composio_apps: dict | None = None  # {app: "read" | "write"}
     # Generic connected-app actions (composio_generic.py): whether the call being decided has a first use on
     # record, and the calls decided without a card (the bridge checks those again before it runs them).

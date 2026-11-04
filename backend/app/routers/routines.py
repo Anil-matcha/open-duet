@@ -129,9 +129,11 @@ async def list_routines(sch: service.RoutineScheduler = Depends(service.get_sche
 async def create_routine(payload: RoutineCreateRequest, sch: service.RoutineScheduler = Depends(service.get_scheduler)):
     async with sch.session() as db:
         try:
-            grants = await _validated_grants(db, sch.owner_id, payload.agent_id, payload.connected_app_grants)
+            grants = ([grant.model_dump() for grant in payload.connected_app_grants] if payload.uninterrupted_access else
+                      await _validated_grants(db, sch.owner_id, payload.agent_id, payload.connected_app_grants))
             routine = await service.create_routine(db, sch.owner_id, payload.model_dump(), commit=False)
             routine.connected_app_grants = grants
+            routine.uninterrupted_access = payload.uninterrupted_access
             await db.commit()
             await db.refresh(routine)
         except service.InvalidRoutine as exc:
@@ -187,8 +189,21 @@ async def update_routine(
     async with sch.session() as db:
         try:
             grants = None
-            if "connected_app_grants" in payload.model_fields_set or payload.agent_id is not None:
-                existing = await service.get_routine(db, sch.owner_id, routine_id)
+            existing = await service.get_routine(db, sch.owner_id, routine_id)
+            target_agent = payload.agent_id if payload.agent_id is not None else existing.agent_id
+            access_changed = "uninterrupted_access" in payload.model_fields_set or target_agent != existing.agent_id
+            if "uninterrupted_access" in payload.model_fields_set and payload.uninterrupted_access is None:
+                raise _error(422, "invalid_uninterrupted_access", "Choose whether uninterrupted access is enabled.")
+            access = payload.uninterrupted_access if "uninterrupted_access" in payload.model_fields_set else False
+            agent_changed = target_agent != existing.agent_id
+            effective_access = access if access_changed else existing.uninterrupted_access
+            if effective_access and not agent_changed:
+                if "connected_app_grants" in payload.model_fields_set:
+                    if payload.connected_app_grants is None:
+                        raise _error(422, "invalid_app_grant", "Use an empty list to switch app access off.")
+                    grants = [grant.model_dump() for grant in payload.connected_app_grants]
+            elif ("connected_app_grants" in payload.model_fields_set or payload.agent_id is not None
+                  or "uninterrupted_access" in payload.model_fields_set):
                 selected = payload.connected_app_grants
                 if "connected_app_grants" not in payload.model_fields_set:
                     from app.schemas.routine import ConnectedAppGrant
@@ -199,6 +214,8 @@ async def update_routine(
             )
             if grants is not None:
                 routine.connected_app_grants = grants
+            if access_changed:
+                routine.uninterrupted_access = access
             await db.commit()
             await db.refresh(routine)
         except service.RoutineNotFound:
@@ -347,3 +364,32 @@ async def read_notification(notification_id: int, sch: service.RoutineScheduler 
         if not await notification_feed.mark_read(db, sch.owner_id, notification_id):
             raise _error(404, "notification_not_found", "Notification not found")
     return Response(status_code=204)
+
+
+from pydantic import BaseModel
+from app.services import notification_preference
+
+
+class NotificationPreferencesModel(BaseModel):
+    desktop_enabled: bool = True
+    notify_needs_you: bool = True
+    notify_failures: bool = True
+    notify_task_due: bool = True
+    sound_enabled: bool = False
+
+
+@router.get("/notifications/preferences", response_model=NotificationPreferencesModel)
+async def get_notification_preferences():
+    return notification_preference.read_preferences().to_dict()
+
+
+@router.put("/notifications/preferences", response_model=NotificationPreferencesModel)
+async def update_notification_preferences(payload: NotificationPreferencesModel):
+    prefs = notification_preference.NotificationPreferences(
+        desktop_enabled=payload.desktop_enabled,
+        notify_needs_you=payload.notify_needs_you,
+        notify_failures=payload.notify_failures,
+        notify_task_due=payload.notify_task_due,
+        sound_enabled=payload.sound_enabled,
+    )
+    return notification_preference.write_preferences(prefs).to_dict()

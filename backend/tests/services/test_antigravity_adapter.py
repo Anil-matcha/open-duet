@@ -101,6 +101,74 @@ def test_catalog_groups_and_malformed_ids():
     assert [m.id for m in catalog(SESSION)] == ["gemini-account", "gemini-other"]
     assert catalog({"configOptions": [{"id": "model", "options": [{"value": "--bad"}, None, {"value": "has spaces"}]}]}) == []
 
+
+def test_catalog_reasoning_effort_discovery():
+    session = {
+        "configOptions": [
+            {
+                "id": "model",
+                "type": "select",
+                "currentValue": "gemini-3.8-flash",
+                "options": [
+                    {"value": "gemini-3.8-flash", "name": "Gemini 3.8 Flash"},
+                    {"value": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (Thinking)"},
+                    {"value": "gpt-oss-120b-medium", "name": "GPT-OSS 120B (Medium)"},
+                ],
+            },
+            {
+                "id": "thinking_level",
+                "category": "thought_level",
+                "type": "select",
+                "currentValue": "high",
+                "options": [
+                    {"value": "low", "name": "Low"},
+                    {"value": "medium", "name": "Medium"},
+                    {"value": "high", "name": "High"},
+                ],
+            },
+        ]
+    }
+    models = catalog(session)
+    assert len(models) == 3
+    flash = next(m for m in models if m.id == "gemini-3.8-flash")
+    assert flash.supported_reasoning_efforts == ("low", "medium", "high")
+    assert flash.default_reasoning_effort == "high"
+    assert flash.reasoning_effort_configurable is True
+
+    claude = next(m for m in models if m.id == "claude-sonnet-4-6")
+    assert claude.supported_reasoning_efforts == ("high",)
+    assert claude.reasoning_effort_configurable is False
+
+    gpt = next(m for m in models if m.id == "gpt-oss-120b-medium")
+    assert gpt.supported_reasoning_efforts == ("medium",)
+    assert gpt.reasoning_effort_configurable is False
+
+
+async def test_select_model_sets_thinking_level(fixture):
+    adapter, fake = fixture
+    calls = []
+    async def mock_call(method, params, handle_incoming=True):
+        calls.append((method, params))
+        if method == "session/set_config_option":
+            return {
+                "configOptions": [
+                    {"id": "model", "currentValue": params.get("value") if params.get("configId") == "model" else "gemini-other"},
+                    {"id": "thinking_level", "category": "thought_level", "type": "select", "currentValue": params.get("value") if params.get("configId") == "thinking_level" else "high", "options": [{"value": "low"}, {"value": "medium"}, {"value": "high"}]},
+                ]
+            }
+        return {}
+
+    session = {
+        "configOptions": [
+            {"id": "model", "type": "select", "currentValue": "gemini-account", "options": [{"value": "gemini-account"}, {"value": "gemini-other"}]},
+            {"id": "thinking_level", "category": "thought_level", "type": "select", "currentValue": "high", "options": [{"value": "low"}, {"value": "medium"}, {"value": "high"}]},
+        ]
+    }
+    selected = await adapter.select_model(mock_call, "test-sess", session, model="gemini-other", effort="low")
+    assert selected == "gemini-other"
+    assert ("session/set_config_option", {"sessionId": "test-sess", "configId": "model", "value": "gemini-other"}) in calls
+    assert ("session/set_config_option", {"sessionId": "test-sess", "configId": "thinking_level", "value": "low"}) in calls
+
 def auth_url(**extra):
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({"state": "fixture-state", "redirect_uri": "http://127.0.0.1:45678/", "response_type": "code", **extra})
 

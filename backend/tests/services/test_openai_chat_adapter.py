@@ -262,3 +262,39 @@ def test_chat_messages_trim_history_and_start_with_the_user(monkeypatch):
     monkeypatch.setattr(openai_chat_adapter, "HISTORY_CHARS", 3)
     items = [{"role": "user", "text": "old old"}, {"role": "assistant", "text": "ok"}, {"role": "user", "text": "new"}]
     assert chat_messages(items, "sys") == [{"role": "system", "content": "sys"}, {"role": "user", "content": "new"}]
+
+
+async def test_openai_reasoning_effort_mapping():
+    captured = {}
+    def handler(request):
+        if request.url.path == "/v1/models":
+            return httpx.Response(200, json={"data": [{"id": "o3-mini"}, {"id": "gpt-4o"}]})
+        if request.url.path == "/v1/chat/completions":
+            captured["payload"] = json.loads(request.content)
+            return httpx.Response(200, text="data: {\"choices\": [{\"delta\": {\"content\": \"done\"}}], \"usage\": {\"prompt_tokens\": 5, \"completion_tokens\": 2}}\n\ndata: [DONE]\n\n")
+        return httpx.Response(404)
+
+    adapter = OpenAIChatAdapter(transport=httpx.MockTransport(handler))
+    adapter.config = {"base_url": BASE, "api_key": KEY, "model": "o3-mini"}
+    probe = await adapter.probe()
+    assert probe.ready
+    o3 = next(m for m in probe.models if m.id == "o3-mini")
+    assert o3.default_reasoning_effort == "medium"
+    assert o3.supported_reasoning_efforts == ("low", "medium", "high")
+    assert o3.reasoning_effort_configurable is True
+
+    from app.services.provider_adapter import TurnContext
+    ctx = TurnContext(
+        thread_id=1, turn_id=1, prompt="think carefully", workspace=None,
+        model="o3-mini", effort="high", provider_session_id=None, provider_state=None,
+        resume=False, history=lambda: []
+    )
+    from types import SimpleNamespace
+    async def async_emit(*args): pass
+    sink = SimpleNamespace(lost=False, emit=async_emit, delta=lambda *args: None)
+    gate = None
+    async def empty_history(): return []
+    ctx.history = empty_history
+    outcome = await adapter.run_turn(ctx, sink, gate)
+    assert outcome.status == "succeeded"
+    assert captured["payload"]["reasoning_effort"] == "high"

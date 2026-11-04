@@ -48,6 +48,9 @@ def main() -> int:
         "--specpath", str(HERE / "build"),
         # Read by app/desktop/database.py as <package root>/alembic.
         "--add-data", f"{HERE / 'alembic'}{';' if sys.platform == 'win32' else ':'}alembic",
+        # The bundled marketplace catalog remains available when offline or
+        # when the public catalog endpoint cannot be reached.
+        "--add-data", f"{HERE.parent / 'marketplace'}{';' if sys.platform == 'win32' else ':'}marketplace",
     ]
     for module in COLLECT_SUBMODULES:
         args += ["--collect-submodules", module]
