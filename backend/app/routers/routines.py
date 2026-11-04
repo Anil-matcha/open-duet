@@ -86,6 +86,16 @@ async def _validated_grants(db, owner_id, agent_id, grants):
     return [g.model_dump() for g in grants]
 
 
+def _routine_status(routine, now: datetime) -> str:
+    if routine.schedule_kind == "once":
+        try:
+            if schedules.next_after("once", routine.schedule_spec, routine.timezone, now) is None:
+                return "done"
+        except (schedules.InvalidSchedule, KeyError, ValueError):
+            return "done"
+    return "off" if routine.paused else "on"
+
+
 def _describe(routine, latest=None, now: datetime | None = None) -> RoutineResponse:
     now = now or datetime.now(UTC)
     response = RoutineResponse.model_validate(routine)
@@ -97,6 +107,7 @@ def _describe(routine, latest=None, now: datetime | None = None) -> RoutineRespo
     return response.model_copy(update={
         "summary": summary,
         "next_dates": dates,
+        "status": _routine_status(routine, now),
         "webhook_enabled": routine.webhook_secret_hash is not None,
         "latest_run": RoutineRunResponse.model_validate(latest) if latest is not None else None,
     })
@@ -146,6 +157,8 @@ async def preview_schedule(payload: SchedulePreviewRequest):
     now = datetime.now(UTC)
     try:
         spec = schedules.normalize(payload.schedule_kind, payload.schedule_spec, payload.timezone, now=now)
+        if payload.schedule_kind == "once" and schedules.next_after("once", spec, payload.timezone, now) is None:
+            raise schedules.InvalidSchedule("That date and time has already passed.")
         return SchedulePreviewResponse(
             summary=schedules.summary(payload.schedule_kind, spec, payload.timezone),
             next_dates=schedules.next_dates(payload.schedule_kind, spec, payload.timezone, now),
@@ -241,6 +254,10 @@ async def _pause(routine_id: int, paused: bool, sch: service.RoutineScheduler) -
             routine = await service.set_paused(db, sch.owner_id, routine_id, paused)
         except service.RoutineNotFound:
             raise _not_found() from None
+        except service.SpentSchedule as exc:
+            raise _error(409, "spent_schedule", str(exc)) from None
+        except service.InvalidRoutine as exc:
+            raise _error(422, exc.code, str(exc)) from None
         return await _one(db, routine)
 
 

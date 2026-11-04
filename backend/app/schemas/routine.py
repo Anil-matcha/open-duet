@@ -146,6 +146,7 @@ class RoutineResponse(BaseModel):
     updated_at: datetime
     # Derived for the client.
     summary: str = ""
+    status: Literal["on", "off", "done"] = "on"
     next_dates: list[datetime] = Field(default_factory=list)
     webhook_enabled: bool = False
     latest_run: RoutineRunResponse | None = None

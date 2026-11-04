@@ -920,6 +920,7 @@ export type Routine = {
   created_at: string;
   updated_at: string;
   summary: string;
+  status?: "on" | "off" | "done";
   next_dates: string[];
   webhook_enabled: boolean;
   latest_run: RoutineRun | null;

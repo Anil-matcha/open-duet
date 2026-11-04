@@ -10,6 +10,7 @@ import {
   isActiveRun,
   localInputValue,
   nextRunText,
+  routineStatus,
   runStateLabel,
   runStateTone,
   scheduleDraftOf,
@@ -102,8 +103,16 @@ test('run states and triggers read as words', () => {
 test('next run text covers paused, manual and none', () => {
   assert.equal(nextRunText({ paused: true, next_run_at: null, schedule_kind: 'cron', timezone: 'UTC' }), 'Paused');
   assert.match(nextRunText({ paused: false, next_run_at: null, schedule_kind: 'manual', timezone: 'UTC' }), /by hand/);
-  assert.equal(nextRunText({ paused: false, next_run_at: null, schedule_kind: 'once', timezone: 'UTC' }), 'No upcoming run');
+  assert.equal(nextRunText({ paused: false, next_run_at: null, schedule_kind: 'once', timezone: 'UTC' }), 'Done');
+  assert.equal(nextRunText({ paused: false, next_run_at: null, schedule_kind: 'once', timezone: 'UTC', status: 'done' }), 'Done');
   assert.match(nextRunText({ paused: false, next_run_at: '2026-10-19T07:00:00Z', schedule_kind: 'cron', timezone: 'UTC' }), /^Next: /);
+});
+
+test('routine status covers on, off and done switch semantics', () => {
+  assert.equal(routineStatus({ paused: false, next_run_at: '2026-10-19T07:00:00Z', schedule_kind: 'cron' }), 'on');
+  assert.equal(routineStatus({ paused: true, next_run_at: null, schedule_kind: 'cron' }), 'off');
+  assert.equal(routineStatus({ paused: false, next_run_at: null, schedule_kind: 'once' }), 'done');
+  assert.equal(routineStatus({ paused: true, next_run_at: null, schedule_kind: 'once', status: 'done' }), 'done');
 });
 
 test('webhook url, curl and badge', () => {

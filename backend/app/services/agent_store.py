@@ -167,6 +167,7 @@ async def update_agent(
         agent.archived_at = _utcnow() if archived else None
         if archived:
             await _leave_team(db, agent)
+            await _pause_agent_routines(db, agent, "archived")
     if make_lead is True:
         if agent.archived_at is not None:
             raise ValueError('Restore this agent before making it lead.')
@@ -242,6 +243,38 @@ async def duplicate_agent(db: AsyncSession, agent_id: int) -> Agent:
     )
 
 
+async def _pause_agent_routines(db: AsyncSession, agent: Agent, reason_verb: str) -> None:
+    from app.db.models.routine import Routine, RoutineRun
+    now = _utcnow()
+    routine_ids = list((await db.execute(select(Routine.id).where(Routine.agent_id == agent.id))).scalars().all())
+    if routine_ids:
+        if reason_verb == "deleted":
+            err = "Its agent no longer exists."
+            reason = "Its agent no longer exists. Choose another agent, then resume."
+        else:
+            err = "Its agent is archived."
+            reason = "Its agent is archived. Unarchive it or choose another agent, then resume."
+        await db.execute(
+            update(RoutineRun)
+            .where(RoutineRun.routine_id.in_(routine_ids), RoutineRun.state == "queued")
+            .values(
+                state="failed",
+                finished_at=now,
+                error=err,
+            )
+        )
+        await db.execute(
+            update(Routine)
+            .where(Routine.id.in_(routine_ids))
+            .values(
+                paused=True,
+                paused_reason=reason,
+                next_run_at=None,
+                updated_at=now,
+            )
+        )
+
+
 async def _leave_team(db: AsyncSession, agent: Agent) -> None:
     """An agent that goes away stops leading and belonging to its team, so the
     team never points at a missing lead."""
@@ -265,6 +298,7 @@ async def delete_agent(db: AsyncSession, agent_id: int) -> None:
         await db.rollback()
         raise AgentNotFound(agent_id)
     await _leave_team(db, agent)
+    await _pause_agent_routines(db, agent, "deleted")
     await db.execute(
         update(Thread)
         .where(Thread.agent_id == agent_id)
