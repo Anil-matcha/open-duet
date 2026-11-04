@@ -241,6 +241,8 @@ export function ChatApp() {
   const [newEffort, setNewEffort] = useState<string | null>(() => params.get("effort") || cachedPref?.effort || null);
 
   const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null; effort: string | null } | null>(null);
+  // A dropdown selection can reach the submit click before the parent render commits.
+  const modelDraftRef = useRef<typeof modelDraft>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
 
@@ -701,7 +703,7 @@ export function ChatApp() {
 
   const saveModel = async () => {
     if (!modelDraft) return;
-    const target = modelDraft;
+    const target = modelDraftRef.current ?? modelDraft;
     setModelBusy(true); setModelError(null);
     const model = target.model?.trim() || null;
     const effort = target.effort?.trim() || null;
@@ -717,6 +719,7 @@ export function ChatApp() {
         writeCachedPreference({ provider: target.provider, model, effort });
         void api.setEnginePreference({ provider: target.provider, model, effort }).catch(() => {});
       }
+      modelDraftRef.current = null;
       setModelDraft((previous) => previous === target ? null : previous);
     } catch (err) { setModelError(err instanceof ApiError ? err.message : "Could not change the model."); }
     finally { setModelBusy(false); }
@@ -817,13 +820,15 @@ export function ChatApp() {
     setModelError(null);
     const activeModelId = (threadId === null ? newModel : thread?.model) ?? null;
     const activeEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
-    setModelDraft({
+    const draft = {
       threadId,
       agentId: startingAgentId,
       provider: selectedProvider,
       model: activeModelId,
       effort: activeEffort,
-    });
+    };
+    modelDraftRef.current = draft;
+    setModelDraft(draft);
   };
 
   const refreshToday = async () => {
@@ -1046,14 +1051,20 @@ export function ChatApp() {
       <div className="relative flex min-w-0 flex-1 flex-col">
       {buildHeader(true)}
       {modelDraft && modelDraft.threadId === threadId && (threadId !== null || modelDraft.agentId === startingAgentId) && engines && (
-        <Dialog open onOpenChange={(open) => { if (!open) setModelDraft(null); }} title="Engine and model" size="sm">
+        <Dialog open onOpenChange={(open) => { if (!open) { modelDraftRef.current = null; setModelDraft(null); } }} title="Engine and model" size="sm">
           <form onSubmit={(event) => { event.preventDefault(); void saveModel(); }} className="space-y-4">
             <EngineModelFields
               engines={engines}
               provider={modelDraft.provider}
               model={modelDraft.model}
               effort={modelDraft.effort}
-              onChange={(provider, model, effort) => setModelDraft({ ...modelDraft, provider, model, effort: effort ?? null })}
+              onChange={(provider, model, effort) => {
+                const current = modelDraftRef.current ?? modelDraft;
+                if (!current) return;
+                const next = { ...current, provider, model, effort: effort ?? null };
+                modelDraftRef.current = next;
+                setModelDraft(next);
+              }}
               disabled={modelBusy}
               lockProvider={threadId !== null || startingAgentId !== null}
               defaultLabel={selectedAgent ? `Agent default (${modelLabel(selectedAgent.model)})` : undefined}
@@ -1062,7 +1073,7 @@ export function ChatApp() {
             {modelError && <p role="alert" className="text-sm text-danger">{modelError}</p>}
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" variant="primary" disabled={modelBusy}>{modelBusy ? "Saving…" : "Use model"}</Button>
-              <Button disabled={modelBusy} onClick={() => setModelDraft(null)}>Cancel</Button>
+              <Button disabled={modelBusy} onClick={() => { modelDraftRef.current = null; setModelDraft(null); }}>Cancel</Button>
               <Button variant="ghost" disabled={modelBusy} onClick={() => { setModelBusy(true); api.getEngines(true).then(setEngines).catch(() => setModelError("Could not refresh engines.")).finally(() => setModelBusy(false)); }}>Refresh status</Button>
             </div>
           </form>
