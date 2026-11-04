@@ -185,7 +185,7 @@ export function ChatApp() {
   // and the page behaves as before.
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [agentTick, setAgentTick] = useState(0);
-  const [agentsShown, setAgentsShown] = useState(true);
+  const [agentsShown, setAgentsShown] = useState(false);
   const agentsOpen = agentsShown || params.get("view") === "agents";
   const setAgentsOpen = useCallback((open: boolean) => {
     setAgentsShown(open);
