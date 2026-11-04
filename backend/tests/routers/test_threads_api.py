@@ -500,6 +500,18 @@ async def test_rename_sets_the_title_and_trims_it(api):
     assert (await api.get(f"/api/v1/threads/{thread['id']}")).json()["title"] == "A better name"
 
 
+async def test_effort_is_set_alone_and_kept_by_a_rename_in_the_same_update(api):
+    """Effort lives in provider_state; one PATCH may set it with the title and
+    must not clear it when only a title changes (the atomic update path)."""
+    thread = await create(api, title="effort")
+    set_effort = await api.patch(f"/api/v1/threads/{thread['id']}", json={"effort": "high"})
+    assert set_effort.status_code == 200 and set_effort.json()["effort"] == "high"
+    both = await api.patch(f"/api/v1/threads/{thread['id']}", json={"title": "still high", "effort": "low"})
+    assert both.status_code == 200
+    assert (both.json()["title"], both.json()["effort"]) == ("still high", "low")
+    renamed = await api.patch(f"/api/v1/threads/{thread['id']}", json={"title": "just a name"})
+    assert renamed.status_code == 200 and renamed.json()["effort"] == "low"
+
 async def test_reasoning_effort_can_be_changed_and_cleared(api):
     thread = await create(api, model="sonnet", effort="medium")
 

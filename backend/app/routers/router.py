@@ -11,6 +11,7 @@ from app.routers.threads import router as threads_router
 from app.routers.settings import router as settings_router
 from app.routers.decisions import router as decisions_router
 from app.routers.approval_rules import router as approval_rules_router
+from app.routers.explain import router as explain_router
 from app.routers.sentinel import router as sentinel_router
 from app.routers.computers import router as computers_router
 from app.routers.computer_credentials import router as computer_credentials_router
@@ -51,6 +52,7 @@ router.include_router(threads_router)
 router.include_router(settings_router)
 router.include_router(decisions_router)
 router.include_router(approval_rules_router)
+router.include_router(explain_router)
 router.include_router(sentinel_router)
 router.include_router(computers_router)
 router.include_router(computer_credentials_router)
@@ -93,3 +95,6 @@ from app.routers.desktop_account import router as desktop_account_router
 router.include_router(onboarding_router)
 router.include_router(engine_install_router)
 router.include_router(desktop_account_router)
+
+from app.routers.pending_work import router as pending_work_router
+router.include_router(pending_work_router)

@@ -26,6 +26,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from app.core import tenant_paths
+from app.core.secret_names import is_secret  # noqa: F401  (re-exported)
 
 LIST_MAX_ENTRIES = 500
 TEXT_PREVIEW_BYTES = 256 * 1024
@@ -35,21 +36,7 @@ ZIP_MAX_BYTES = 200 * 1024 * 1024  # total of the files, before compression
 ZIP_MAX_FILES = 2000
 PATH_MAX_CHARS = 1024
 
-SECRET_DIRS = {".git", ".ssh", ".aws", ".gnupg"}
-SECRET_NAMES = (
-    ".env",
-    ".env.*",
-    ".netrc",
-    ".npmrc",
-    ".pypirc",
-    "*.pem",
-    "*.key",
-    "*.p12",
-    "*.pfx",
-    "id_rsa*",
-    "id_ed25519*",
-    "id_ecdsa*",
-)
+
 IMAGE_MIMES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".csv", ".tsv", ".json", ".log", ".yaml", ".yml", ".xml", ".html", ".css",
@@ -69,13 +56,6 @@ class FileAccessError(Exception):
 
 def _outside() -> FileAccessError:
     return FileAccessError(403, "outside_workspace", "That path is outside this conversation's workspace.")
-
-
-def is_secret(parts: tuple[str, ...]) -> bool:
-    lowered = [part.lower() for part in parts]
-    if any(part in SECRET_DIRS for part in lowered[:-1]) or (lowered and lowered[-1] in SECRET_DIRS):
-        return True
-    return bool(lowered) and any(fnmatch.fnmatchcase(lowered[-1], pattern) for pattern in SECRET_NAMES)
 
 
 def clean_relative(raw: str | None) -> tuple[str, ...]:

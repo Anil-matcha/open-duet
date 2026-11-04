@@ -51,6 +51,29 @@ def test_new_database_has_the_models_schema_including_defaults(migrated, tmp_pat
         upgraded.dispose()
 
 
+def test_describe_reports_sqlite_table_options_so_drift_cannot_hide(tmp_path):
+    """The comparison above must be able to see table options (AUTOINCREMENT),
+    or a hand-written migration could drop one and still pass. Pin that
+    guarantee directly: the same table, with and without AUTOINCREMENT, must
+    describe differently."""
+    from app.db.models.agent import Agent
+
+    auto = sqlite_engine(tmp_path / "auto.db")       # the model declares AUTOINCREMENT
+    plain = sqlite_engine(tmp_path / "plain.db")     # the same columns, bare integer key
+    try:
+        Agent.__table__.create(auto)
+        with plain.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE agent (id INTEGER PRIMARY KEY, owner_id VARCHAR NOT NULL, name VARCHAR NOT NULL)"
+            )
+        assert describe(auto)["agent"]["options"] == {"autoincrement": True}
+        assert describe(plain)["agent"]["options"] == {"autoincrement": False}
+        assert describe(auto) != describe(plain)
+    finally:
+        auto.dispose()
+        plain.dispose()
+
+
 def test_the_baseline_lists_exactly_the_tables_it_creates():
     created = {
         line.split()[2]

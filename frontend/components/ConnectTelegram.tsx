@@ -73,7 +73,7 @@ export function ConnectTelegram({
         try {
           const status = await api.getLinkStatus(code.code);
           if (activeCodeRef.current !== code.code) return;
-          if (status.status === "claimed" && status.user_id) {
+          if (status.status === "claimed") {
             stopPolling();
             setLinkCode(null);
             onLinked({ link_code: code.code });

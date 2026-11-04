@@ -7,10 +7,25 @@ from sqlalchemy import inspect
 IGNORED_TABLES = {"alembic_version"}
 
 
+def _sqlite_table_options(engine, table: str) -> dict:
+    """SQLite table options the inspector does not report, above all
+    AUTOINCREMENT (a plain INTEGER PRIMARY KEY reuses a deleted row's id).
+    Empty on any other dialect."""
+    if engine.dialect.name != "sqlite":
+        return {}
+    with engine.connect() as connection:
+        sql = connection.exec_driver_sql(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+        ).scalar()
+    if not sql:
+        return {}
+    return {"autoincrement": "AUTOINCREMENT" in sql.upper()}
+
+
 def describe(engine, *, with_defaults: bool = True) -> dict:
     """Columns (type, nullability, default), primary keys, indexes, unique
-    constraints and foreign keys of every table, exactly as the database
-    reports them."""
+    constraints, foreign keys and SQLite table options of every table, exactly
+    as the database reports them."""
     insp = inspect(engine)
     description = {}
     for table in sorted(set(insp.get_table_names()) - IGNORED_TABLES):
@@ -33,6 +48,7 @@ def describe(engine, *, with_defaults: bool = True) -> dict:
                 (f["name"], tuple(f["constrained_columns"]), f["referred_table"], tuple(f["referred_columns"]))
                 for f in insp.get_foreign_keys(table)
             ),
+            "options": _sqlite_table_options(engine, table),
         }
     return description
 

@@ -82,6 +82,8 @@ CREATE TABLE user_sandbox (
 	UNIQUE (box_id)
 );
 
+CREATE INDEX ix_user_sandbox_active_expires ON user_sandbox (is_active, expires_at);
+
 CREATE INDEX ix_user_sandbox_is_active ON user_sandbox (is_active);
 
 CREATE INDEX ix_user_sandbox_user_id ON user_sandbox (user_id);

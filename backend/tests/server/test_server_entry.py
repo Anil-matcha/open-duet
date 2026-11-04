@@ -37,6 +37,19 @@ def test_environment_and_flags_are_both_read_and_a_flag_wins(ui):
     assert read_options(["--port", "9002"], env).port == 9002
 
 
+@pytest.mark.parametrize("var", ["WEB_CONCURRENCY", "UVICORN_WORKERS"])
+@pytest.mark.parametrize("value", ["2", "4", "16"])
+def test_more_than_one_worker_is_refused(ui, var, value):
+    with pytest.raises(ServerConfigError, match="single process"):
+        read_options([], {"OPEN_DOTS_UI_DIR": str(ui), var: value})
+
+
+@pytest.mark.parametrize("value", ["1", "", " "])
+def test_one_worker_is_allowed(ui, value):
+    options = read_options([], {"OPEN_DOTS_UI_DIR": str(ui), "WEB_CONCURRENCY": value})
+    assert options.port == 8000
+
+
 @pytest.mark.parametrize("port", ["abc", "0", "70000", "-1", ""])
 def test_a_bad_port_says_what_to_change(ui, port):
     with pytest.raises(ServerConfigError, match="port"):
