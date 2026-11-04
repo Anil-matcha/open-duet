@@ -106,3 +106,10 @@ export class DesktopRfb {
   }
 }
 export const DESKTOP_KEYS: Record<string, number> = { Backspace: 0xff08, Tab: 0xff09, Enter: 0xff0d, Escape: 0xff1b, Delete: 0xffff, Home: 0xff50, End: 0xff57, PageUp: 0xff55, PageDown: 0xff56, ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54, Shift: 0xffe1, Control: 0xffe3, Alt: 0xffe9, Meta: 0xffeb };
+
+// The desktop canvas forwards keys to the guest (Tab and Escape included), so
+// it needs a chord that hands control back instead. Keeps the view from being a
+// keyboard trap (WCAG 2.1.2).
+export function isReleaseChord(event: { key: string; ctrlKey?: boolean; shiftKey?: boolean }): boolean {
+  return event.key === "F6" || (event.key === "Escape" && Boolean(event.ctrlKey) && Boolean(event.shiftKey));
+}

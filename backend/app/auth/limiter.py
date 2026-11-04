@@ -100,9 +100,14 @@ login_lockout = Lockout(max_failures=5, window_seconds=15 * 60, lock_seconds=15 
 pair_lockout = Lockout(max_failures=10, window_seconds=10 * 60, lock_seconds=10 * 60)
 # Any request to an auth endpoint that does work (scrypt, a code lookup).
 auth_requests = RateLimit(limit=30, window_seconds=60)
+# Minting Telegram link codes: cheap, but unlimited minting grows the table and
+# widens the (already small) guessing surface. Six a minute is plenty for a
+# person.
+link_code_requests = RateLimit(limit=6, window_seconds=60)
 
 
 def reset_all() -> None:
     login_lockout.reset()
     pair_lockout.reset()
     auth_requests.reset()
+    link_code_requests.reset()

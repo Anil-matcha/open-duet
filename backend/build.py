@@ -1,6 +1,6 @@
 """Freeze the desktop backend with PyInstaller (`--onedir`, D-009).
 
-Run from the backend folder:  uv run --with pyinstaller python build.py
+Run from the backend folder:  uv run --frozen --group build python build.py
 
 Output: backend/dist/open-dots-backend/open-dots-backend[.exe] (the folder the
 desktop packaging copies into the app). The entry is desktop_main.py, the same

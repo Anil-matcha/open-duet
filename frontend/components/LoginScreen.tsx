@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { BASE_PATH } from "@/lib/paths";
@@ -50,6 +50,8 @@ export function LoginScreen() {
   const [reveal, setReveal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Guards against a double submit from a fast double-click or Enter repeat.
+  const inFlight = useRef(false);
   const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
@@ -69,11 +71,13 @@ export function LoginScreen() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (inFlight.current) return;
     setError(null);
     if (settingUp && passphrase !== repeat) {
       setError(t("auth.passphrasesDiffer"));
       return;
     }
+    inFlight.current = true;
     setBusy(true);
     try {
       if (settingUp) await auth.setup(passphrase);
@@ -83,6 +87,7 @@ export function LoginScreen() {
     } catch (err) {
       setError(message(err, t("auth.signInError")));
       setBusy(false);
+      inFlight.current = false;
     }
   };
 

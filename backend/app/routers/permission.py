@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import hook_token
 from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.permission import AnswerAskRequest, PermissionAskResponse
@@ -69,8 +70,13 @@ async def check_permission(
     UI or Telegram, or the poll times out — returns the result in the
     shape Claude Code expects either way.
     """
-    # An empty HOOK_TOKEN (Boat not configured) must never match "Bearer ".
-    if not settings.HOOK_TOKEN or request.headers.get("authorization") != f"Bearer {settings.HOOK_TOKEN}":
+    # The token is good for exactly this user and task, so a token copied out of
+    # one sandbox cannot answer a check for another (core/hook_token.py). An
+    # empty HOOK_TOKEN (Boat not configured) never matches.
+    presented = request.headers.get("authorization", "")
+    prefix = "Bearer "
+    token = presented[len(prefix):] if presented.startswith(prefix) else ""
+    if not hook_token.token_matches(settings.HOOK_TOKEN, user_id, task_id, token):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     body = await request.json()

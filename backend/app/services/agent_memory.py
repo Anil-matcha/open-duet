@@ -52,22 +52,39 @@ _KEY_SHAPES = tuple(
     re.compile(p)
     for p in (
         r"\bsk-[A-Za-z0-9_\-]{16,}",  # Anthropic, OpenAI and similar
+        r"\bsk_live_[A-Za-z0-9]{16,}",  # Stripe secret key
+        r"\brk_live_[A-Za-z0-9]{16,}",  # Stripe restricted key
         r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}",  # GitHub tokens
         r"\bgithub_pat_[A-Za-z0-9_]{20,}",
         r"\bxox[abposr]-[A-Za-z0-9\-]{10,}",  # Slack
         r"\bAKIA[0-9A-Z]{16}\b",  # AWS access key id
+        r"\bASIA[0-9A-Z]{16}\b",  # AWS temporary access key id
         r"\bAIza[0-9A-Za-z_\-]{30,}",  # Google API key
         r"\bhf_[A-Za-z0-9]{30,}",  # Hugging Face
         r"\bnpm_[A-Za-z0-9]{20,}",
+        r"\bSG\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}",  # SendGrid
+        r"\bSK[0-9a-fA-F]{32}\b",  # Twilio account SID
+        r"\b(?:AC|SK)[0-9a-fA-F]{32}\b",  # Twilio SID / key
         r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}",  # JWT
+        r"\bssh-rsa\s+AAAA[A-Za-z0-9+/]{40,}=*",  # ssh public key material
+        r"\bssh-ed25519\s+AAAAC3[A-Za-z0-9+/]{30,}=*",
+        r"\bglpat-[A-Za-z0-9_\-]{20,}",  # GitLab
+        r"\bdop_v1_[A-Za-z0-9a-f]{40,}",  # DigitalOcean
+        r"\bpplx-[A-Za-z0-9]{40,}",  # Perplexity
     )
 )
+# A URL with a password: `scheme://user:pass@host`, group 1 and 2 kept.
+_URL_PASSWORD = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://[^/\s:@]+:)([^/\s@]+)(@)")
 # Shapes where only the value after a label is secret; group 1 is kept.
 _LABELLED = (
     re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/\-]{12,}=*"),
+    re.compile(r"(?i)(\bbasic\s+)(?:[A-Za-z0-9+/]{12,}=*)"),  # HTTP Basic credentials
     re.compile(
         r"(?i)(\b[A-Za-z0-9_.\-]*(?:api[_\-]?key|secret|token|passw(?:or)?d|passphrase)[A-Za-z0-9_.\-]*"
         r"\s*[:=]\s*)(?:\"[^\"\n]{6,}\"|'[^'\n]{6,}'|[^\s,;]{6,})"
+    ),
+    re.compile(  # classic connection-string passwords: Password=...; Pwd=...
+        r"(?i)(\b(?:password|pwd|pass)\s*=\s*)(?:\"[^\"\n]{3,}\"|'[^'\n]{3,}'|[^;\"\s]{3,})"
     ),
 )
 _PRIVATE_KEY = re.compile(
@@ -92,7 +109,15 @@ def redact_secrets(text: str) -> tuple[str, int]:
         count += 1
         return match.group(1) + _REDACTION
 
+    def url_password(match: re.Match) -> str:
+        nonlocal count
+        if match.group(2) == _REDACTION:
+            return match.group(0)
+        count += 1
+        return match.group(1) + _REDACTION + match.group(3)
+
     text = _PRIVATE_KEY.sub(whole, text)
+    text = _URL_PASSWORD.sub(url_password, text)
     for pattern in _KEY_SHAPES:
         text = pattern.sub(whole, text)
     for pattern in _LABELLED:

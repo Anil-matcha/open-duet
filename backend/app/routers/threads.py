@@ -157,10 +157,11 @@ async def get_thread(thread_id: int, rt: ThreadRuntime = Depends(get_runtime)):
 async def update_thread(
     thread_id: int, payload: ThreadUpdateRequest, rt: ThreadRuntime = Depends(get_runtime)
 ):
-    """Rename, archive and/or change the model. Archiving hides a conversation
-    from the default list and deletes nothing; it is refused while a turn is
-    running. A new model is checked against the conversation's engine (422
-    `unknown_model`) and applies from the next message."""
+    """Rename, archive and/or change the model or reasoning effort. Archiving
+    hides a conversation from the default list and deletes nothing; it is
+    refused while a turn is running. A new model is checked against the
+    conversation's engine (422 `unknown_model`) and applies from the next
+    message; an explicit null effort uses the model's default."""
     current = await _thread_or_404(rt, thread_id)
     if "model" in payload.model_fields_set:
         try:
@@ -170,19 +171,22 @@ async def update_thread(
         except EngineModelInvalid as exc:
             raise _error(422, "unknown_model", str(exc)) from None
     try:
-        thread = None
-        # Archiving first: if it is refused, nothing has been renamed either.
-        if payload.archived is not None:
-            async with rt.session() as db:
-                thread = await store.set_archived(db, thread_id, payload.archived)
-        if payload.title is not None:
-            async with rt.session() as db:
-                thread = await store.rename_thread(db, thread_id, payload.title)
-        if "model" in payload.model_fields_set or "effort" in payload.model_fields_set:
-            effort = payload.effort if "effort" in payload.model_fields_set else (current.provider_state or {}).get("effort")
-            model = payload.model if "model" in payload.model_fields_set else current.model
-            async with rt.session() as db:
-                thread = await store.set_model(db, thread_id, model, effort=effort)
+        # All changes in one transaction: a failure in any part applies none,
+        # so the client never sees "failed" with a renamed or archived thread.
+        touched_model = "model" in payload.model_fields_set or "effort" in payload.model_fields_set
+        model = payload.model if "model" in payload.model_fields_set else current.model
+        effort = payload.effort if "effort" in payload.model_fields_set else (current.provider_state or {}).get("effort")
+        async with rt.session() as db:
+            thread = await store.update_thread_fields(
+                db,
+                thread_id,
+                title=payload.title,
+                model=model,
+                model_set=touched_model,
+                effort=effort,
+                effort_set=touched_model,
+                archived=payload.archived,
+            )
     except store.ThreadNotFound:
         raise HTTPException(status_code=404, detail="Thread not found")
     except store.ThreadBusy:

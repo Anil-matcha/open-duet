@@ -31,6 +31,11 @@ class Agent(Base):
             sqlite_where=text("archived_at IS NULL"),
             postgresql_where=text("archived_at IS NULL"),
         ),
+        # SQLite: never reuse a deleted row's id. The default workspace is
+        # workspace_dir()/agents/<id> and team.lead_agent_id names an agent by
+        # id, so a reused id would hand a deleted agent's folder and role to the
+        # next one. PostgreSQL identity columns never reuse an id anyway.
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(BigIntPK, Identity(always=True), primary_key=True)

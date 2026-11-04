@@ -5,7 +5,10 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from sqlalchemy import URL
 
 from app.core import public_url
+from app.core.logging import get_logger
 from app.desktop import profile
+
+logger = get_logger(__name__)
 
 
 class Settings(BaseSettings):
@@ -59,6 +62,11 @@ class Settings(BaseSettings):
     # Shown to web UI users as a clickable t.me/<username> link when linking
     # their Telegram account. Purely cosmetic — the link flow works without it.
     TELEGRAM_BOT_USERNAME: str = ""
+    # Comma-separated Telegram numeric user ids allowed to use the bot. The bot
+    # runs nobody else: an unset/empty list refuses everyone, so enabling the
+    # bot without naming who may use it cannot spend the operator's sandbox
+    # quota on strangers.
+    TELEGRAM_ALLOWED_USER_IDS: str = ""
 
     # Origin(s) allowed to call this API from a browser (the frontend's dev
     # server / deployed URL). Comma-separated.
@@ -199,6 +207,12 @@ class Settings(BaseSettings):
     # The nightly tidy-up runs once a day after this local hour (0-23) for each
     # agent with notes and upkeep on, never while it is working. 24 switches it off.
     MEMORY_TIDY_HOUR: int = 3
+    # How many turns may run at once. Each holds one worker thread for its whole
+    # life (local_claude_runner waits on the process), and the same pool carries
+    # the background recovery jobs, so this must stay well under the pool size
+    # (AnyIO's default 40). Turns past the cap wait their turn instead of
+    # starving routine scheduling, task sync and computer upkeep.
+    TURN_MAX_CONCURRENT: int = 16
 
     # Routines (docs/ROUTINES.md): how often the scheduler looks for due and
     # finished runs, the largest webhook body accepted, and an optional
@@ -233,6 +247,21 @@ class Settings(BaseSettings):
     @property
     def BOAT_ENABLED(self) -> bool:
         return bool(self.BOAT_API_KEY.strip())
+
+    @property
+    def TELEGRAM_ALLOWED_USER_ID_SET(self) -> frozenset[int]:
+        """The numeric Telegram user ids allowed to use the bot. Empty means
+        nobody: the bot refuses every message until this is configured."""
+        ids: set[int] = set()
+        for value in self.TELEGRAM_ALLOWED_USER_IDS.split(","):
+            value = value.strip()
+            if not value:
+                continue
+            try:
+                ids.add(int(value))
+            except ValueError:
+                logger.warning("ignoring non-numeric TELEGRAM_ALLOWED_USER_IDS entry", value=value)
+        return frozenset(ids)
 
     @property
     def LOCAL_ALLOWED_HOST_LIST(self) -> list[str]:
@@ -294,6 +323,15 @@ class Settings(BaseSettings):
         return Path.home() / ".open-dots" / "open-dots.db"
 
     @property
+    def DATABASE_DISPLAY_URL(self) -> str:
+        """The selected database as a URL, password hidden: safe to show or log
+        (PostgreSQL driver errors often echo a DSN, so never log the connect
+        URLs below)."""
+        if self.DATABASE_KIND == "sqlite":
+            return self._sqlite_url("sqlite")
+        return self._database_url("postgresql", hide_password=True)
+
+    @property
     def ASYNC_DATABASE_URL(self) -> str:
         if self.DATABASE_KIND == "sqlite":
             return self._sqlite_url("sqlite+aiosqlite")
@@ -312,12 +350,12 @@ class Settings(BaseSettings):
         return self._database_url("postgresql+psycopg2")
 
     def _sqlite_url(self, driver: str) -> str:
-        # as_posix: forward slashes work for SQLite on every OS.
+        # as_posix: forward slashes work for SQLite on every OS. No password.
         return URL.create(driver, database=self.SQLITE_FILE.as_posix()).render_as_string(
-            hide_password=False
+            hide_password=True
         )
 
-    def _database_url(self, driver: str) -> str:
+    def _database_url(self, driver: str, *, hide_password: bool = False) -> str:
         return URL.create(
             driver,
             username=self.POSTGRES_USER,
@@ -325,7 +363,7 @@ class Settings(BaseSettings):
             host=self.POSTGRES_HOST,
             port=self.POSTGRES_PORT,
             database=self.POSTGRES_DB,
-        ).render_as_string(hide_password=False)
+        ).render_as_string(hide_password=hide_password)
 
 
 settings = Settings(**profile.settings_overrides())  # type: ignore

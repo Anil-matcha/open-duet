@@ -3,6 +3,7 @@ agent runs with. Real routes, runtime and database; a real child process plays
 the Claude CLI."""
 
 import sys
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -158,6 +159,14 @@ async def test_a_workspace_must_be_an_absolute_existing_folder(api, tmp_path):
     assert missing.status_code == 422 and code_of(missing) == "workspace_unavailable"
     agent = await make(api, workspace_path=str(tmp_path))
     assert agent["workspace_path"] == str(tmp_path.resolve())
+
+
+async def test_a_system_or_home_folder_cannot_be_a_workspace(api):
+    # It is mounted read-write into the agent's computer, so it must not be the
+    # root, a system directory, or the home root itself.
+    for bad in ["/", "/etc", "/usr", "/root", str(Path.home())]:
+        response = await api.post("/api/v1/agents", json={"name": "bad", "workspace_path": bad})
+        assert response.status_code == 422 and code_of(response) == "workspace_unavailable", bad
 
 
 async def test_names_are_unique_among_live_agents_and_archiving_frees_one(api):

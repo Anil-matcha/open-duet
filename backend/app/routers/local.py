@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core import app_settings
+from app.auth.routes import require_identity
 from app.db.session import get_db
 from app.schemas.local import (
     LocalApprovalAnswer,
@@ -63,9 +64,9 @@ async def local_status(
 
 @router.get("/tasks", response_model=list[TaskResponse])
 async def list_local_tasks(
-    user_id: str,
     access: LocalAccessGrant = Depends(require_local_access),
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
 ):
     return await task_execution_service.list_local_tasks_for_user(
         db, user_id, access=access
@@ -77,12 +78,13 @@ async def create_local_task(
     payload: LocalTaskCreateRequest,
     access: LocalAccessGrant = Depends(require_local_access),
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_identity),
 ):
     try:
         return await task_execution_service.execute_local_task(
             db,
             access=access,
-            user_id=payload.user_id,
+            user_id=user_id,
             prompt_text=payload.prompt_text,
         )
     except LocalRuntimeUnavailableError as exc:

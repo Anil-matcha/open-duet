@@ -68,6 +68,9 @@ function CodeBlock({ lang, text, closed }: { lang: string; text: string; closed:
 }
 
 const HEADING_SIZE = ["", "text-xl", "text-lg", "text-base", "text-sm", "text-sm", "text-sm"];
+// Real heading elements, clamped to h1-h6, so heading navigation works with
+// the browser's own outline rather than relying on role="heading" being honoured.
+const HEADINGS = ["p", "h1", "h2", "h3", "h4", "h5", "h6"] as const;
 
 function renderBlock(block: Block, key: number): ReactNode {
   switch (block.type) {
@@ -77,12 +80,15 @@ function renderBlock(block: Block, key: number): ReactNode {
           {renderInline(block.children)}
         </p>
       );
-    case "heading":
+    case "heading": {
+      const level = Math.min(Math.max(block.level, 1), 6);
+      const Tag = HEADINGS[level];
       return (
-        <p key={key} role="heading" aria-level={block.level} className={`mt-4 mb-1 font-semibold ${HEADING_SIZE[block.level]}`}>
+        <Tag key={key} className={`mt-4 mb-1 font-semibold ${HEADING_SIZE[level]}`}>
           {renderInline(block.children)}
-        </p>
+        </Tag>
       );
+    }
     case "code":
       return <CodeBlock key={key} lang={block.lang} text={block.text} closed={block.closed} />;
     case "quote":
