@@ -16,6 +16,8 @@
 - Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
 
 ### Fixed
+- Handle missing profile titles in migration previews so the local app UI builds successfully.
+- Include the local Whisper and media packages in the backend lockfile so frozen setup succeeds.
 
 - Make the phone app pairing QR name the API address instead of the web page when the web UI is a separate dev server (port 3000 against port 8000), and swap `localhost` for the address the page was opened from; when the backend serves the UI, nothing changes.
 - Reopen first-agent setup after the last agent is deleted, carrying forward the saved engine and model.

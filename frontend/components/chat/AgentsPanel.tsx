@@ -599,7 +599,7 @@ export function AgentsPanel({
         document: profile.document,
         sourceLabel: `${migrationFilePreview?.source === "hermes" ? "Hermes Agent" : "Grok Bot"} manifest`,
         name: profile.name,
-        title: profile.title,
+        title: profile.title ?? "",
         description: stringField("description"),
         instructions: stringField("instructions"),
       },
