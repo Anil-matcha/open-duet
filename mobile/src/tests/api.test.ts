@@ -1,7 +1,7 @@
 import { ApiError, createApi, describeApiError } from '@/lib/api';
 import { relativeTime } from '@/lib/time';
 
-type Reply = { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown; url?: string };
 
 function fakeFetch(reply: Reply | Error) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -11,6 +11,7 @@ function fakeFetch(reply: Reply | Error) {
     return {
       status: reply.status,
       ok: reply.status >= 200 && reply.status < 300,
+      url: reply.url,
       json: async () => {
         if (reply.body === undefined) throw new Error('no body');
         return reply.body;
@@ -108,5 +109,112 @@ describe('relativeTime', () => {
     expect(relativeTime('2026-10-27T09:00:00Z', now)).toBe('3 h ago');
     expect(relativeTime('2026-10-25T12:00:00Z', now)).toBe('2 d ago');
     expect(relativeTime('not a date', now)).toBe('');
+  });
+});
+
+describe('createApi and plain http', () => {
+  it('talks to a server on the local network over http', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: [] });
+    await createApi({ server: 'http://192.168.1.5:8000', token: 'ods_t' }, { fetchImpl: impl }).listThreads();
+    expect(calls[0].url).toBe('http://192.168.1.5:8000/api/v1/threads?limit=100');
+  });
+
+  it('never sends the token to plain http outside the local network', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: [] });
+    const error = await failure(createApi({ server: 'http://dots.example.com', token: 'ods_t' }, { fetchImpl: impl }).listThreads());
+    expect(error.errorCode).toBe('unreachable');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not use a reply that came from plain http on another host', async () => {
+    const { impl } = fakeFetch({ status: 200, body: [], url: 'http://evil.example/api/v1/threads' });
+    const error = await failure(createApi({ server: 'http://192.168.1.5:8000', token: 'ods_t' }, { fetchImpl: impl }).listThreads());
+    expect(error.errorCode).toBe('unreachable');
+  });
+});
+
+describe('agent calls', () => {
+  const api = (reply: Reply) => {
+    const fake = fakeFetch(reply);
+    return { api: createApi(session, { fetchImpl: fake.impl }), calls: fake.calls };
+  };
+
+  it('lists archived agents too when asked', async () => {
+    const one = api({ status: 200, body: [] });
+    await one.api.listAgents(true);
+    expect(one.calls[0].url).toBe('https://dots.example.com/api/v1/agents?include_archived=true');
+    const two = api({ status: 200, body: [] });
+    await two.api.listAgents();
+    expect(two.calls[0].url).toBe('https://dots.example.com/api/v1/agents');
+  });
+
+  it('creates, edits and duplicates an agent with the right method and body', async () => {
+    const created = api({ status: 201, body: { id: 5 } });
+    await created.api.createAgent({ name: 'Ada' });
+    expect(created.calls[0].init.method).toBe('POST');
+    expect(created.calls[0].url).toBe('https://dots.example.com/api/v1/agents');
+    expect(JSON.parse(created.calls[0].init.body as string)).toEqual({ name: 'Ada' });
+
+    const edited = api({ status: 200, body: { id: 5 } });
+    await edited.api.updateAgent(5, { archived: true });
+    expect(edited.calls[0].init.method).toBe('PATCH');
+    expect(edited.calls[0].url).toBe('https://dots.example.com/api/v1/agents/5');
+
+    const copied = api({ status: 201, body: { id: 6 } });
+    await copied.api.duplicateAgent(5);
+    expect(copied.calls[0].init.method).toBe('POST');
+    expect(copied.calls[0].url).toBe('https://dots.example.com/api/v1/agents/5/duplicate');
+  });
+
+  it('reads the engines the server has', async () => {
+    const { api: engines } = api({ status: 200, body: [{ id: 'claude', label: 'Claude Code', available: true, models: [] }] });
+    expect((await engines.listEngines())[0]).toMatchObject({ id: 'claude', label: 'Claude Code', available: true });
+  });
+
+  it('reports a phone that may not manage agents as scope_denied', async () => {
+    const { api: denied } = api({ status: 403, body: { detail: { error_code: 'scope_denied', message: 'no' } } });
+    expect((await failure(denied.createAgent({ name: 'x' }))).errorCode).toBe('scope_denied');
+  });
+});
+
+describe('room calls', () => {
+  const api = (reply: Reply) => {
+    const fake = fakeFetch(reply);
+    return { api: createApi(session, { fetchImpl: fake.impl }), calls: fake.calls };
+  };
+
+  it('creates and edits a room with the right method and body', async () => {
+    const created = api({ status: 201, body: { id: 9 } });
+    await created.api.createRoom({ name: 'Desk', member_ids: [1] });
+    expect(created.calls[0].init.method).toBe('POST');
+    expect(created.calls[0].url).toBe('https://dots.example.com/api/v1/rooms');
+    expect(JSON.parse(created.calls[0].init.body as string)).toEqual({ name: 'Desk', member_ids: [1] });
+
+    const edited = api({ status: 200, body: { id: 9 } });
+    await edited.api.updateRoom(9, { name: 'Renamed' });
+    expect(edited.calls[0].init.method).toBe('PATCH');
+    expect(edited.calls[0].url).toBe('https://dots.example.com/api/v1/rooms/9');
+  });
+
+  it('holds and resumes a member', async () => {
+    const held = api({ status: 200, body: {} });
+    await held.api.holdRoomMember(9, 2, true);
+    expect(held.calls[0].init.method).toBe('PATCH');
+    expect(held.calls[0].url).toBe('https://dots.example.com/api/v1/rooms/9/members/2');
+    expect(JSON.parse(held.calls[0].init.body as string)).toEqual({ held: true });
+  });
+
+  it('deletes a room, which answers 204 with no body', async () => {
+    const deleted = api({ status: 204 });
+    await expect(deleted.api.deleteRoom(9)).resolves.toBeUndefined();
+    expect(deleted.calls[0].init.method).toBe('DELETE');
+    expect(deleted.calls[0].url).toBe('https://dots.example.com/api/v1/rooms/9');
+  });
+
+  it('reports a phone that may not manage rooms as scope_denied, and a name in use with its code', async () => {
+    const denied = api({ status: 403, body: { detail: { error_code: 'scope_denied', message: 'no' } } });
+    expect((await failure(denied.api.deleteRoom(9))).errorCode).toBe('scope_denied');
+    const taken = api({ status: 409, body: { detail: { error_code: 'room_name_taken', message: 'taken' } } });
+    expect((await failure(taken.api.createRoom({ name: 'x', member_ids: [1] }))).errorCode).toBe('room_name_taken');
   });
 });

@@ -11,9 +11,10 @@ Errors a client acts on carry a machine-readable code:
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
+from app.auth.middleware import principal_of
 from app.core.config import settings
 from app.schemas.agent import (
     OpenBotDatabasePreviewResponse,
@@ -70,6 +71,43 @@ async def _with_computers(rt: ThreadRuntime, agents: list) -> list[AgentResponse
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"error_code": code, "message": message})
+
+
+def _restricted(request: Request) -> bool:
+    """A paired device without admin access (a `manage` phone). Loopback, desktop and signed-in
+    owner requests, and a server with no principal, are not restricted."""
+    principal = principal_of(request.scope)
+    return principal is not None and not principal.is_admin
+
+
+def _admin_only(field: str) -> HTTPException:
+    return _error(403, "field_requires_admin", f"{field} can only be changed from the web app.")
+
+
+def _guard_create(request: Request, payload: AgentCreateRequest) -> None:
+    """What a `manage` device may not set on a new agent: a folder of its choosing, the lead role,
+    or approvals that loosen. An agent made here asks first or only plans."""
+    if not _restricted(request):
+        return
+    if payload.workspace_path is not None:
+        raise _admin_only("workspace_path")
+    if payload.make_lead:
+        raise _admin_only("make_lead")
+    if payload.approval_mode == "accept_edits":
+        raise _admin_only("approval_mode accept_edits")
+
+
+def _guard_update(request: Request, payload: AgentUpdateRequest, agent) -> None:
+    """The same for an edit. Leaving "accept_edits" alone, or moving to "ask" or "plan", is fine."""
+    if not _restricted(request):
+        return
+    for field in ("workspace_path", "connector_scopes", "connector_account_scopes"):
+        if field in payload.model_fields_set:
+            raise _admin_only(field)
+    if payload.make_lead is not None:
+        raise _admin_only("make_lead")
+    if payload.approval_mode == "accept_edits" and agent.approval_mode != "accept_edits":
+        raise _admin_only("approval_mode accept_edits")
 
 
 def _check_workspace(path: str | None) -> str | None:
@@ -233,7 +271,8 @@ async def _check_connector_account_scopes(rt: ThreadRuntime, account_scopes: dic
 
 
 @router.post("", response_model=AgentResponse, status_code=201)
-async def create_agent(payload: AgentCreateRequest, rt: ThreadRuntime = Depends(get_runtime)):
+async def create_agent(payload: AgentCreateRequest, request: Request, rt: ThreadRuntime = Depends(get_runtime)):
+    _guard_create(request, payload)
     if payload.make_lead:
         from app.services.engine_registry import capabilities_of
         adapter = rt.adapters.get(payload.provider)
@@ -286,7 +325,7 @@ async def get_agent(agent_id: int, rt: ThreadRuntime = Depends(get_runtime)):
 
 @router.patch("/{agent_id}", response_model=AgentResponse)
 async def update_agent(
-    agent_id: int, payload: AgentUpdateRequest, rt: ThreadRuntime = Depends(get_runtime)
+    agent_id: int, payload: AgentUpdateRequest, request: Request, rt: ThreadRuntime = Depends(get_runtime)
 ):
     """Edit an agent. Conversations already started from it use the new
     model and approval mode from their next message. New instructions and
@@ -298,6 +337,7 @@ async def update_agent(
     uses that engine's default model. An agent with a computer can only move
     to an engine that can use one (409 `engine_without_computers`)."""
     agent = await _agent_or_404(rt, agent_id)
+    _guard_update(request, payload, agent)
     changes = {
         field: getattr(payload, field)
         for field in (
@@ -389,12 +429,13 @@ async def update_agent(
 
 
 @router.post("/{agent_id}/duplicate", response_model=AgentResponse, status_code=201)
-async def duplicate_agent(agent_id: int, rt: ThreadRuntime = Depends(get_runtime)):
-    """Copy an agent's settings under a new name. Conversations are not copied."""
+async def duplicate_agent(agent_id: int, request: Request, rt: ThreadRuntime = Depends(get_runtime)):
+    """Copy an agent's settings under a new name. Conversations are not copied. A `manage` device
+    gets a copy that is never looser than the source: its own folder, and "ask" for "accept_edits"."""
     await _agent_or_404(rt, agent_id)
     try:
         async with rt.session() as db:
-            return await store.duplicate_agent(db, agent_id)
+            return await store.duplicate_agent(db, agent_id, safe=_restricted(request))
     except store.AgentNotFound:
         raise HTTPException(status_code=404, detail="Agent not found") from None
     except store.AgentNameTaken:

@@ -214,9 +214,11 @@ async def free_name(db: AsyncSession, owner_id: str, base: str, tag: str = "") -
     return name
 
 
-async def duplicate_agent(db: AsyncSession, agent_id: int) -> Agent:
+async def duplicate_agent(db: AsyncSession, agent_id: int, *, safe: bool = False) -> Agent:
     """A copy with the same settings, named "<name> copy" (then "copy 2", ...).
     The copy is live and unpinned, and starts with no notes of its own.
+    With `safe`, the copy is never looser than the source: it gets its own folder
+    instead of the source's `workspace_path`, and "accept_edits" becomes "ask".
     Raises AgentNotFound."""
     source = await db.get(Agent, agent_id)
     if source is None:
@@ -231,8 +233,8 @@ async def duplicate_agent(db: AsyncSession, agent_id: int) -> Agent:
         instructions=source.instructions,
         provider=source.provider,
         model=source.model,
-        workspace_path=source.workspace_path,
-        approval_mode=source.approval_mode,
+        workspace_path=None if safe else source.workspace_path,
+        approval_mode="ask" if safe and source.approval_mode == "accept_edits" else source.approval_mode,
         memory_enabled=source.memory_enabled,
         recall_enabled=source.recall_enabled,
         memory_upkeep=source.memory_upkeep,

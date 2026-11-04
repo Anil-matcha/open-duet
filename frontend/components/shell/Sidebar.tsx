@@ -124,7 +124,7 @@ export function Sidebar({
   const [showAllAgents, setShowAllAgents] = useState(false);
   const [recentCollapsed, setRecentCollapsed] = useState(false);
   const listed = sidebarAgents(agents);
-  const [agentsCollapsed, setAgentsCollapsed] = useState(() => listed.length === 0);
+  const [agentsCollapsed, setAgentsCollapsed] = useState(false);
   const unread = useUnread(threads, selectedThreadId);
 
   const names = new Map((agents ?? []).map((agent) => [agent.id, agent.name]));

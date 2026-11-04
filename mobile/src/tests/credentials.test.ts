@@ -15,17 +15,24 @@ beforeEach(() => jest.clearAllMocks());
 
 describe('credentials', () => {
   it('saves one JSON entry in the secure store, kept on this device only', async () => {
-    await saveCredentials({ server: 'https://dots.example.com', token: 'ods_x', label: 'My phone' });
+    await saveCredentials({ server: 'https://dots.example.com', token: 'ods_x', label: 'My phone', scopes: ['chat', 'manage'] });
     expect(store.setItemAsync).toHaveBeenCalledWith(
       'paired_server',
-      JSON.stringify({ server: 'https://dots.example.com', token: 'ods_x', label: 'My phone' }),
+      JSON.stringify({ server: 'https://dots.example.com', token: 'ods_x', label: 'My phone', scopes: ['chat', 'manage'] }),
       { keychainAccessible: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY' },
     );
   });
 
   it('loads what was saved', async () => {
+    store.getItemAsync.mockResolvedValue(JSON.stringify({ server: 'https://s', token: 't', label: 'L', scopes: ['chat', 'files'] }));
+    expect(await loadCredentials()).toEqual({ server: 'https://s', token: 't', label: 'L', scopes: ['chat', 'files'] });
+  });
+
+  it('loads an entry saved before scopes were kept as having none, and ignores a malformed list', async () => {
     store.getItemAsync.mockResolvedValue(JSON.stringify({ server: 'https://s', token: 't', label: 'L' }));
-    expect(await loadCredentials()).toEqual({ server: 'https://s', token: 't', label: 'L' });
+    expect(await loadCredentials()).toEqual({ server: 'https://s', token: 't', label: 'L', scopes: [] });
+    store.getItemAsync.mockResolvedValue(JSON.stringify({ server: 'https://s', token: 't', label: 'L', scopes: ['chat', 5, null] }));
+    expect(await loadCredentials()).toEqual({ server: 'https://s', token: 't', label: 'L', scopes: ['chat'] });
   });
 
   it('treats a missing, damaged or incomplete entry as not paired', async () => {

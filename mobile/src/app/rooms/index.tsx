@@ -2,7 +2,10 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { Button } from '@/components/form';
 import { Text } from '@/components/text';
+import { canManageAgents } from '@/lib/agents';
+import { useAuth } from '@/lib/auth-context';
 import { describeApiError } from '@/lib/api';
 import { roomBusy, workingNames, type Room } from '@/lib/rooms';
 import { radius, useStyles, type Palette } from '@/lib/theme';
@@ -12,6 +15,8 @@ export default function Rooms() {
   const api = useApi();
   const router = useRouter();
   const styles = useStyles(createStyles);
+  const { state } = useAuth();
+  const manage = state.status === 'paired' && canManageAgents(state.scopes);
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,7 +60,8 @@ export default function Rooms() {
           data={rooms ?? []}
           keyExtractor={(room) => String(room.id)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-          ListEmptyComponent={rooms ? <Text style={styles.empty}>No rooms yet. Rooms are made in the web app.</Text> : undefined}
+          ListHeaderComponent={manage ? <View style={styles.header}><Button label="New room" onPress={() => router.push({ pathname: '/room-settings', params: { id: 'new' } })} /></View> : undefined}
+          ListEmptyComponent={rooms ? <Text style={styles.empty}>{manage ? 'No rooms yet. A room is a shared conversation with several of your agents.' : 'No rooms yet. Rooms are made in the web app.'}</Text> : undefined}
           renderItem={({ item }) => (
             <Pressable accessibilityRole="button" style={styles.row} onPress={() => router.push({ pathname: '/rooms/[id]', params: { id: String(item.id) } })}>
               <View style={styles.line}>
@@ -80,6 +86,7 @@ const createStyles = (p: Palette) =>
   StyleSheet.create({
     flex: { flex: 1 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    header: { padding: 16, paddingBottom: 4 },
     error: { color: p.danger, padding: 12, fontSize: 14 },
     empty: { textAlign: 'center', marginTop: 40, fontSize: 16, color: p.muted, paddingHorizontal: 24 },
     row: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: p.border },

@@ -31,6 +31,16 @@ bearer header, so a token copied out of one cannot be replayed as the other.
   on the CLI). It is chat plus reading a conversation's workspace files: list, preview,
   image and download, not the folder zip. `admin` includes it. A chat-only device never
   gains it; the phone must be paired again with a code that has it.
+- `manage`: opt-in, chosen when the pairing code is made (**Chat, files and agents**; `--scope manage`
+  on the CLI). It is chat and files plus creating, editing, duplicating and archiving agents
+  (`POST /agents`, `PATCH /agents/{id}`, `POST /agents/{id}/duplicate`), and creating, editing and deleting
+  rooms (`POST /rooms`, `PATCH` and `DELETE /rooms/{id}`) and holding or resuming a room member
+  (`PATCH /rooms/{id}/members/{agent_id}`). It does not delete agents.
+  The server also refuses, for any device without `admin`,
+  an agent's workspace folder, the "Accept edits" approval mode (a device may choose "Ask first" or
+  "Plan only", or move an agent to either), connected apps and the team lead role, with `403
+  field_requires_admin`. A duplicate made by such a device gets its own folder and "Ask first" in place
+  of "Accept edits". Import, export, notes, skills, computers and team routes stay admin-only.
 
 ## The owner
 
@@ -94,8 +104,9 @@ without a preflight. That closes login CSRF.
    code from a 31-symbol alphabet without look-alikes (about 2^39.6), shown as
    `ABCD-EFGH`, with a QR code of `<web UI>/pair#code=ABCD-EFGH`. The code is
    carried in the URL fragment, so it never reaches a server log. For a
-   chat-only or chat-and-files code the screen shows a second QR code and link for the
-   [phone app](MOBILE.md), `suparagent://pair?server=<web UI>#code=ABCD-EFGH`.
+   chat-only, chat-and-files or chat, files and agents code the screen shows a second QR code and link for the
+   [phone app](MOBILE.md), `suparagent://pair?server=<API address>#code=ABCD-EFGH`. The address is the web UI's when the
+   backend serves the UI, and the API's own address when the UI is a separate dev server.
 2. On the device, scan the QR or open `/pair` and type the code. A browser
    exchanges it for its own session cookie; any other client
    (`POST /api/v1/auth/pair` without `"cookie": true`) receives a bearer token

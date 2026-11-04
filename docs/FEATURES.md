@@ -26,8 +26,9 @@ platform and release qualification limits.
 - **Teams and rooms.** A Claude or Codex lead can delegate to specialists and manage
   shared rooms with member mentions, shared instructions, responder settings,
   queued replies, approvals and run status. Team tools are gated and require
-  Claude or Codex. Room members are selected at creation and cannot yet be
-  changed afterward. See [teams](TEAMS.md).
+  Claude or Codex. Room settings can add or remove members, change the shared
+  instructions and the default responder, and rename the room; a phone paired
+  with *Chat, files and agents* can do the same. See [teams](TEAMS.md).
 - **Skills.** Save or import reviewed Markdown instructions for an agent and
   choose them explicitly for a message. Skills do not execute scripts or grant
   permissions. See [skills](SKILLS.md).

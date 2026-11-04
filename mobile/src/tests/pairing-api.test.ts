@@ -1,6 +1,6 @@
-import { checkServer, checkSession, describePairingError, describeServerCheck, PairingError, pairDevice, signOutOnServer } from '@/lib/pairing-api';
+import { checkServer, checkSession, describePairingError, describeServerCheck, PairingError, pairDevice, readSession, signOutOnServer } from '@/lib/pairing-api';
 
-type Reply = { status: number; body?: unknown; headers?: Record<string, string>; badJson?: boolean };
+type Reply = { status: number; body?: unknown; headers?: Record<string, string>; badJson?: boolean; url?: string };
 
 function fakeFetch(...replies: Reply[]) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -10,6 +10,7 @@ function fakeFetch(...replies: Reply[]) {
     return {
       status: reply.status,
       ok: reply.status >= 200 && reply.status < 300,
+      url: reply.url,
       headers: { get: (name: string) => reply.headers?.[name.toLowerCase()] ?? null },
       json: async () => {
         if (reply.badJson) throw new Error('not json');
@@ -21,7 +22,7 @@ function fakeFetch(...replies: Reply[]) {
 }
 
 const chatSession = { token: 'ods_secret', session: { kind: 'device', scopes: ['chat'], label: 'My phone', session_id: 7, owner_configured: true } };
-const args = { server: 'https://dots.example.com', code: 'ABCDEFGH', label: 'My phone', allowHttp: false };
+const args = { server: 'https://dots.example.com', code: 'ABCDEFGH', label: 'My phone' };
 
 async function failure(promise: Promise<unknown>): Promise<PairingError> {
   try {
@@ -64,12 +65,23 @@ describe('pairDevice', () => {
     expect((await failure(pairDevice({ ...args, fetchImpl: impl }))).code).toBe('wrong_scope');
   });
 
-  it('never sends the code over plain http unless allowed', async () => {
+  it('never sends the code over plain http to an address outside the local network', async () => {
     const { impl, calls } = fakeFetch({ status: 200, body: chatSession });
-    expect((await failure(pairDevice({ ...args, server: 'http://192.168.1.5:8000', fetchImpl: impl }))).code).toBe('insecure');
+    expect((await failure(pairDevice({ ...args, server: 'http://dots.example.com', fetchImpl: impl }))).code).toBe('insecure');
+    expect((await failure(pairDevice({ ...args, server: 'http://8.8.8.8:8000', fetchImpl: impl }))).code).toBe('insecure');
     expect(calls).toHaveLength(0);
-    await pairDevice({ ...args, server: 'http://192.168.1.5:8000', allowHttp: true, fetchImpl: impl });
+  });
+
+  it('pairs over plain http with an address on the local network', async () => {
+    const { impl, calls } = fakeFetch({ status: 200, body: chatSession });
+    const session = await pairDevice({ ...args, server: 'http://192.168.1.5:8000', fetchImpl: impl });
+    expect(session.server).toBe('http://192.168.1.5:8000');
     expect(calls).toHaveLength(1);
+  });
+
+  it('treats a reply that came from plain http on another host as unreachable', async () => {
+    const { impl } = fakeFetch({ status: 200, body: chatSession, url: 'http://evil.example/api/v1/auth/pair' });
+    expect((await failure(pairDevice({ ...args, server: 'http://192.168.1.5:8000', fetchImpl: impl }))).code).toBe('unreachable');
   });
 
   it.each([
@@ -183,5 +195,32 @@ describe('describeServerCheck', () => {
     expect(results.filter((result) => describeServerCheck(result).tone === 'warn')).toEqual(['needs_setup']);
     expect(describeServerCheck('unreachable').text).toMatch(/same network|VPN/);
     expect(describeServerCheck('needs_setup').text).toMatch(/no owner account/);
+  });
+});
+
+describe('readSession', () => {
+  it('reads the scopes the server reports for this token', async () => {
+    const body = { kind: 'device', scopes: ['chat', 'manage'] };
+    expect(await readSession('https://s', 't', fakeFetch({ status: 200, body }).impl)).toEqual({ status: 'valid', scopes: ['chat', 'manage'] });
+  });
+
+  it('is still a valid session when the reply has no usable scopes', async () => {
+    expect(await readSession('https://s', 't', fakeFetch({ status: 200, body: {} }).impl)).toEqual({ status: 'valid', scopes: null });
+    expect(await readSession('https://s', 't', fakeFetch({ status: 200, body: { scopes: [1] } }).impl)).toEqual({ status: 'valid', scopes: null });
+    expect(await readSession('https://s', 't', fakeFetch({ status: 200, badJson: true }).impl)).toEqual({ status: 'valid', scopes: null });
+  });
+
+  it('says revoked only for a 401, and unknown otherwise', async () => {
+    expect(await readSession('https://s', 't', fakeFetch({ status: 401 }).impl)).toEqual({ status: 'revoked' });
+    expect(await readSession('https://s', 't', fakeFetch({ status: 500 }).impl)).toEqual({ status: 'unknown' });
+    expect(await readSession('https://s', 't', (async () => { throw new Error('offline'); }) as unknown as typeof fetch)).toEqual({ status: 'unknown' });
+  });
+});
+
+describe('pairDevice with the manage scope', () => {
+  it('accepts a phone paired to manage agents, and keeps its scopes', async () => {
+    const manage = { token: 'ods_m', session: { scopes: ['chat', 'manage'], session_id: 12 } };
+    const { impl } = fakeFetch({ status: 200, body: manage });
+    expect((await pairDevice({ ...args, fetchImpl: impl })).scopes).toEqual(['chat', 'manage']);
   });
 });

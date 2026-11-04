@@ -1,6 +1,7 @@
 // Rooms: a shared conversation where you and several of your agents talk. The phone lists rooms, reads
-// them as they happen, posts to them, stops the agents and answers their approvals. Creating a room or
-// changing who is in it is not allowed for a chat-only device (docs/AUTH.md); that stays in the web app.
+// them as they happen, posts to them, stops the agents and answers their approvals. A phone paired with
+// "Chat, files and agents" can also create, edit and delete rooms (lib/room-draft.ts, app/room-settings.tsx);
+// a chat-only device cannot (docs/AUTH.md).
 //
 // A room's messages are the stored events of its own thread, so the phone follows that thread with the
 // same stream it uses for a conversation. This file is plain TypeScript: no React, no network of its own.
@@ -19,7 +20,9 @@ export type Room = {
   last_seq: number;
   last_read_seq: number;
   unread: boolean;
+  bulletin?: string;
   default_responder_kind: string;
+  default_responder_agent_id?: number | null;
   members: RoomMember[];
   dispatches: Dispatch[];
 };

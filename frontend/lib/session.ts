@@ -1,5 +1,7 @@
 // Session helpers with no runtime imports, so node tests can load them (docs/AUTH.md).
 
+import type { PairingScope } from "./access-label";
+
 export type AuthStatus = {
   owner_configured: boolean;
   setup_allowed: boolean;
@@ -21,7 +23,7 @@ export type PairingCode = {
   id: number;
   code: string;
   display_code: string;
-  scope: "admin" | "chat" | "files";
+  scope: PairingScope;
   label: string;
   expires_at: string;
 };

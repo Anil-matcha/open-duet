@@ -54,9 +54,9 @@ beforeEach(() => {
 
 describe('agent helpers', () => {
   it('says how an agent asks before it acts, and passes unknown modes through', () => {
-    expect(approvalModeLabel('ask')).toBe('Asks before acting');
-    expect(approvalModeLabel('accept_edits')).toBe('Accepts file edits');
-    expect(approvalModeLabel('plan')).toBe('Plans only');
+    expect(approvalModeLabel('ask')).toBe('Ask first');
+    expect(approvalModeLabel('accept_edits')).toBe('Accept edits');
+    expect(approvalModeLabel('plan')).toBe('Plan only');
     expect(approvalModeLabel('newer_mode')).toBe('newer_mode');
   });
 
@@ -146,7 +146,7 @@ describe('NewConversation', () => {
     expect(await screen.findByText('Default assistant')).toBeTruthy();
     expect(screen.getByText('Researcher')).toBeTruthy();
     expect(screen.getByText('Finds things')).toBeTruthy();
-    expect(screen.getByText('Accepts file edits')).toBeTruthy();
+    expect(screen.getByText('Accept edits')).toBeTruthy();
   });
 
   it('starts a conversation from the chosen agent and opens it in place of the picker', async () => {

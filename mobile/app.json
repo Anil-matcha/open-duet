@@ -2,18 +2,22 @@
   "expo": {
     "name": "Suparagent",
     "slug": "suparagent",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "scheme": "suparagent",
     "userInterfaceStyle": "automatic",
     "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "ai.suparagent.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
+        "NSLocalNetworkUsageDescription": "Suparagent connects to your own server on this network when you pair it with an http:// address."
+      }
     },
     "android": {
       "package": "ai.suparagent.app",
-      "versionCode": 2
+      "versionCode": 4
     },
     "plugins": [
       "expo-router",
@@ -40,6 +44,7 @@
         "expo-build-properties",
         {
           "android": {
+            "usesCleartextTraffic": true,
             "extraProguardRules": "# expo-camera finds the ML Kit scanner by class name and ML Kit starts its parts by name from the manifest.\n# Without these, R8 breaks the scanner in release builds and the QR camera never reports a code.\n-keep class com.google.mlkit.** { *; }\n-keep class com.google.android.gms.internal.mlkit_** { *; }\n-keep class com.google.firebase.components.** { *; }\n-keep class * implements com.google.firebase.components.ComponentRegistrar { *; }"
           }
         }
