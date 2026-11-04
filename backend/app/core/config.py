@@ -110,7 +110,9 @@ class Settings(BaseSettings):
     TEAM_DELEGATE_QUEUE_SECONDS: int = 86400
     TEAM_QUESTION_WAIT_SECONDS: int = 1800
     ROOM_CHAIN_DEPTH: int = 2
-    LOCAL_TASK_TIMEOUT_SECONDS: int = 1800
+    # Optional hard cap for a local agent turn. 0 leaves completion to the
+    # engine and the separate inactivity watchdog.
+    LOCAL_TASK_TIMEOUT_SECONDS: int = 0
     LOCAL_MAX_OUTPUT_BYTES: int = 1_000_000
     # Stored as a desktop preference; headless installs do not run the wizard.
     DESKTOP_ONBOARDING_COMPLETED: bool = False

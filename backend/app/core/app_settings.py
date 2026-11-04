@@ -34,7 +34,7 @@ REGISTRY = {
     "LOCAL_CLAUDE_CLI_PATH": Definition("file", True, "next_run"),
     "LOCAL_WORKSPACE_ROOT": Definition("directory", True, "next_run"),
     "LOCAL_TOOLS_ENABLED": Definition("boolean", True, "next_run"),
-    "LOCAL_TASK_TIMEOUT_SECONDS": Definition("integer", False, "next_run", 30, 3600),
+    "LOCAL_TASK_TIMEOUT_SECONDS": Definition("integer", False, "next_run", 0, 3600),
     "LOCAL_APPROVAL_TIMEOUT_SECONDS": Definition("integer", True, "next_run", 30, 3600),
     "LOCAL_MAX_OUTPUT_BYTES": Definition("integer", False, "next_run", 1024, 16_000_000),
 }

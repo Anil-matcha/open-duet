@@ -328,7 +328,8 @@ class OpenAIChatAdapter:
             body = {"model": model, "messages": messages, "stream": True, "stream_options": {"include_usage": True}}
             if ctx.effort:
                 body["reasoning_effort"] = ctx.effort.lower()
-            timeout = httpx.Timeout(app_settings.get("LOCAL_TASK_TIMEOUT_SECONDS"), connect=CONNECT_TIMEOUT_SECONDS)
+            task_timeout = app_settings.get("LOCAL_TASK_TIMEOUT_SECONDS")
+            timeout = httpx.Timeout(task_timeout or None, connect=CONNECT_TIMEOUT_SECONDS)
             async with self._client(timeout) as client:
                 async with client.stream(
                     "POST", f"{base}/chat/completions", headers=self._headers(config), json=body
