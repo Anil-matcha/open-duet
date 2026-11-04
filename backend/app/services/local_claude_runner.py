@@ -459,7 +459,7 @@ def run_blocking(
     ]
     if control is not None:
         control._attach(proc, timeout_seconds, on_timeout)
-    else:
+    elif timer is not None:
         timer.start()
     for reader in readers:
         reader.start()

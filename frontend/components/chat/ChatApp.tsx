@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
@@ -35,7 +35,7 @@ import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-
 import { useT } from "@/lib/use-i18n";
 import { reportPresence } from "@/lib/presence";
 import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
-import { loadQueuedFollowUps, MAX_FOLLOW_UP_TEXT_CHARS, MAX_QUEUED_FOLLOW_UPS, newQueuedFollowUp, saveQueuedFollowUps, type QueuedFollowUp } from "@/lib/queued-follow-ups";
+import { EMPTY_QUEUED_FOLLOW_UPS, loadQueuedFollowUps, MAX_FOLLOW_UP_TEXT_CHARS, MAX_QUEUED_FOLLOW_UPS, newQueuedFollowUp, saveQueuedFollowUps, subscribeQueuedFollowUps, type QueuedFollowUp } from "@/lib/queued-follow-ups";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
 import { parseSkillCommand, skillErrorText, toggleSkill, learnableTurn, type SkillSummary, type SkillLearnSource } from "@/lib/skills";
 import { RoomList } from "./RoomList";
@@ -50,6 +50,7 @@ import type { NeedsYouSnapshot } from "@/lib/needs-you";
 
 const LIST_REFRESH_MS = 15_000;
 const COMPUTER_STATUS_REFRESH_MS = 15_000;
+const emptyQueuedFollowUpsSnapshot = () => EMPTY_QUEUED_FOLLOW_UPS;
 
 type Gate =
   | { phase: "loading" }
@@ -150,15 +151,25 @@ export function ChatApp() {
   const setPanel = (next: Panel | null) => router.replace(chatHref(params.toString(), next));
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [queuedFollowUps, setQueuedFollowUps] = useState<{ threadId: number | null; items: QueuedFollowUp[] }>({ threadId: null, items: [] });
-  const queuedFollowUpsRef = useRef(queuedFollowUps);
-  queuedFollowUpsRef.current = queuedFollowUps;
+  const subscribeToThreadQueue = useCallback(
+    (subscriber: () => void) => threadId === null ? () => {} : subscribeQueuedFollowUps(threadId, subscriber),
+    [threadId],
+  );
+  const getThreadQueue = useCallback(
+    () => threadId === null ? EMPTY_QUEUED_FOLLOW_UPS : loadQueuedFollowUps(threadId),
+    [threadId],
+  );
+  const threadQueuedFollowUps = useSyncExternalStore(
+    subscribeToThreadQueue,
+    getThreadQueue,
+    emptyQueuedFollowUpsSnapshot,
+  );
   const currentThreadIdRef = useRef(threadId);
-  currentThreadIdRef.current = threadId;
+  useEffect(() => { currentThreadIdRef.current = threadId; }, [threadId]);
   const queuedDrainRef = useRef(false);
-  const [queuedTurnId, setQueuedTurnId] = useState<number | null>(null);
+  const [queuedTurn, setQueuedTurn] = useState<{ threadId: number; turnId: number } | null>(null);
   const [queuedSending, setQueuedSending] = useState(false);
-  const [failedQueuedId, setFailedQueuedId] = useState<string | null>(null);
+  const [failedQueued, setFailedQueued] = useState<{ threadId: number; id: string } | null>(null);
   const [focusComposer, setFocusComposer] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [answering, setAnswering] = useState<string | null>(null);
@@ -237,15 +248,6 @@ export function ChatApp() {
   const ready = gate.phase === "ready" && (gate.status.available || (gate.status.enabled && engines !== null));
   const stream = useThreadStream(ready ? threadId : null);
   const { transcript } = stream;
-
-  useEffect(() => {
-    const items = threadId === null ? [] : loadQueuedFollowUps(threadId);
-    const next = { threadId, items };
-    queuedFollowUpsRef.current = next;
-    setQueuedFollowUps(next);
-    setQueuedTurnId(null);
-    setFailedQueuedId(null);
-  }, [threadId]);
 
   useEffect(() => {
     if (params.get("onboarding") !== "1" || threadId !== null) return;
@@ -488,60 +490,47 @@ export function ChatApp() {
   const workingMode = canMessageDuringRun
     ? selectedEngine?.capabilities.steering ? "steer" as const : "queue" as const
     : null;
-  const threadQueuedFollowUps = queuedFollowUps.threadId === threadId ? queuedFollowUps.items : [];
+  const failedQueuedId = failedQueued?.threadId === threadId ? failedQueued.id : null;
+  const queuedTurnPending = queuedTurn?.threadId === threadId &&
+    !transcript.items.some((item) => item.kind === "turn_end" && item.turnId === queuedTurn.turnId);
 
   const writeQueuedFollowUps = (id: number, items: QueuedFollowUp[]) => {
     saveQueuedFollowUps(id, items);
-    if (currentThreadIdRef.current === id) {
-      const next = { threadId: id, items };
-      queuedFollowUpsRef.current = next;
-      setQueuedFollowUps(next);
-    }
   };
 
   const enqueueFollowUp = (id: number, text: string): boolean => {
-    const current = queuedFollowUpsRef.current.threadId === id
-      ? queuedFollowUpsRef.current.items
-      : loadQueuedFollowUps(id);
+    const current = loadQueuedFollowUps(id);
     if (current.length >= MAX_QUEUED_FOLLOW_UPS) return false;
     writeQueuedFollowUps(id, [...current, newQueuedFollowUp(text)]);
     return true;
   };
 
   useEffect(() => {
-    if (queuedTurnId === null) return;
-    if (transcript.items.some((item) => item.kind === "turn_end" && item.turnId === queuedTurnId))
-      setQueuedTurnId(null);
-  }, [queuedTurnId, transcript.items]);
-
-  useEffect(() => {
     const first = threadQueuedFollowUps[0];
     if (
       threadId === null || stream.threadId !== threadId || !first || stream.connection !== "live" || transcript.runningTurnId !== null ||
-      waiting || sending || queuedSending || queuedTurnId !== null || failedQueuedId === first.id || queuedDrainRef.current
+      waiting || sending || queuedSending || queuedTurnPending || failedQueuedId === first.id || queuedDrainRef.current
     ) return;
     queuedDrainRef.current = true;
     setQueuedSending(true);
     void api.sendTurn(threadId, first.text).then((turn) => {
-      const current = queuedFollowUpsRef.current.threadId === threadId
-        ? queuedFollowUpsRef.current.items
-        : loadQueuedFollowUps(threadId);
+      const current = loadQueuedFollowUps(threadId);
       if (current[0]?.id === first.id) writeQueuedFollowUps(threadId, current.slice(1));
-      if (currentThreadIdRef.current === threadId) setQueuedTurnId(turn.id);
+      if (currentThreadIdRef.current === threadId) setQueuedTurn({ threadId, turnId: turn.id });
       if (currentThreadIdRef.current === threadId) {
         setSendError(null);
-        setFailedQueuedId(null);
+        setFailedQueued(null);
       }
     }).catch((err) => {
       if (currentThreadIdRef.current === threadId) {
         setSendError(sendErrorText(err));
-        setFailedQueuedId(first.id);
+        setFailedQueued({ threadId, id: first.id });
       }
     }).finally(() => {
       queuedDrainRef.current = false;
       setQueuedSending(false);
     });
-  }, [threadId, threadQueuedFollowUps, stream.connection, transcript.runningTurnId, waiting, sending, queuedSending, queuedTurnId, failedQueuedId]);
+  }, [threadId, threadQueuedFollowUps, stream.connection, transcript.runningTurnId, waiting, sending, queuedSending, queuedTurnPending, failedQueuedId]);
 
   const totals = conversationUsage(
     transcript.items.flatMap((item) => (item.kind === "turn_end" ? [{ usage: item.usage }] : []))
@@ -1175,7 +1164,7 @@ export function ChatApp() {
                         {failedQueuedId === item.id && (
                           <button
                             type="button"
-                            onClick={() => { setSendError(null); setFailedQueuedId(null); }}
+                            onClick={() => { setSendError(null); setFailedQueued(null); }}
                             className="cursor-pointer text-xs text-accent underline"
                           >
                             {t("composer.retryQueued")}
@@ -1185,7 +1174,7 @@ export function ChatApp() {
                           type="button"
                           onClick={() => {
                             if (failedQueuedId === item.id) {
-                              setFailedQueuedId(null);
+                              setFailedQueued(null);
                               setSendError(null);
                             }
                             writeQueuedFollowUps(threadId, threadQueuedFollowUps.filter((queued) => queued.id !== item.id));

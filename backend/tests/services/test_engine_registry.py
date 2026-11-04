@@ -75,7 +75,10 @@ async def test_a_small_adapter_gets_safe_defaults():
     [entry] = await registry.describe()
     assert entry["available"] and entry["installed"] and entry["version"] == "1.0"
     assert entry["label"] == "minimal" and entry["kind"] == "cli"
-    assert entry["capabilities"] == {k: False for k in ("tools", "approvals", "mcp", "images", "resume", "computers")}
+    assert entry["capabilities"] == {
+        k: False
+        for k in ("tools", "approvals", "mcp", "images", "resume", "computers", "steering")
+    }
     assert entry["custom_models"] is True and entry["models"] == []
     assert entry["reason"] is None
     assert entry["preset"] is False and entry["setup"] is None and entry["config_fields"] == []
