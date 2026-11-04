@@ -250,7 +250,10 @@ And outside `/api/v1`: `POST /hooks/{id}` (bearer secret).
 ## Connected apps
 
 The editor lets you authorize exact actions and connected accounts once per
-routine. The agent must also have matching app and account access. Scheduled and
+routine. **Select all available actions** grants the actions allowed by the
+selected agent's active connected accounts, including writes only when that
+agent already has write access; **Clear all actions** removes these routine
+grants. The agent must also have matching app and account access. Scheduled and
 manual runs can use granted reads, send a one-recipient plain-text Gmail email,
 create a new GitHub `campaign/` branch, or commit a file on that branch without
 repeated action approvals. Plan mode refuses writes. Webhook and retry runs

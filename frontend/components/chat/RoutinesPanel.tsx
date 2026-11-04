@@ -102,6 +102,10 @@ const ROUTINE_READ_TOOLS = [
   ], writes: [] },
 ] as const;
 
+const ROUTINE_APP_TOOL_NAMES = new Set<string>(ROUTINE_READ_TOOLS.flatMap((group) =>
+  [...group.tools, ...group.writes].map(([tool]) => tool),
+));
+
 function newDraft(agents: Agent[]): Draft {
   return {
     id: null, name: "", agentId: agents[0]?.id ?? null, prompt: "", schedule: emptySchedule(),
@@ -358,6 +362,35 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
       names.has(grant.tool) ? { ...grant, account_id: accountId } : grant) });
   };
 
+  const setAllRoutineGrants = (selected: boolean) => {
+    if (!draft) return;
+    if (!selected) {
+      setDraft({ ...draft, connectedAppGrants: draft.connectedAppGrants.filter((grant) => !ROUTINE_APP_TOOL_NAMES.has(grant.tool)) });
+      return;
+    }
+    if (!connectedAccounts) return;
+    const agent = agents.find((item) => item.id === draft.agentId);
+    if (!agent) return;
+    const grants = new Map<string, ConnectedAppGrant>(draft.connectedAppGrants.map((grant) => [grant.tool, grant] as const));
+    for (const group of ROUTINE_READ_TOOLS) {
+      const scope = agent.connector_scopes?.[group.app];
+      const hasReadScope = scope === "read" || scope === "write";
+      const allowedIds = agent.connector_account_scopes?.[group.app] ?? [];
+      const available = connectedAccounts.filter((account) => account.toolkit === group.app && account.status === "ACTIVE"
+        && hasReadScope && allowedIds.includes(account.id));
+      if (available.length === 0) continue;
+      const firstAvailable = available[0];
+      if (!firstAvailable) continue;
+      const tools = [...group.tools, ...(scope === "write" ? group.writes : [])];
+      const current = tools.map(([tool]) => grants.get(tool)).find((grant): grant is ConnectedAppGrant => Boolean(grant));
+      const accountId = available.find((account) => account.id === current?.account_id)?.id ?? firstAvailable.id;
+      for (const [tool] of tools) {
+        grants.set(tool, { tool, account_id: accountId });
+      }
+    }
+    setDraft({ ...draft, connectedAppGrants: Array.from(grants.values()) });
+  };
+
   const act = async (work: () => Promise<unknown>, fallback: string) => {
     setBusy(true);
     setError(null);
@@ -386,6 +419,18 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
   const agentName = (id: number) => agents.find((agent) => agent.id === id)?.name ?? `Agent ${id}`;
   const heading = draft ? (draft.id === null ? "New routine" : "Edit routine") : "Routines";
   const routineAgent = draft ? agents.find((agent) => agent.id === draft.agentId) : undefined;
+  const selectableRoutineToolNames = new Set<string>(routineAgent && connectedAccounts
+    ? ROUTINE_READ_TOOLS.flatMap((group) => {
+      const scope = routineAgent.connector_scopes?.[group.app];
+      const hasReadScope = scope === "read" || scope === "write";
+      const allowedIds = routineAgent.connector_account_scopes?.[group.app] ?? [];
+      const hasAvailableAccount = connectedAccounts.some((account) => account.toolkit === group.app && account.status === "ACTIVE"
+        && hasReadScope && allowedIds.includes(account.id));
+      if (!hasAvailableAccount) return [];
+      return [...group.tools, ...(scope === "write" ? group.writes : [])].map(([tool]) => tool);
+    })
+    : []);
+  const hasRoutineAppGrants = draft?.connectedAppGrants.some((grant) => ROUTINE_APP_TOOL_NAMES.has(grant.tool)) ?? false;
   const availableApprovalModes = approvalModesForProvider(routineAgent?.provider);
 
   return (
@@ -419,6 +464,10 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                 <div>
                   <h3 id="routine-app-access-title" className="text-sm font-medium">{t("knowledgeRoutines.connectedAppAccess")}</h3>
                   <p className="mt-1 text-xs text-muted">{t("knowledgeRoutines.connectedAppAccessHelp")}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" disabled={selectableRoutineToolNames.size === 0} onClick={() => setAllRoutineGrants(true)} className={button}>{t("knowledgeRoutines.selectAllActions")}</button>
+                    <button type="button" disabled={!hasRoutineAppGrants} onClick={() => setAllRoutineGrants(false)} className={button}>{t("knowledgeRoutines.clearAllActions")}</button>
+                  </div>
                 </div>
                 {connectedAccounts === null ? <p role="status" className="text-xs text-muted">Loading connected accounts…</p> : ROUTINE_READ_TOOLS.map((group) => {
                   const agent = agents.find((item) => item.id === draft.agentId);
