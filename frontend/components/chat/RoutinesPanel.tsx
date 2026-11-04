@@ -91,7 +91,9 @@ const ROUTINE_READ_TOOLS = [
     ["github_get_file", "Read repository files"], ["github_search_issues", "Search issues and pull requests"],
     ["github_list_workflow_runs", "List workflow runs"],
   ], writes: [
+    ["github_fork_repository", "Fork a public repository"],
     ["github_create_branch", "Create a campaign/ branch"], ["github_commit_file", "Commit one file to a campaign/ branch"],
+    ["github_create_pull_request", "Open a pull request from a campaign/ branch (cannot merge)"],
   ] },
   { app: "gmail", label: "Gmail", tools: [
     ["gmail_fetch_emails", "Search messages"], ["gmail_fetch_message", "Read a message"],

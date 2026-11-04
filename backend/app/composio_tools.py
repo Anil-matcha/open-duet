@@ -24,7 +24,8 @@ from datetime import datetime, timedelta
 from app import composio_generic
 
 LIST_ACCOUNTS = "list_accounts"
-ROUTINE_WRITE_TOOLS = ("gmail_send_email", "github_create_branch", "github_commit_file", "gmail_prepare_checked_reply")
+ROUTINE_WRITE_TOOLS = ("gmail_send_email", "github_fork_repository", "github_create_branch", "github_commit_file",
+                       "github_create_pull_request", "gmail_prepare_checked_reply")
 LEVELS = ("read", "write")  # in order: write includes read
 MAX_RESULT_CHARS = 20_000
 MAX_ITEMS = 30
@@ -36,6 +37,7 @@ _NAME = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 _CAMPAIGN_BRANCH = re.compile(r"^campaign/[A-Za-z0-9._/-]{1,150}$")
 _SHA = re.compile(r"^[0-9a-f]{40}$")
+_PR_HEAD = re.compile(r"^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}):)?campaign/[A-Za-z0-9._/-]{1,150}$")
 MAX_FILE = 100_000
 _ALIAS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,39}$")
 _LINE_BAD = re.compile(r"[\x00-\x1f\x7f]")
@@ -183,6 +185,15 @@ TOOLS: tuple[Tool, ...] = (
            ("owner", "repo", "issue_number"), fields=CHANGED),
     _write("github_reopen_issue", "GITHUB_REOPEN_ISSUE", "Reopen a closed issue. A person is asked to approve it first.",
            {"owner": OWNER, "repo": REPO, "issue_number": ISSUE}, ("owner", "repo", "issue_number"), fields=CHANGED),
+    _write("github_create_pull_request", "GITHUB_CREATE_A_PULL_REQUEST",
+           "Open a pull request from a campaign/ branch (or from owner:campaign/... on your fork) into a branch of the target repository. "
+           "It cannot merge anything. A person is asked to approve it first.",
+           {"owner": OWNER, "repo": REPO,
+            "title": TITLE, "body": BODY,
+            "head": _text(200, "The campaign/ branch with your changes; for a fork use \"forkowner:campaign/branch\".", "pr_head"),
+            "base": _text(200, "The branch of the target repository to merge into, for example \"main\".", "ref"),
+            "draft": {"type": "boolean", "description": "Open it as a draft."}},
+           ("owner", "repo", "title", "head", "base"), fields=("number", "html_url", "state", "draft")),
     _write("github_merge_pull_request", "GITHUB_MERGE_A_PULL_REQUEST",
            "Merge a pull request. Read it first and pass its head commit id, so only the version a person approved is merged. A person is asked to approve it first.",
            {"owner": OWNER, "repo": REPO,
@@ -379,6 +390,10 @@ def _bad_path(value: str) -> bool:
 
 def _check(name: str, spec: dict, value: object):
     kind = spec["type"]
+    if kind == "boolean":
+        if not isinstance(value, bool):
+            raise BadArguments(f"{name} must be true or false.")
+        return value
     if kind == "integer":
         if isinstance(value, bool) or not isinstance(value, int) or not spec["minimum"] <= value <= spec["maximum"]:
             raise BadArguments(f"{name} must be a whole number from {spec['minimum']} to {spec['maximum']}.")
@@ -415,6 +430,8 @@ def _check(name: str, spec: dict, value: object):
         raise BadArguments(f"{name} is not a valid branch, tag or commit.")
     if fmt == "campaign_branch" and (not _CAMPAIGN_BRANCH.match(value) or ".." in value or value.endswith(("/", ".lock"))):
         raise BadArguments(f"{name} must be a new branch name starting with campaign/.")
+    if fmt == "pr_head" and (not _PR_HEAD.match(value) or ".." in value or value.endswith(("/", ".lock"))):
+        raise BadArguments(f"{name} must be a campaign/ branch, or owner:campaign/ branch on a fork.")
     if fmt == "sha" and not _SHA.match(value):
         raise BadArguments(f"{name} must be a full 40-character commit id.")
     if fmt == "path" and _bad_path(value):
