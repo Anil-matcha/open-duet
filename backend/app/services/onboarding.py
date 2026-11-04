@@ -161,6 +161,36 @@ async def restart(db: AsyncSession, owner_id: str, expected_version: int) -> dic
     return state
 
 
+async def reopen_after_last_agent_deleted(db: AsyncSession, owner_id: str) -> bool:
+    """Reopen setup at first-agent creation after the owner's final agent is deleted."""
+    await begin_write(db)
+    existing = await db.scalar(select(Agent.id).where(Agent.owner_id == owner_id).limit(1))
+    if existing is not None:
+        await db.rollback()
+        return False
+
+    row = await locked_row(db, owner_id)
+    state = dict(row.value_json) if row and isinstance(row.value_json, dict) else fresh_state()
+    draft = dict(state.get("draft") or DEFAULT_DRAFT)
+    draft.update(step=2, create_agent=True, make_lead=False)
+    state.update(
+        version=state["version"] + 1,
+        status="pending",
+        draft=draft,
+        agent_id=None,
+        receipt_draft=None,
+        first_reply_at=None,
+    )
+    db.add(persist(row, owner_id, state))
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent final-agent deletions can race to create the first state row.
+        await db.rollback()
+        return False
+    return True
+
+
 async def complete(
     db: AsyncSession, owner_id: str, expected_version: int, draft: dict, create_agent, *, legacy_completed: bool = False
 ):

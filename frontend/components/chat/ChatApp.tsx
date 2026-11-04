@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
+import { onboarding } from "@/lib/onboarding";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
 import { attachmentProblem, conversationUsage, formatCost, formatTokens, MAX_ATTACHMENTS } from "@/lib/everyday";
@@ -184,6 +185,7 @@ export function ChatApp() {
   // Named agents. null: the backend has none to offer (an older one answers 404),
   // and the page behaves as before.
   const [agents, setAgents] = useState<Agent[] | null>(null);
+  const firstAgentRedirecting = useRef(false);
   const [agentTick, setAgentTick] = useState(0);
   const [agentsShown, setAgentsShown] = useState(false);
   const agentsOpen = agentsShown || params.get("view") === "agents";
@@ -395,6 +397,18 @@ export function ChatApp() {
       cancelled = true;
     };
   }, [ready, agentTick, transcript.runningTurnId]);
+
+  useEffect(() => {
+    if (!ready || agents === null || agents.length > 0 || firstAgentRedirecting.current) return;
+    let cancelled = false;
+    onboarding.get().then((progress) => {
+      if (!cancelled && progress.status === "pending" && !progress.existing_agents) {
+        firstAgentRedirecting.current = true;
+        router.replace("/onboarding/");
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [agents, ready, router]);
 
   useEffect(() => {
     if (!ready) return;
