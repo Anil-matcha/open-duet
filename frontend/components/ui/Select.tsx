@@ -19,6 +19,7 @@ export interface SelectOption {
   disabled?: boolean;
   className?: string;
   subLabel?: ReactNode;
+  lang?: string;
 }
 
 export interface SelectGroup {
@@ -56,8 +57,12 @@ export interface SelectProps
   disabled?: boolean;
   required?: boolean;
   className?: string;
+  containerClassName?: string;
   triggerClassName?: string;
   menuClassName?: string;
+  chevronClassName?: string;
+  leadingIcon?: ReactNode;
+  triggerLabel?: ReactNode;
   "aria-label"?: string;
   "aria-describedby"?: string;
   "aria-invalid"?: boolean | "true" | "false";
@@ -88,6 +93,7 @@ function parseItems(children: ReactNode): SelectItem[] {
       value?: unknown;
       disabled?: boolean;
       className?: string;
+      lang?: string;
     };
     const isGroup =
       child.type === "optgroup" || (props?.label && props?.children);
@@ -102,12 +108,14 @@ function parseItems(children: ReactNode): SelectItem[] {
           label?: string;
           disabled?: boolean;
           className?: string;
+          lang?: string;
         };
         groupOptions.push({
           value: String(subProps.value ?? ""),
           label: subProps.children ?? subProps.label ?? String(subProps.value ?? ""),
           disabled: Boolean(subProps.disabled),
           className: subProps.className,
+          lang: subProps.lang,
         });
       });
       items.push({
@@ -125,6 +133,7 @@ function parseItems(children: ReactNode): SelectItem[] {
           label: props.children ?? props.label ?? String(props.value ?? ""),
           disabled: Boolean(props.disabled),
           className: props.className,
+          lang: props.lang,
         },
       });
     }
@@ -188,8 +197,12 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       disabled = false,
       required,
       className,
+      containerClassName,
       triggerClassName,
       menuClassName,
+      chevronClassName,
+      leadingIcon,
+      triggerLabel,
       "aria-label": ariaLabel,
       "aria-describedby": ariaDescribedBy,
       "aria-invalid": ariaInvalid,
@@ -241,7 +254,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
     };
 
     const displayText =
-      selectedOption != null
+      triggerLabel !== undefined
+        ? triggerLabel
+        : selectedOption != null
         ? selectedOption.label
         : placeholder ?? (flat[0]?.label || "Select...");
 
@@ -255,15 +270,24 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       )
       .join(" ");
 
-    const isExplicitAuto = /\bw-(?:auto|fit|36|48|56|64)\b/.test(className || "");
-    const isFlexGrow = /\bflex-1\b/.test(className || "");
+    const combinedClasses = `${className || ""} ${containerClassName || ""}`;
+    const hasCustomWidth = /\b(?:[a-z0-9-]+:)?w-/.test(combinedClasses);
+    const isExplicitAuto = /\bw-(?:auto|fit|36|48|56|64)\b/.test(combinedClasses);
+    const isFlexGrow = /\bflex-1\b/.test(combinedClasses);
 
     return (
       <div
         className={cn(
           "relative inline-flex",
-          isFlexGrow ? "flex-1 min-w-0" : isExplicitAuto ? "w-auto max-w-full" : "w-full",
-          containerClasses
+          isFlexGrow
+            ? "flex-1 min-w-0"
+            : hasCustomWidth
+            ? "max-w-full"
+            : isExplicitAuto
+            ? "w-auto max-w-full"
+            : "w-full",
+          containerClasses,
+          containerClassName
         )}
       >
         {/* Hidden select for form submissions and screen readers */}
@@ -279,7 +303,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
           className="sr-only pointer-events-none"
         >
           {flat.map((opt) => (
-            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+            <option key={opt.value} value={opt.value} disabled={opt.disabled} lang={opt.lang}>
               {getOptionText(opt.label) || opt.value}
             </option>
           ))}
@@ -308,12 +332,16 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
               )}
               {...restProps}
             >
+              {leadingIcon && (
+                <span className="shrink-0 text-muted">{leadingIcon}</span>
+              )}
               <span className="truncate flex-1">{displayText}</span>
               <ChevronDown
                 size={14}
                 className={cn(
                   "shrink-0 text-muted transition-transform duration-200",
-                  open && "rotate-180 text-ink"
+                  open && "rotate-180 text-ink",
+                  chevronClassName
                 )}
               />
             </button>
@@ -325,7 +353,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
               sideOffset={4}
               collisionPadding={8}
               style={{
-                minWidth: "var(--radix-dropdown-menu-trigger-width)",
+                minWidth: "max(var(--radix-dropdown-menu-trigger-width), 160px)",
                 maxWidth: "max(var(--radix-dropdown-menu-trigger-width), 480px)",
               }}
               className={cn(
@@ -349,6 +377,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
                             <RadixDropdown.Item
                               key={opt.value}
                               disabled={opt.disabled}
+                              lang={opt.lang}
                               onSelect={() => handleSelect(opt.value, opt.disabled)}
                               className={cn(
                                 "flex cursor-pointer items-center justify-between gap-2 rounded-field px-2.5 py-1.5 text-sm outline-none transition-colors select-none",
@@ -377,6 +406,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
                     <RadixDropdown.Item
                       key={opt.value}
                       disabled={opt.disabled}
+                      lang={opt.lang}
                       onSelect={() => handleSelect(opt.value, opt.disabled)}
                       className={cn(
                         "flex cursor-pointer items-center justify-between gap-2 rounded-field px-2.5 py-1.5 text-sm outline-none transition-colors select-none",
