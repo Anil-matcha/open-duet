@@ -11,7 +11,8 @@ import type { AppNotification, NotificationPreferences } from "./api";
 const notifiedIds = new Set<number>();
 
 type DesktopNotificationBridge = {
-  showNotification?: (payload: { title: string; body?: string; tag?: string; silent?: boolean }) => Promise<boolean>;
+  showNotification?: (payload: { title: string; body?: string; tag?: string; silent?: boolean; thread_id?: number | null }) => Promise<boolean>;
+  onNotificationClicked?: (listener: (data: { thread_id: number }) => void) => () => void;
 };
 
 function getDesktopBridge(): DesktopNotificationBridge | undefined {
@@ -56,18 +57,61 @@ export function playNotificationSound(): void {
   } catch {}
 }
 
-export function shouldNotify(item: AppNotification, prefs: NotificationPreferences): boolean {
+export function isQuietHours(
+  prefs: NotificationPreferences,
+  now: Date = new Date(),
+): boolean {
+  if (!prefs.quiet_hours_enabled) return false;
+  const start = prefs.quiet_hours_start || "22:00";
+  const end = prefs.quiet_hours_end || "08:00";
+
+  const [startH, startM] = start.split(":").map(Number);
+  const [endH, endM] = end.split(":").map(Number);
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = (Number.isFinite(startH) ? startH : 22) * 60 + (Number.isFinite(startM) ? startM : 0);
+  const endMinutes = (Number.isFinite(endH) ? endH : 8) * 60 + (Number.isFinite(endM) ? endM : 0);
+
+  if (startMinutes <= endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+}
+
+export function shouldNotify(
+  item: AppNotification,
+  prefs: NotificationPreferences,
+  now: Date = new Date(),
+): boolean {
   if (!prefs.desktop_enabled) return false;
+  if (isQuietHours(prefs, now)) return false;
 
   const kind = item.kind.toLowerCase();
-  if (kind === "needs_you" || kind.includes("approval") || kind.includes("question") || kind.includes("decision")) {
+  if (
+    kind === "needs_you" ||
+    kind.includes("need") ||
+    kind.includes("approval") ||
+    kind.includes("question") ||
+    kind.includes("decision") ||
+    kind.includes("input")
+  ) {
     return prefs.notify_needs_you;
   }
-  if (kind.includes("fail") || kind.includes("error") || kind === "incident" || kind === "escalation") {
+  if (
+    kind.includes("fail") ||
+    kind.includes("error") ||
+    kind.includes("miss") ||
+    kind.includes("interrupt") ||
+    kind === "incident" ||
+    kind === "escalation"
+  ) {
     return prefs.notify_failures;
   }
   if (kind === "task_due" || kind.includes("due") || kind.includes("reminder") || kind.includes("deadline")) {
     return prefs.notify_task_due;
+  }
+  if (kind === "turn_completed" || kind.includes("complete") || kind.includes("finish")) {
+    return prefs.notify_turn_completed ?? true;
   }
   return true;
 }
@@ -86,12 +130,14 @@ export function showNotificationAlert({
   tag,
   onClick,
   silent = false,
+  threadId = null,
 }: {
   title: string;
   body?: string | null;
   tag?: string;
   onClick?: () => void;
   silent?: boolean;
+  threadId?: number | null;
 }): boolean {
   if (typeof window === "undefined") return false;
 
@@ -100,7 +146,7 @@ export function showNotificationAlert({
 
   // 1. Desktop app (Electron bridge)
   if (bridge?.showNotification) {
-    void bridge.showNotification({ title, body: cleanBody, tag, silent });
+    void bridge.showNotification({ title, body: cleanBody, tag, silent, thread_id: threadId });
     return true;
   }
 
@@ -148,6 +194,115 @@ export function dispatchNotification(
     body: item.body,
     tag: `notification-${item.id}`,
     onClick: item.thread_id !== null && onOpenThread ? () => onOpenThread(item.thread_id!) : undefined,
+    silent: !prefs.sound_enabled,
+    threadId: item.thread_id,
+  });
+}
+
+
+export function isAppBackgrounded(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.hidden || (typeof document.hasFocus === "function" && !document.hasFocus());
+}
+
+export function cleanPreviewText(text: string | null | undefined, limit = 140): string {
+  if (!text) return "";
+  const stripped = text
+    .replace(/```[\s\S]*?```/g, " [code] ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/[*_~>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (stripped.length <= limit) return stripped;
+  return stripped.slice(0, limit - 1).trimEnd() + "…";
+}
+
+export function notifyTurnCompletion({
+  agentName,
+  text,
+  status,
+  error,
+  threadId,
+  prefs,
+  onOpenThread,
+}: {
+  agentName?: string | null;
+  text?: string | null;
+  status: "completed" | "failed" | string;
+  error?: string | null;
+  threadId?: number | null;
+  prefs: NotificationPreferences;
+  onOpenThread?: (threadId: number) => void;
+}): boolean {
+  if (!prefs.desktop_enabled) return false;
+  if (isQuietHours(prefs)) return false;
+  if (!isAppBackgrounded()) return false;
+
+  const displayName = agentName?.trim() || "Open Duet";
+
+  if (status === "completed") {
+    if (prefs.notify_turn_completed === false) return false;
+    const preview = cleanPreviewText(text) || "Response ready.";
+    if (prefs.sound_enabled) playNotificationSound();
+    return showNotificationAlert({
+      title: displayName,
+      body: preview,
+      tag: `turn-completed-${threadId ?? "global"}-${Date.now()}`,
+      threadId,
+      onClick: threadId != null && onOpenThread ? () => onOpenThread(threadId) : undefined,
+      silent: !prefs.sound_enabled,
+    });
+  }
+
+  if (status === "failed") {
+    if (prefs.notify_failures === false) return false;
+    const preview = cleanPreviewText(error) || "The request could not be completed.";
+    if (prefs.sound_enabled) playNotificationSound();
+    return showNotificationAlert({
+      title: `${displayName} (Failed)`,
+      body: preview,
+      tag: `turn-failed-${threadId ?? "global"}-${Date.now()}`,
+      threadId,
+      onClick: threadId != null && onOpenThread ? () => onOpenThread(threadId) : undefined,
+      silent: !prefs.sound_enabled,
+    });
+  }
+
+  return false;
+}
+
+export function notifyApprovalNeeded({
+  agentName,
+  summary,
+  tool,
+  threadId,
+  approvalId,
+  prefs,
+  onOpenThread,
+}: {
+  agentName?: string | null;
+  summary?: string | null;
+  tool?: string | null;
+  threadId?: number | null;
+  approvalId: string;
+  prefs: NotificationPreferences;
+  onOpenThread?: (threadId: number) => void;
+}): boolean {
+  if (!prefs.desktop_enabled || !prefs.notify_needs_you) return false;
+  if (isQuietHours(prefs)) return false;
+  if (!isAppBackgrounded()) return false;
+
+  const displayName = agentName?.trim() || "Open Duet";
+  const preview = cleanPreviewText(summary || tool) || "An action requires your approval.";
+  if (prefs.sound_enabled) playNotificationSound();
+  return showNotificationAlert({
+    title: `${displayName} needs approval`,
+    body: preview,
+    tag: `approval-${approvalId}`,
+    threadId,
+    onClick: threadId != null && onOpenThread ? () => onOpenThread(threadId) : undefined,
     silent: !prefs.sound_enabled,
   });
 }

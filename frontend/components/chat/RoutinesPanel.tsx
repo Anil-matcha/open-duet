@@ -29,6 +29,7 @@ import {
   formatWhen,
   isActiveRun,
   nextRunText,
+  routineStatus,
   runStateLabel,
   runStateTone,
   SCHEDULE_KINDS,
@@ -513,12 +514,19 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                 <ul className="space-y-2">
                   {routines.map((routine) => {
                     const active = isActiveRun(routine.latest_run);
+                    const status = routineStatus(routine);
                     return (
                       <li key={routine.id} className="rounded-md border border-line p-3" aria-label={routine.name}>
                         <div className="flex flex-wrap items-baseline gap-2">
                           <p className="truncate text-sm font-medium">{routine.name}</p>
                           <span className="text-xs text-muted">{agentName(routine.agent_id)}</span>
-                          {routine.paused && <span className="rounded bg-hover px-1.5 text-xs">paused</span>}
+                          {status === "done" ? (
+                            <span className="rounded bg-hover px-1.5 text-xs font-medium text-muted">Done</span>
+                          ) : status === "off" ? (
+                            <span className="rounded bg-hover px-1.5 text-xs font-medium text-muted">Off</span>
+                          ) : (
+                            <span className="rounded bg-success/15 px-1.5 text-xs font-medium text-success">On</span>
+                          )}
                           {routine.webhook_enabled && <span className="rounded bg-hover px-1.5 text-xs">webhook</span>}
                         </div>
                         <p className="text-xs text-muted">{routine.schedule_kind === "manual" ? routine.summary : `${routine.summary} · ${nextRunText(routine)}`}</p>
@@ -542,7 +550,11 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                         )}
                         <div className="mt-2 flex flex-wrap gap-1">
                           <button disabled={busy || active} title={active ? "A run is in progress" : undefined} onClick={() => void act(() => api.runRoutineNow(routine.id), "Could not start the routine.")} className={button}>Run now</button>
-                          <button disabled={busy} onClick={() => void act(() => (routine.paused ? api.resumeRoutine(routine.id) : api.pauseRoutine(routine.id)), "Could not change the routine.")} className={button}>{routine.paused ? "Resume" : "Pause"}</button>
+                          {status === "done" ? (
+                            <button disabled title="Completed one-time schedule. Edit date and time to re-arm." className={button}>Done</button>
+                          ) : (
+                            <button disabled={busy} onClick={() => void act(() => (status === "off" ? api.resumeRoutine(routine.id) : api.pauseRoutine(routine.id)), "Could not change the routine.")} className={button}>{status === "off" ? "Turn on" : "Turn off"}</button>
+                          )}
                           <button disabled={busy} onClick={() => { setValidPreviewKey(null); setDraft(draftOf(routine, agents.find((agent) => agent.id === routine.agent_id)?.provider)); }} className={button}>Edit</button>
                           <button disabled={busy} onClick={() => setHistory(routine)} className={button}>History</button>
                           <button disabled={busy} onClick={() => void act(async () => {

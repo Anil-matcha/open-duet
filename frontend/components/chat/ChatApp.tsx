@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
+import { useVersionUpdate } from "@/lib/use-version-update";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
+import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type NotificationPreferences, type Thread } from "@/lib/api";
+import { notifyApprovalNeeded, notifyTurnCompletion } from "@/lib/desktop-notifications";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
 import { attachmentProblem, conversationUsage, formatCost, formatTokens, MAX_ATTACHMENTS } from "@/lib/everyday";
@@ -476,6 +478,95 @@ export function ChatApp() {
     };
   }, [ready, threadAgent?.id, threadComputer?.id]);
 
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences | null>(null);
+  const liveTurnStarted = useRef(false);
+  const lastRunningTurnId = useRef<number | null>(null);
+  const alertedApprovalIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    let alive = true;
+    api.getNotificationPreferences().then((loaded) => {
+      if (alive) setNotificationPrefs(loaded);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    // A different conversation starts with no turn in flight; never carry
+    // the previous thread's turn state into it.
+    liveTurnStarted.current = false;
+    lastRunningTurnId.current = null;
+  }, [threadId]);
+
+  useEffect(() => {
+    if (stream.connection === "live" && transcript.runningTurnId !== null && lastRunningTurnId.current === null) {
+      liveTurnStarted.current = true;
+    }
+  }, [stream.connection, transcript.runningTurnId]);
+
+  useEffect(() => {
+    if (transcript.runningTurnId !== null) {
+      lastRunningTurnId.current = transcript.runningTurnId;
+    }
+  }, [transcript.runningTurnId]);
+
+  useEffect(() => {
+    const finishedTurnId = lastRunningTurnId.current;
+    if (transcript.runningTurnId === null && finishedTurnId !== null && liveTurnStarted.current) {
+      liveTurnStarted.current = false;
+      lastRunningTurnId.current = null;
+
+      if (notificationPrefs && notificationPrefs.desktop_enabled) {
+        const turnEndItem = transcript.items.find(
+          (item) => item.kind === "turn_end" && item.turnId === finishedTurnId
+        );
+        const status = (turnEndItem as { status?: string })?.status ?? "completed";
+        const error = (turnEndItem as { error?: string })?.error ?? null;
+
+        const assistantItem = [...transcript.items]
+          .reverse()
+          .find((item) => item.kind === "assistant" && item.turnId === finishedTurnId);
+        const textContent = (assistantItem as { text?: string })?.text ?? null;
+
+        const agentName = threadAgent?.name || "Open Duet";
+
+        notifyTurnCompletion({
+          agentName,
+          text: textContent,
+          status,
+          error,
+          threadId,
+          prefs: notificationPrefs,
+          onOpenThread: (tid) => router.push(`/chat?thread=${tid}`),
+        });
+      }
+    }
+  }, [transcript.runningTurnId, transcript.items, notificationPrefs, threadAgent, threadId, router]);
+
+  useEffect(() => {
+    if (!liveTurnStarted.current || !notificationPrefs || !notificationPrefs.desktop_enabled) return;
+
+    for (const item of transcript.items) {
+      if (item.kind === "approval" && item.status === "pending") {
+        if (!alertedApprovalIds.current.has(item.approvalId)) {
+          alertedApprovalIds.current.add(item.approvalId);
+          const agentName = threadAgent?.name || "Open Duet";
+          notifyApprovalNeeded({
+            agentName,
+            summary: item.summary,
+            tool: item.tool,
+            threadId,
+            approvalId: item.approvalId,
+            prefs: notificationPrefs,
+            onOpenThread: (tid) => router.push(`/chat?thread=${tid}`),
+          });
+        }
+      }
+    }
+  }, [transcript.items, notificationPrefs, threadAgent, threadId, router]);
+
+  const { updateAvailable, latestVersion, dismissed: updateDismissed, dismiss: dismissUpdateNotice } = useVersionUpdate();
+
   const choosable = activeAgents(agents);
   // The chosen agent may have been archived since: then the chat starts plain.
   const startingAgentId = choosable.some((a) => a.id === newAgentId) ? newAgentId : null;
@@ -533,6 +624,7 @@ export function ChatApp() {
     ) return;
     queuedDrainRef.current = true;
     setQueuedSending(true);
+    liveTurnStarted.current = true;
     void api.sendTurn(threadId, first.text).then((turn) => {
       const current = loadQueuedFollowUps(threadId);
       if (current[0]?.id === first.id) writeQueuedFollowUps(threadId, current.slice(1));
@@ -673,6 +765,7 @@ export function ChatApp() {
       for (const file of attached) ids.push((await api.uploadAttachment(id, file, audioConsent ? "openai" : undefined, processing.signal)).id);
       if (audioUrl.trim()) ids.push((await api.importAudioUrl(id, audioUrl.trim(), audioConsent ? "openai" : "", processing.signal)).id);
       processing.signal.throwIfAborted();
+      liveTurnStarted.current = true;
       await api.sendTurn(id, message, ids, usedSkills);
       setDraft("");
       setChosenSkills(() => []);
@@ -695,6 +788,7 @@ export function ChatApp() {
     setSendError(null);
     setSending(true);
     try {
+      liveTurnStarted.current = true;
       await api.sendTurn(threadId!, message);
       return true;
     } catch (err) {
@@ -1060,6 +1154,31 @@ export function ChatApp() {
       )}
       <div className="relative flex min-w-0 flex-1 flex-col">
       {buildHeader(true)}
+      {updateAvailable && !updateDismissed && (
+        <aside aria-label="Update available" className="flex justify-center px-4 py-2.5">
+          <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2.5 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-xs text-ink shadow-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-accent">Update available:</span>
+              <span>Open Duet {latestVersion} is available.</span>
+            </div>
+            <span className="hidden text-muted/60 sm:inline" aria-hidden="true">•</span>
+            <Link
+              href="/settings/#setting-general-updates"
+              className="font-medium text-accent hover:underline"
+            >
+              View in Settings
+            </Link>
+            <button
+              type="button"
+              onClick={dismissUpdateNotice}
+              className="ml-0.5 rounded p-0.5 text-muted transition-colors hover:text-ink cursor-pointer"
+              aria-label="Dismiss update notice"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </aside>
+      )}
       {modelDraft && modelDraft.threadId === threadId && (threadId !== null || modelDraft.agentId === startingAgentId) && engines && (
         <Dialog open onOpenChange={(open) => { if (!open) { modelDraftRef.current = null; setModelDraft(null); } }} title="Engine and model" size="sm">
           <form onSubmit={(event) => { event.preventDefault(); void saveModel(); }} className="space-y-4">

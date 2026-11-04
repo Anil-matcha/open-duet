@@ -188,7 +188,25 @@ export function formatSchedulePreviewWhen(iso: string | null | undefined, timezo
   }
 }
 
-export function nextRunText(routine: Pick<Routine, "paused" | "next_run_at" | "schedule_kind" | "timezone">): string {
+export type RoutineStatus = "on" | "off" | "done";
+
+export function routineStatus(
+  routine: Pick<Routine, "paused" | "next_run_at" | "schedule_kind"> & { status?: string }
+): RoutineStatus {
+  if (routine.status === "on" || routine.status === "off" || routine.status === "done") {
+    return routine.status;
+  }
+  if (routine.schedule_kind === "once" && !routine.next_run_at) {
+    return "done";
+  }
+  return routine.paused ? "off" : "on";
+}
+
+export function nextRunText(
+  routine: Pick<Routine, "paused" | "next_run_at" | "schedule_kind" | "timezone"> & { status?: string }
+): string {
+  const status = routineStatus(routine);
+  if (status === "done") return "Done";
   if (routine.paused) return "Paused";
   if (routine.schedule_kind === "manual") return "Runs only by hand or webhook";
   if (!routine.next_run_at) return "No upcoming run";

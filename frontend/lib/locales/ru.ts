@@ -55,6 +55,7 @@ export const ru: Record<MessageKey, string> = {
   "time.now": "только что",
   "time.minutes": "{n} мин. назад",
   "time.hours": "{n} ч. назад",
+  "time.today": "сегодня",
   "time.yesterday": "вчера",
   "time.days": "{n} дн. назад",
   "palette.title": "Перейти к",

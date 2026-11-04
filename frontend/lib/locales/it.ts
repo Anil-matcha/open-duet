@@ -55,6 +55,7 @@ export const it: Record<MessageKey, string> = {
   "time.now": "proprio ora",
   "time.minutes": "{n} min fa",
   "time.hours": "{n} h fa",
+  "time.today": "oggi",
   "time.yesterday": "ieri",
   "time.days": "{n} giorni fa",
   "palette.title": "Vai a",

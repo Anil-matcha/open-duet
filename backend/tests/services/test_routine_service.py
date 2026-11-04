@@ -523,3 +523,41 @@ async def test_webhook_receipt_expiry_auth_and_body_independent_keys(sessions, o
     assert (await deliver(None)).id != (await deliver(None)).id
     async with sessions() as db:
         await service.delete_routine(db, owner, routine.id)
+
+
+async def test_agent_deletion_and_archive_pauses_routines(sessions, owner, agent, clock):
+    from app.services import agent_store
+    routine = await make_routine(sessions, owner, agent, clock)
+    assert routine.paused is False
+
+    # 1. Archive agent pauses routine
+    async with sessions() as db:
+        await agent_store.update_agent(db, agent.id, archived=True)
+    async with sessions() as db:
+        r = await service.get_routine(db, owner, routine.id)
+        assert r.paused is True
+        assert "archived" in r.paused_reason
+
+    # 2. Resuming while archived fails with agent_missing
+    async with sessions() as db:
+        with pytest.raises(service.InvalidRoutine) as exc:
+            await service.set_paused(db, owner, routine.id, False)
+        assert exc.value.code == "agent_missing"
+
+    # 3. Restore agent
+    async with sessions() as db:
+        await agent_store.update_agent(db, agent.id, archived=False)
+
+    # 4. Delete agent pauses routine and cancels queued runs
+    async with sessions() as db:
+        await agent_store.delete_agent(db, agent.id)
+    async with sessions() as db:
+        r = await service.get_routine(db, owner, routine.id)
+        assert r.paused is True
+        assert "no longer exists" in r.paused_reason
+
+    # 5. Resuming while deleted fails with agent_missing
+    async with sessions() as db:
+        with pytest.raises(service.InvalidRoutine) as exc:
+            await service.set_paused(db, owner, routine.id, False)
+        assert exc.value.code == "agent_missing"

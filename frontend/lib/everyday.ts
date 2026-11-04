@@ -84,8 +84,20 @@ export function conversationUsage(turns: { usage: Record<string, unknown> | null
 
 export const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const TEXT_MAX_BYTES = 1024 * 1024;
+export const DOCUMENT_MAX_BYTES = 25 * 1024 * 1024;
+export const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+export const AUDIO_MAX_BYTES = 25 * 1024 * 1024;
 export const MAX_ATTACHMENTS = 8;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+const DOCUMENT_EXTENSIONS = [
+  ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx",
+];
+const VIDEO_EXTENSIONS = [
+  ".mp4", ".mov", ".mkv",
+];
+const AUDIO_EXTENSIONS = [
+  ".wav", ".mp3", ".m4a", ".ogg", ".flac",
+];
 const TEXT_EXTENSIONS = [
   ".txt", ".md", ".csv", ".tsv", ".json", ".log", ".yaml", ".yml", ".xml", ".html", ".css",
   ".js", ".ts", ".tsx", ".py", ".sh", ".sql", ".toml", ".ini",
@@ -96,14 +108,29 @@ const TEXT_EXTENSIONS = [
 export function attachmentProblem(file: { name: string; type: string; size: number }): string | null {
   const name = file.name || "file";
   const lower = name.toLowerCase();
-  const isImage = IMAGE_TYPES.includes(file.type) || /\.(png|jpe?g|gif|webp)$/.test(lower);
   if (file.size === 0) return `${name} is empty.`;
+
+  const isImage = IMAGE_TYPES.includes(file.type) || /\.(png|jpe?g|gif|webp)$/.test(lower);
   if (isImage) return file.size > IMAGE_MAX_BYTES ? `${name} is over the 10 MB image limit.` : null;
-  if (/\.(wav|mp3|m4a|ogg|flac|webm)$/.test(lower)) return file.size > 25 * 1024 * 1024 ? `${name} is over the 25 MB audio limit.` : null;
-  if (TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+
+  const isDoc =
+    DOCUMENT_EXTENSIONS.some((ext) => lower.endsWith(ext)) ||
+    file.type === "application/pdf" ||
+    file.type.includes("officedocument") ||
+    file.type.includes("msword") ||
+    file.type.includes("ms-excel");
+  if (isDoc) return file.size > DOCUMENT_MAX_BYTES ? `${name} is over the 25 MB document limit.` : null;
+
+  const isVideo = VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext)) || (lower.endsWith(".webm") && !file.type.startsWith("audio/")) || file.type.startsWith("video/");
+  if (isVideo) return file.size > VIDEO_MAX_BYTES ? `${name} is over the 50 MB video limit.` : null;
+
+  const isAudio = AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext)) || (lower.endsWith(".webm") && file.type.startsWith("audio/")) || /\.(wav|mp3|m4a|ogg|flac|webm)$/.test(lower) || file.type.startsWith("audio/");
+  if (isAudio) return file.size > AUDIO_MAX_BYTES ? `${name} is over the 25 MB audio limit.` : null;
+
+  if (TEXT_EXTENSIONS.some((ext) => lower.endsWith(ext)) || file.type.startsWith("text/")) {
     return file.size > TEXT_MAX_BYTES ? `${name} is over the 1 MB text file limit.` : null;
   }
-  return `${name} can't be attached. Attach images (PNG, JPEG, GIF, WebP) or text files, or audio (WAV, MP3, M4A, OGG, FLAC, WebM; 25 MB, 20 minutes).`;
+  return `${name} can't be attached. Attach documents (PDF, Word, Excel, PPT; 25 MB), images (PNG, JPEG, GIF, WebP; 10 MB), video (50 MB), audio (25 MB), or text files (1 MB).`;
 }
 
 // The parent of a workspace path ("a/b/c" -> "a/b", "a" -> "").

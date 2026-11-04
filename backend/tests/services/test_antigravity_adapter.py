@@ -74,10 +74,45 @@ async def test_unknown_model_blocks_prompt(fixture):
     assert (await turn(adapter, fake, model="not-on-this-plan")).error_code == "engine_model_unavailable"
     assert not fake.received("session/prompt")
 
-async def test_account_change_cannot_resume(fixture):
+async def test_account_change_recovers_session(fixture):
     adapter, fake = fixture
-    result = await turn(adapter, fake, resume=True, provider_state={"acp_session_id": "old", "antigravity_profile": uuid4().hex})
-    assert result.error_code == "session_resume_failed" and not fake.received("initialize")
+    async def sample_history():
+        return [
+            {"turn_id": 1, "role": "user", "text": "prior question"},
+            {"turn_id": 2, "role": "assistant", "text": "prior answer"},
+        ]
+    ctx = TurnContext(
+        1, 3, "hello new account", fake.folder, None, None,
+        {"acp_session_id": "old_session", "antigravity_profile": uuid4().hex},
+        True, sample_history, engine_config=adapter.config,
+    )
+    result = await adapter.run_turn(ctx, SimpleNamespace(lost=False, emit=lambda *a: None, delta=lambda *a: None), None)
+    assert result.status == "succeeded"
+    assert result.session_state == "active"
+    assert result.provider_state["antigravity_profile"] == adapter.config["profile"]
+    assert result.provider_state["acp_session_id"].startswith("sess_")
+    assert fake.received("initialize") and fake.received("session/new")
+    assert not fake.received("session/resume")
+    prompts = [e["text"] for e in fake.log() if e.get("event") == "prompt_text"]
+    assert any("prior question" in p and "prior answer" in p and "hello new account" in p for p in prompts)
+
+
+async def test_lost_session_auto_recovers(fixture):
+    adapter, fake = fixture
+    async def sample_history():
+        return [{"turn_id": 1, "role": "user", "text": "remember me"}]
+    ctx = TurnContext(
+        1, 2, "continue please", fake.folder, None, None,
+        {"acp_session_id": "nonexistent_session", "antigravity_profile": adapter.config["profile"]},
+        True, sample_history, engine_config=adapter.config,
+    )
+    result = await adapter.run_turn(ctx, SimpleNamespace(lost=False, emit=lambda *a: None, delta=lambda *a: None), None)
+    assert result.status == "succeeded"
+    assert result.session_state == "active"
+    assert result.provider_state["acp_session_id"].startswith("sess_")
+    assert fake.received("session/resume") and fake.received("session/new")
+    prompts = [e["text"] for e in fake.log() if e.get("event") == "prompt_text"]
+    assert any("remember me" in p and "continue please" in p for p in prompts)
 
 async def test_signed_out_never_spawns(fixture):
     adapter, fake = fixture

@@ -39,6 +39,16 @@ export function NotificationBell({
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    const bridge = (window as unknown as { openDots?: { onNotificationClicked?: (cb: (data: { thread_id?: number }) => void) => () => void } }).openDots;
+    if (!bridge?.onNotificationClicked) return;
+    return bridge.onNotificationClicked((data) => {
+      if (data?.thread_id != null) {
+        router.push(`/chat?thread=${data.thread_id}`);
+      }
+    });
+  }, [router]);
+
   const refresh = useCallback(() => {
     api.unreadNotifications()
       .then((r) => {

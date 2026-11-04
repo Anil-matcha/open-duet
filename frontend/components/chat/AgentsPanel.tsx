@@ -1341,7 +1341,7 @@ export function AgentsPanel({
                             <p className="mt-1 text-muted">
                               This removes the agent, its notes and skills, and its computer. Its conversations stay in history
                               but become unlinked and continue without this agent&apos;s instructions. Its workspace folder stays;
-                              routines assigned to it will fail and pause. This cannot be undone.
+                              routines assigned to it will be safely turned off. This cannot be undone.
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2">
                               <button ref={keepAgentRef} onClick={() => setDeleteConfirm(null)} disabled={busy} className={SMALL}>

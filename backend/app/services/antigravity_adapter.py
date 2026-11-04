@@ -1,6 +1,7 @@
 """Google account engine using the official Antigravity ACP runtime."""
 
 import asyncio
+import dataclasses
 import http.client
 import json
 import os
@@ -195,6 +196,7 @@ class AntigravityAdapter(AcpAdapter):
     preset = True
     custom_models = False
     resume_method = "session/resume"
+    auto_recover_session = True
     redact_diagnostics = True
     exit_grace_seconds = 5
     config_fields = [{"name": "model", "label": "Default model", "advanced": True}]
@@ -343,7 +345,9 @@ class AntigravityAdapter(AcpAdapter):
             return TurnOutcome("failed", error=self.signed_out_message(), error_code="engine_signed_out")
         state = ctx.provider_state or {}
         if ctx.resume and state.get("antigravity_profile") != config.get("profile"):
-            return TurnOutcome("failed", error="The connected Google account changed. Start a new session.", error_code="session_resume_failed")
+            # The connected Google account changed. Reset stale provider session and start
+            # a fresh session under the active account with replayed conversation history.
+            ctx = dataclasses.replace(ctx, provider_state={"antigravity_profile": config.get("profile")})
         async with self.lock:
             if not authenticated(config):
                 return TurnOutcome("failed", error=self.signed_out_message(), error_code="engine_signed_out")

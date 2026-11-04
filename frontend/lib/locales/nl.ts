@@ -55,6 +55,7 @@ export const nl: Record<MessageKey, string> = {
   "time.now": "zojuist",
   "time.minutes": "{n} min geleden",
   "time.hours": "{n} u geleden",
+  "time.today": "vandaag",
   "time.yesterday": "gisteren",
   "time.days": "{n} dagen geleden",
   "palette.title": "Ga naar",

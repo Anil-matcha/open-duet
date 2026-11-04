@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowUp, Paperclip, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, Check, FileText, Image as ImageIcon, Loader2, Mic, Music, Plus, Sparkles, Square, Video as VideoIcon, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { api } from "@/lib/api";
 import { isLongPaste, isSendKey, livePastes, removePaste } from "@/lib/composer";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useT } from "@/lib/use-i18n";
@@ -12,6 +13,33 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { PendingAttachments } from "./Attachments";
 
 const MAX_HEIGHT_PX = 200;
+
+const UPLOAD_CATEGORIES = [
+  {
+    id: "documents",
+    label: "Document",
+    icon: FileText,
+    accept: ".pdf,.docx,.doc,.xlsx,.xls,.pptx,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel",
+  },
+  {
+    id: "images",
+    label: "Image",
+    icon: ImageIcon,
+    accept: "image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp",
+  },
+  {
+    id: "videos",
+    label: "Video",
+    icon: VideoIcon,
+    accept: "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.mkv",
+  },
+  {
+    id: "audio",
+    label: "Audio",
+    icon: Music,
+    accept: "audio/*,.wav,.mp3,.m4a,.ogg,.flac,.webm",
+  },
+];
 
 // The message box: full-width text area with chips on top and action bar (paperclip, skills, Send/Stop) on the bottom.
 // Enter sends, Shift+Enter adds a line, and Enter during IME composition does neither.
@@ -82,10 +110,16 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const attachButtonRef = useRef<HTMLButtonElement>(null);
   const [focused, setFocused] = useState(false);
   const menuId = useId();
   // Long pasted blocks show as a chip; the text stays in the box so Send still includes it.
   const [pasted, setPasted] = useState<{ key: string | null; list: string[] }>({ key: draftKey, list: [] });
+  const latestValue = useRef(value);
+  useEffect(() => { latestValue.current = value; }, [value]);
+  const [dictationError, setDictationError] = useState<string | null>(null);
   const chips = pasted.key === draftKey ? livePastes(value, pasted.list) : [];
   const setPastes = (update: (all: string[]) => string[]) => setPasted({ key: draftKey, list: update(pasted.key === draftKey ? pasted.list : []) });
   // Drafts: put the saved text back when the conversation changes, then keep saving edits.
@@ -131,6 +165,149 @@ export function Composer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    function onPointerDown(e: MouseEvent | TouchEvent) {
+      if (
+        attachMenuRef.current &&
+        !attachMenuRef.current.contains(e.target as Node) &&
+        attachButtonRef.current &&
+        !attachButtonRef.current.contains(e.target as Node)
+      ) {
+        setAttachMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setAttachMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachMenuOpen]);
+
+  const triggerUploadCategory = (acceptPattern: string) => {
+    if (!picker.current) return;
+    picker.current.accept = acceptPattern;
+    picker.current.click();
+    setAttachMenuOpen(false);
+  };
+
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mimeType = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const chunks = audioChunksRef.current;
+        if (chunks.length === 0) {
+          setRecording(false);
+          setTranscribing(false);
+          return;
+        }
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
+        if (blob.size === 0) {
+          setRecording(false);
+          setTranscribing(false);
+          return;
+        }
+
+        setTranscribing(true);
+        setDictationError(null);
+        try {
+          const res = await api.dictateAudio(blob, "recording.webm");
+          const text = res.text?.trim();
+          if (text) {
+            const current = latestValue.current;
+            onChange(current.trim() ? `${current.trim()} ${text}` : text);
+          }
+        } catch (err) {
+          console.error("Dictation failed:", err);
+          setDictationError("Voice dictation is unavailable right now.");
+        } finally {
+          setTranscribing(false);
+          setRecording(false);
+          box.current?.focus();
+        }
+      };
+
+      recorder.start(250);
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((sec) => sec + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to access microphone:", err);
+      setRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const cancelRecording = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    audioChunksRef.current = [];
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = () => {
+          mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+        };
+        mediaRecorderRef.current.stop();
+      }
+    }
+    setRecording(false);
+    setTranscribing(false);
+    setRecordSeconds(0);
+  };
 
   const canSend = !sending && blockedReason === null && value.trim() !== "";
   const carriesFiles = (types: readonly string[]) => types.includes("Files");
@@ -291,11 +468,12 @@ export function Composer({
                     return;
                   }
                 }
-                if (e.key === "Escape" && (slashOpen || pickerOpen)) {
+                if (e.key === "Escape" && (slashOpen || pickerOpen || attachMenuOpen)) {
                   e.preventDefault();
                   e.stopPropagation();
                   dismissMenu();
                   setPickerOpen(false);
+                  setAttachMenuOpen(false);
                   return;
                 }
                 if (isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.nativeEvent.keyCode })) {
@@ -314,7 +492,7 @@ export function Composer({
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
             <div className="flex items-center gap-1">
               {onAddFiles && (
-                <>
+                <div className="relative">
                   <input
                     ref={picker}
                     type="file"
@@ -322,30 +500,82 @@ export function Composer({
                     hidden
                     aria-hidden
                     tabIndex={-1}
-                    accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
+                    accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.mp4,.mov,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
                     onChange={(e) => {
                       onAddFiles(Array.from(e.target.files ?? []));
                       e.target.value = "";
                     }}
                   />
-                  <Tooltip content={t("composer.attach")}>
+                  <Tooltip content={attachMenuOpen ? "Close menu" : t("composer.attach")}>
                     <button
+                      ref={attachButtonRef}
                       type="button"
-                      onClick={() => picker.current?.click()}
+                      onClick={() => {
+                        dismissMenu();
+                        setPickerOpen(false);
+                        setAttachMenuOpen((open) => !open);
+                      }}
                       disabled={sending || running}
                       aria-label={t("composer.attachButton")}
-                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                      aria-haspopup="menu"
+                      aria-expanded={attachMenuOpen}
+                      className={cn(
+                        "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-all duration-(--dur-base) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10",
+                        attachMenuOpen && "bg-hover text-ink shadow-xs"
+                      )}
                     >
-                      <Paperclip size={18} aria-hidden="true" />
+                      <Plus
+                        size={19}
+                        className={cn(
+                          "transition-transform duration-(--dur-base) ease-[var(--ease-ui)]",
+                          attachMenuOpen && "rotate-45 text-accent"
+                        )}
+                        aria-hidden="true"
+                      />
                     </button>
                   </Tooltip>
-                </>
+
+                  {/* Smooth Animated Minimal Upload Category Menu */}
+                  <div
+                    ref={attachMenuRef}
+                    role="menu"
+                    aria-label="Upload options"
+                    className={cn(
+                      "absolute bottom-full left-0 mb-2 w-40 origin-bottom-left rounded-xl border border-line bg-raised/95 p-1 shadow-lg backdrop-blur-md transition-all duration-(--dur-base) ease-[var(--ease-ui)] z-50",
+                      attachMenuOpen
+                        ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+                        : "opacity-0 scale-95 translate-y-1 pointer-events-none"
+                    )}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      {UPLOAD_CATEGORIES.map((cat) => {
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => triggerUploadCategory(cat.accept)}
+                            className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-ink transition-colors duration-(--dur-fast) hover:bg-hover hover:text-accent cursor-pointer"
+                          >
+                            <Icon size={15} className="shrink-0 text-muted transition-colors group-hover:text-accent" aria-hidden="true" />
+                            <span>{cat.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               )}
               {onToggleSkill && (
                 <Tooltip content={t("composer.pickSkills")}>
                   <button
                     type="button"
-                    onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
+                    onClick={() => {
+                      dismissMenu();
+                      setAttachMenuOpen(false);
+                      setPickerOpen((open) => !open);
+                    }}
                     disabled={sending || running}
                     aria-label={t("composer.pickSkillsButton")}
                     aria-expanded={pickerOpen}
@@ -361,6 +591,52 @@ export function Composer({
             </div>
 
             <div className="flex items-center gap-2">
+              {recording ? (
+                <div className="flex items-center gap-2 rounded-full border border-danger/40 bg-danger/10 px-3 py-1 text-xs font-medium text-danger animate-pulse">
+                  <span className="size-2 rounded-full bg-danger animate-ping" />
+                  <span>
+                    {Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, "0")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-danger text-white hover:opacity-90 cursor-pointer"
+                    title="Finish and transcribe"
+                    aria-label="Finish and transcribe"
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelRecording}
+                    className="inline-flex size-5 items-center justify-center rounded-full bg-danger/20 text-danger hover:bg-danger/30 cursor-pointer"
+                    title="Cancel recording"
+                    aria-label="Cancel recording"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : transcribing ? (
+                <div className="flex items-center gap-2 rounded-full border border-line bg-raised px-3 py-1.5 text-xs text-muted shadow-xs">
+                  <Loader2 size={13} className="animate-spin text-accent" />
+                  <span>Transcribing with local Whisper…</span>
+                </div>
+              ) : (
+                !running && (
+                  <Tooltip content="Dictate with local Whisper">
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      disabled={sending}
+                      aria-label="Dictate message"
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                    >
+                      <Mic size={18} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                )
+              )}
+
               {running ? (
                 <>
                   {workingMode && (
@@ -420,6 +696,7 @@ export function Composer({
             <Button variant="primary" size="sm" onClick={blockedAction.onClick}>{blockedAction.label}</Button>
           </div>
         )}
+        {dictationError && <p role="alert" className="mt-1.5 px-3 text-xs text-muted">{dictationError}</p>}
         {blockedReason && value.trim() !== "" && <p className="mt-1.5 px-3 text-xs text-muted">{blockedReason}</p>}
       </div>
     </div>

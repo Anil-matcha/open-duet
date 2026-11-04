@@ -55,6 +55,7 @@ export const tr: Record<MessageKey, string> = {
   "time.now": "şimdi",
   "time.minutes": "{n} dk önce",
   "time.hours": "{n} sa önce",
+  "time.today": "bugün",
   "time.yesterday": "dün",
   "time.days": "{n} gün önce",
   "palette.title": "Şuraya git",

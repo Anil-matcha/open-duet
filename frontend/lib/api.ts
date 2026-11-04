@@ -937,6 +937,7 @@ export type Routine = {
   created_at: string;
   updated_at: string;
   summary: string;
+  status?: "on" | "off" | "done";
   next_dates: string[];
   webhook_enabled: boolean;
   latest_run: RoutineRun | null;
@@ -982,7 +983,11 @@ export type NotificationPreferences = {
   notify_needs_you: boolean;
   notify_failures: boolean;
   notify_task_due: boolean;
+  notify_turn_completed?: boolean;
   sound_enabled: boolean;
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
 };
 
 export const api = {
@@ -1524,6 +1529,11 @@ export const api = {
     return requestForm<UploadedAttachment>(`/threads/${threadId}/attachments`, form, signal);
   },
   audioCapabilities: () => request<{ provider: string; provider_label: string; available: boolean; retention: string }>("/threads/audio/capabilities"),
+  dictateAudio: (file: Blob | File, filename = "recording.webm", signal?: AbortSignal) => {
+    const form = new FormData();
+    form.append("file", file, filename);
+    return requestForm<{ text: string; duration_seconds: number; device: string }>("/threads/audio/dictate", form, signal);
+  },
   importAudioUrl: (threadId: number, url: string, consentProvider: string, signal?: AbortSignal) => request<UploadedAttachment>(`/threads/${threadId}/attachments/audio-url`, { method: "POST", signal, body: JSON.stringify({ url, consent_provider: consentProvider }) }),
   // Object URLs for bytes behind the session (an <img> cannot send the CSRF or
   // launch headers some setups need). The caller revokes them.

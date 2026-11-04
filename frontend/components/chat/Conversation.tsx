@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { formatReactionReply, isLatestAssistantMessage, loadThreadReactions, saveThreadReaction, type ReactionKind, type ReactionsMap } from "@/lib/reactions";
 import type { Transcript, TranscriptItem } from "@/lib/transcript";
 import { announcement, groupToolRuns } from "@/lib/transcript-view";
@@ -14,6 +14,7 @@ import { WorkingStatus } from "./WorkingStatus";
 import {
   ApprovalCard,
   AssistantMessage,
+  DateDivider,
   SessionReset,
   RecalledChip,
   CompactedMarker,
@@ -30,6 +31,26 @@ import { RoutineChangeCard } from "./RoutineChangeCard";
 import { DelegationCard, AgentCreatedCard, TeamNoticeCard, TeamSetupCard } from "./TeamCards";
 
 const STICK_DISTANCE_PX = 80;
+
+function findDateDividerItemKeys(items: readonly { key: string; [k: string]: unknown }[]): Set<string> {
+  let lastDateKey: string | null = null;
+  const dividerKeys = new Set<string>();
+  for (const item of items) {
+    const ts = "ts" in item && typeof item.ts === "string" ? item.ts : null;
+    if (ts) {
+      const d = new Date(ts);
+      if (!Number.isNaN(d.getTime())) {
+        const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        if (dateKey !== lastDateKey) {
+          lastDateKey = dateKey;
+          dividerKeys.add(item.key);
+        }
+      }
+    }
+  }
+  return dividerKeys;
+}
+
 
 // Says the few things worth hearing (an approval waiting, a finished answer, a failure) once,
 // in a visually hidden polite region. The transcript itself is not live: it would be re-read on
@@ -136,6 +157,8 @@ export function Conversation({
   const waitingOnYou = transcript.items.some((i) => i.kind === "approval" && i.status === "pending");
   const empty = transcript.items.length === 0 && transcript.typing === null && !loading;
   const showSkeleton = loading && transcript.items.length === 0 && transcript.typing === null;
+  const groupedItems = groupToolRuns(transcript.items);
+  const dividerKeys = findDateDividerItemKeys(groupedItems);
   return (
     <div className="relative min-h-0 flex-1">
       <Announcer items={transcript.items} />
@@ -165,65 +188,97 @@ export function Conversation({
             </div>
           )}
 
-          {groupToolRuns(transcript.items).map((item) => {
-            switch (item.kind) {
-              case "needs_you":
-                return <NeedsYouCard key={item.key} item={item} />;
-              case "team_job":
-                return <DelegationCard key={item.key} item={item} />;
-              case "team_notice":
-                return <TeamNoticeCard key={item.key} item={item} />;
-              case "team_setup":
-                return <TeamSetupCard key={item.key} item={item} />;
-              case "routine_change":
-                return <RoutineChangeCard key={item.key} item={item} />;
-              case "agent_created":
-                return <AgentCreatedCard key={item.key} item={item} />;
-              case "tool_run":
-                return <ToolRun key={item.key} tools={item.tools as Extract<TranscriptItem, { kind: "tool" }>[]} />;
-              case "user":
-                return <UserMessage key={item.key} item={item} threadId={threadId} />;
-              case "assistant": {
-                const canReplyToMessage = !item.incomplete && isLatestAssistantMessage(item.key, transcript.items);
+          {groupedItems.map((item) => {
+            const ts = "ts" in item && typeof item.ts === "string" ? item.ts : null;
+            const dateDivider = dividerKeys.has(item.key) && ts ? (
+              <DateDivider key={`date-${item.key}`} ts={ts} />
+            ) : null;
+
+              let node: React.ReactNode = null;
+              switch (item.kind) {
+                case "needs_you":
+                  node = <NeedsYouCard key={item.key} item={item} />;
+                  break;
+                case "team_job":
+                  node = <DelegationCard key={item.key} item={item} />;
+                  break;
+                case "team_notice":
+                  node = <TeamNoticeCard key={item.key} item={item} />;
+                  break;
+                case "team_setup":
+                  node = <TeamSetupCard key={item.key} item={item} />;
+                  break;
+                case "routine_change":
+                  node = <RoutineChangeCard key={item.key} item={item} />;
+                  break;
+                case "agent_created":
+                  node = <AgentCreatedCard key={item.key} item={item} />;
+                  break;
+                case "tool_run":
+                  node = <ToolRun key={item.key} tools={item.tools as Extract<TranscriptItem, { kind: "tool" }>[]} />;
+                  break;
+                case "user":
+                  node = <UserMessage key={item.key} item={item} threadId={threadId} />;
+                  break;
+                case "assistant": {
+                  const canReplyToMessage = !item.incomplete && isLatestAssistantMessage(item.key, transcript.items);
+                  node = (
+                    <AssistantMessage
+                      key={item.key}
+                      text={item.text}
+                      incomplete={item.incomplete}
+                      ts={item.ts}
+                      reaction={reactions[item.key] ?? null}
+                      onReact={canReplyToMessage ? (r) => { void handleReact(item.key, r); } : undefined}
+                      disabled={answering !== null || sendingReactionReplyDisabled}
+                    />
+                  );
+                  break;
+                }
+                case "tool":
+                  node = <ToolStep key={item.key} item={item} />;
+                  break;
+                case "approval":
+                  node = (
+                    <ApprovalCard
+                      key={item.key}
+                      item={item}
+                      answering={answering === item.approvalId}
+                      error={approvalErrors[item.approvalId] ?? null}
+                      onAnswer={(decision, remember) => onAnswer(item.approvalId, decision, remember)}
+                      remembered={remembered[item.approvalId]}
+                      undoneRules={undoneRules}
+                      onUndo={onUndo}
+                    />
+                  );
+                  break;
+                case "turn_end":
+                  node = <TurnEnd key={item.key} item={item} />;
+                  break;
+                case "session_reset":
+                  node = <SessionReset key={item.key} item={item} />;
+                  break;
+                case "recalled":
+                  node = <RecalledChip key={item.key} item={item} />;
+                  break;
+                case "compacted":
+                  node = <CompactedMarker key={item.key} item={item} />;
+                  break;
+                case "engine_switched":
+                  node = <EngineSwitched key={item.key} item={item} />;
+                  break;
+              }
+
+              if (dateDivider) {
                 return (
-                  <AssistantMessage
-                    key={item.key}
-                    text={item.text}
-                    incomplete={item.incomplete}
-                    ts={item.ts}
-                    reaction={reactions[item.key] ?? null}
-                    onReact={canReplyToMessage ? (r) => { void handleReact(item.key, r); } : undefined}
-                    disabled={answering !== null || sendingReactionReplyDisabled}
-                  />
+                  <Fragment key={item.key}>
+                    {dateDivider}
+                    {node}
+                  </Fragment>
                 );
               }
-              case "tool":
-                return <ToolStep key={item.key} item={item} />;
-              case "approval":
-                return (
-                  <ApprovalCard
-                    key={item.key}
-                    item={item}
-                    answering={answering === item.approvalId}
-                    error={approvalErrors[item.approvalId] ?? null}
-                    onAnswer={(decision, remember) => onAnswer(item.approvalId, decision, remember)}
-                    remembered={remembered[item.approvalId]}
-                    undoneRules={undoneRules}
-                    onUndo={onUndo}
-                  />
-                );
-              case "turn_end":
-                return <TurnEnd key={item.key} item={item} />;
-              case "session_reset":
-                return <SessionReset key={item.key} item={item} />;
-              case "recalled":
-                return <RecalledChip key={item.key} item={item} />;
-              case "compacted":
-                return <CompactedMarker key={item.key} item={item} />;
-              case "engine_switched":
-                return <EngineSwitched key={item.key} item={item} />;
-            }
-          })}
+              return node;
+            })}
 
           {transcript.typing !== null && transcript.typing !== "" && <AssistantMessage text={transcript.typing} live />}
 

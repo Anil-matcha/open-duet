@@ -19,6 +19,7 @@ import httpx
 
 from app.core.config import settings
 from app.services.attachments import AttachmentError
+from app.services import local_whisper
 
 MAX_BYTES = 25 * 1024 * 1024
 MAX_SECONDS = 20 * 60
@@ -30,15 +31,64 @@ TYPES = {'.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg':
 
 def capabilities():
     model = settings.AUDIO_TRANSCRIPTION_MODEL.strip()
-    return {'model': model, 'model_warning': 'Whisper-1 is deprecated and supported only until 2027-02-26.' if model == 'whisper-1' else None, 'provider': 'openai', 'provider_label': 'OpenAI', 'available': model in ('gpt-transcribe', 'whisper-1') and bool(settings.AUDIO_TRANSCRIPTION_API_KEY.strip()) and bool(shutil.which('ffprobe')) and bool(shutil.which('ffmpeg')), 'max_bytes': MAX_BYTES, 'max_seconds': MAX_SECONDS, 'extensions': list(TYPES), 'retention': 'Original audio and transcript stay in this conversation until the conversation is deleted. Temporary media is deleted after validation. OpenAI retention policies apply to remote processing.'}
+    is_valid_model = model in ('gpt-transcribe', 'whisper-1')
+    has_openai = is_valid_model and bool(settings.AUDIO_TRANSCRIPTION_API_KEY.strip()) and bool(shutil.which('ffprobe')) and bool(shutil.which('ffmpeg'))
+    local_ok = local_whisper.is_available() and bool(shutil.which('ffprobe')) and bool(shutil.which('ffmpeg'))
+    device, _ = local_whisper.get_device_info() if local_ok else ('none', 'none')
+
+    if not is_valid_model:
+        return {
+            'model': model,
+            'model_warning': None,
+            'provider': 'openai',
+            'provider_label': 'OpenAI',
+            'available': False,
+            'local_available': local_ok,
+            'local_device': device,
+            'max_bytes': MAX_BYTES,
+            'max_seconds': MAX_SECONDS,
+            'extensions': list(TYPES),
+            'retention': 'Original audio and transcript stay in this conversation until the conversation is deleted. Temporary media is deleted after validation. OpenAI retention policies apply to remote processing.',
+        }
+
+    warning = 'Whisper-1 is deprecated and supported only until 2027-02-26.' if model == 'whisper-1' else None
+
+    if not has_openai and local_ok:
+        provider = 'local'
+        provider_label = f'Local Whisper ({device.upper()})'
+        is_available = True
+        retention = 'Processed entirely on this computer using local Whisper. Audio never leaves your machine.'
+    else:
+        provider = 'openai'
+        provider_label = 'OpenAI'
+        is_available = has_openai
+        retention = 'Original audio and transcript stay in this conversation until the conversation is deleted. Temporary media is deleted after validation. OpenAI retention policies apply to remote processing.'
+
+    return {
+        'model': model,
+        'model_warning': warning,
+        'provider': provider,
+        'provider_label': provider_label,
+        'available': is_available,
+        'local_available': local_ok,
+        'local_device': device,
+        'max_bytes': MAX_BYTES,
+        'max_seconds': MAX_SECONDS,
+        'extensions': list(TYPES),
+        'retention': retention,
+    }
 
 
 def require_consent(provider: str | None):
+    if provider == 'local':
+        if not local_whisper.is_available():
+            raise AttachmentError(503, 'transcription_unavailable', 'Local Whisper is not available.')
+        return
     if provider != 'openai':
         raise AttachmentError(422, 'audio_consent_required', 'Consent to send this audio to OpenAI is required before transcription.')
     if settings.AUDIO_TRANSCRIPTION_MODEL.strip() not in ('gpt-transcribe', 'whisper-1'):
         raise AttachmentError(503, 'transcription_model_unsupported', 'Configure AUDIO_TRANSCRIPTION_MODEL as gpt-transcribe or whisper-1. No transcript was created.')
-    if not capabilities()['available']:
+    if not (bool(settings.AUDIO_TRANSCRIPTION_API_KEY.strip()) and bool(shutil.which('ffprobe')) and bool(shutil.which('ffmpeg'))):
         raise AttachmentError(503, 'transcription_unavailable', 'Audio transcription requires ffmpeg, ffprobe and a configured AUDIO_TRANSCRIPTION_API_KEY. No transcript was created.')
 
 
@@ -97,6 +147,21 @@ def validate(name: str, data: bytes, cancelled=None) -> tuple[str, float]:
 
 async def transcribe(name: str, data: bytes, provider: str | None) -> dict:
     require_consent(provider)
+    if provider == 'local':
+        cancelled = threading.Event()
+        try:
+            mime, duration = await asyncio.to_thread(validate, name, data, cancelled)
+        finally:
+            cancelled.set()
+        try:
+            res = await asyncio.to_thread(local_whisper.transcribe_bytes, data, name)
+            if not res.get('text'):
+                res['text'] = '[No speech detected]'
+            res['duration_seconds'] = duration
+            return res
+        except Exception:
+            raise AttachmentError(502, 'transcription_failed', 'Local Whisper transcription failed. Try again.') from None
+
     cancelled = threading.Event()
     try:
         mime, duration = await asyncio.to_thread(validate, name, data, cancelled)

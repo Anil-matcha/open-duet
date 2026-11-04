@@ -25,6 +25,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AgentRow } from "./AgentRow";
 import { ThreadRow, type RowActions } from "./ThreadRow";
 import { useUnread } from "./useUnread";
+import { useVersionUpdate } from "@/lib/use-version-update";
 
 export type SidebarLive = {
   // The open conversation and its agent are the only ones whose live state this page knows.
@@ -119,6 +120,7 @@ export function Sidebar({
   collaboration?: React.ReactNode;
 }) {
   const t = useT();
+  const { updateAvailable, latestVersion } = useVersionUpdate();
   const [searching, setSearching] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showAllAgents, setShowAllAgents] = useState(false);
@@ -379,6 +381,14 @@ export function Sidebar({
           >
             <Settings size={16} aria-hidden="true" className="shrink-0 text-muted" />
             <span>{t("sidebar.settings")}</span>
+            {updateAvailable && (
+              <span
+                className="ml-auto inline-flex items-center rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent"
+                title={`Open Duet ${latestVersion ?? ""} is available`}
+              >
+                Update
+              </span>
+            )}
           </Link>
           <div className="pr-1">
             <ThemeToggle iconOnly />

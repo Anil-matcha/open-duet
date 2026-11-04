@@ -55,6 +55,7 @@ export const zh: Record<MessageKey, string> = {
   "time.now": "刚刚",
   "time.minutes": "{n} 分钟前",
   "time.hours": "{n} 小时前",
+  "time.today": "今天",
   "time.yesterday": "昨天",
   "time.days": "{n} 天前",
   "palette.title": "前往",

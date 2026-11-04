@@ -35,6 +35,12 @@ contextBridge.exposeInMainWorld("openDots", {
   nativeControl: (request) => ipcRenderer.invoke("open-dots:native-control", request),
   copyText: (text) => ipcRenderer.invoke("open-dots:copy-text", text),
   showNotification: (payload) => ipcRenderer.invoke("open-dots:show-notification", payload),
+  onNotificationClicked: (listener) => {
+    if (typeof listener !== "function") throw new TypeError("A notification click listener is required.");
+    const handler = (_event, data) => listener(data);
+    ipcRenderer.on("open-dots:notification-clicked", handler);
+    return () => ipcRenderer.removeListener("open-dots:notification-clicked", handler);
+  },
   onSettingsRequested: (listener) => {
     if (typeof listener !== "function") throw new TypeError("A settings navigation listener is required.");
     settingsListeners.add(listener);

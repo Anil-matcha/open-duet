@@ -55,6 +55,7 @@ export const ja: Record<MessageKey, string> = {
   "time.now": "たった今",
   "time.minutes": "{n} 分前",
   "time.hours": "{n} 時間前",
+  "time.today": "今日",
   "time.yesterday": "昨日",
   "time.days": "{n} 日前",
   "palette.title": "移動先",
