@@ -2,8 +2,10 @@
 (docs/AUTH.md). The field guards in the agents router are tested in tests/routers/test_agents_manage_api.py."""
 
 import pytest
+from fastapi import FastAPI, Response
 
 from app.auth import store
+from app.auth.middleware import AuthMiddleware
 from app.auth.policy import MANAGE_ROUTES, allows, is_public, required_scope
 from app.core.config import settings
 from tests.auth.test_auth_api import (  # noqa: F401
@@ -105,13 +107,26 @@ async def paired(owner, phone, scope):
     return sorted(body["session"]["scopes"]), {"Authorization": f"Bearer {body['token']}"}
 
 
+def scope_gate(factory) -> FastAPI:
+    """The auth middleware in front of a route that answers 204 to anything: what a scope reaches, without running
+    the real handlers (their field guards are tested in tests/routers/test_agents_manage_api.py)."""
+    gate = FastAPI()
+
+    @gate.api_route("/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
+    async def reached(path: str):
+        return Response(status_code=204)
+
+    gate.add_middleware(AuthMiddleware, session_factory=factory)
+    return gate
+
+
 async def test_a_manage_device_reaches_the_agent_write_routes_and_files_but_not_delete_or_admin_routes(app, factory, monkeypatch):
     monkeypatch.setattr(settings, "LOCAL_EXECUTION_ENABLED", True)
     await set_owner(factory)
     async with client(app) as owner, client(app, peer=("198.51.100.40", 1)) as phone:
         scopes, bearer = await paired(owner, phone, "manage")
-        assert scopes == ["chat", "files", "manage"]
-        # Past the scope check: whatever else the route answers, it is not `scope_denied`.
+    assert scopes == ["chat", "files", "manage"]
+    async with client(scope_gate(factory), peer=("198.51.100.40", 1)) as phone:
         for method, path in (
             ("POST", "/api/v1/agents"),
             ("PATCH", "/api/v1/agents/1"),
@@ -122,9 +137,8 @@ async def test_a_manage_device_reaches_the_agent_write_routes_and_files_but_not_
             ("DELETE", "/api/v1/rooms/1"),
             ("PATCH", "/api/v1/rooms/1/members/1"),
         ):
-            reply = await phone.request(method, path, headers=bearer, json={"name": "x"} if method != "GET" else None)
-            detail = reply.json().get("detail") if reply.status_code == 403 else None
-            assert not (isinstance(detail, dict) and detail.get("error_code") == "scope_denied"), (method, path)
+            reached = await phone.request(method, path, headers=bearer)
+            assert reached.status_code == 204, (method, path)
         for method, path in (
             ("DELETE", "/api/v1/agents/1"),
             ("GET", "/api/v1/threads/1/files/zip"),
