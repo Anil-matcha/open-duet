@@ -91,13 +91,37 @@
       "file": "frontend/components/chat/FilesPanel.tsx",
       "fg": "text-red-600",
       "disposition": "compliant-by-hand",
-      "detail": "The alert text sits on the enclosing Dialog surface (bg-raised), a background set in another file the static rule cannot see. Measured by hand against bg-raised: red-600 on #ffffff (light) = 4.76:1, and the dark variant red-400 on #1e1e21 (dark) = 5.75:1 \u2014 both pass 4.5:1."
+      "detail": "The alert text sits on the enclosing Dialog surface (bg-raised), a background set in another file the static rule cannot see. Measured by hand against bg-raised: red-600 on #ffffff (light) = 4.76:1, and the dark variant red-400 on #1e1e21 (dark) = 5.75:1 — both pass 4.5:1."
     },
     {
       "file": "frontend/components/chat/TemplatesGallery.tsx",
       "fg": "text-white",
       "disposition": "runtime-varies",
-      "detail": "Initial letter is drawn white on a per-template runtime backgroundColor (template.color, an arbitrary user/data-supplied value). No static analysis can know the background; the correct control is a runtime contrast assertion at the point template colours are defined, tracked as a follow-up (not silently skipped \u2014 the pair stays in the gate's unmeasured report every run)."
+      "detail": "Initial letter is drawn white on a per-template runtime backgroundColor (template.color, an arbitrary user/data-supplied value). No static analysis can know the background; the correct control is a runtime contrast assertion at the point template colours are defined, tracked as a follow-up (not silently skipped — the pair stays in the gate's unmeasured report every run)."
+    },
+    {
+      "file": "frontend/components/settings/ProfileSettings.tsx",
+      "fg": "text-emerald-500",
+      "disposition": "decorative",
+      "detail": "Decorative icon beside the stat's visible text label (e.g. \"Peak day\") on the bg-raised card; the colour carries no information the label does not, so it is not a text-contrast surface. Upstream's raw palette (emerald/sky/amber/rose), not a design token; measured-by-hand disposition rather than a waiver."
+    },
+    {
+      "file": "frontend/components/settings/ProfileSettings.tsx",
+      "fg": "text-sky-500",
+      "disposition": "decorative",
+      "detail": "Decorative icon beside the stat's visible text label (e.g. \"Peak day\") on the bg-raised card; the colour carries no information the label does not, so it is not a text-contrast surface. Upstream's raw palette (emerald/sky/amber/rose), not a design token; measured-by-hand disposition rather than a waiver."
+    },
+    {
+      "file": "frontend/components/settings/ProfileSettings.tsx",
+      "fg": "text-amber-500",
+      "disposition": "decorative",
+      "detail": "Decorative icon beside the stat's visible text label (e.g. \"Peak day\") on the bg-raised card; the colour carries no information the label does not, so it is not a text-contrast surface. Upstream's raw palette (emerald/sky/amber/rose), not a design token; measured-by-hand disposition rather than a waiver."
+    },
+    {
+      "file": "frontend/components/settings/ProfileSettings.tsx",
+      "fg": "text-rose-500",
+      "disposition": "decorative",
+      "detail": "Decorative icon beside the stat's visible text label (e.g. \"Peak day\") on the bg-raised card; the colour carries no information the label does not, so it is not a text-contrast surface. Upstream's raw palette (emerald/sky/amber/rose), not a design token; measured-by-hand disposition rather than a waiver."
     }
   ]
 }

@@ -91,14 +91,33 @@ async def _seed_era_rule(sessions, owner, kind: str, command: str, workspace: st
         return rule.id
 
 
-async def _open_approval(api, rt, sessions, cli, owner, script, *, rule=None):
+async def _decided_approval(sessions, thread_id):
+    """The approval the gate wrote, waited until it is decided.
+
+    A saved rule creates the row and answers it in the same call, so a wait for
+    `pending` races the auto-answer (the row can be observed on either side of
+    it). Waiting for the decision is deterministic and fails loudly if the rule
+    never answers."""
+    from tests.services.thread_harness import wait_until
+    from app.services import thread_store as store
+
+    async def look():
+        async with sessions() as db:
+            items = await store.list_approvals(db, thread_id)
+        decided = [item for item in items if item.status != "pending"]
+        return decided[0] if decided else None
+
+    return await wait_until(look)
+
+
+async def _open_approval(api, rt, sessions, cli, owner, script, *, rule=None, wait=None):
     thread = await new_thread(sessions, owner)
     if rule is not None:
         saved = await api.post("/api/v1/approval-rules", json=rule)
         assert saved.status_code == 201, saved.text
     cli.script(script)
     await rt.send_turn(thread.id, "go")
-    return thread, await pending_approval(sessions, thread.id)
+    return thread, await (wait or pending_approval)(sessions, thread.id)
 
 
 def _drift_precondition() -> tuple[bool, str]:
@@ -195,7 +214,12 @@ async def test_scenario_save_preview_then_active(api, rt, sessions, cli, tools_o
     saved = (await api.post("/api/v1/approval-rules", json={"match": "prefix", "command": "ls"})).json()
     assert saved["command"] == "ls"
 
-    thread, approval = await _open_approval(api, rt, sessions, cli, owner, BASH_LS)
+    thread, approval = await _open_approval(
+        api, rt, sessions, cli, owner, BASH_LS, wait=_decided_approval
+    )
+    # The saved rule answers the call at once (no waiting card), and the row
+    # records that answer: the rule is active, not merely stored.
+    assert approval.status == "allowed"
     body = (await api.post(f"/api/v1/approvals/{approval.id}/explain")).json()
     assert body["matched_rule"]["command"] == "ls"
     assert set(preview["would_allow"]) == set(body["also_allows"])
