@@ -18,7 +18,7 @@ import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, delete, exists, or_, select, update
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -471,19 +471,29 @@ async def list_runs(
 
 
 async def latest_runs(db: AsyncSession, routine_ids: list[int]) -> dict[int, RoutineRun]:
-    """The newest run of each routine (one query per routine is fine at this scale)."""
-    latest: dict[int, RoutineRun] = {}
-    for routine_id in routine_ids:
-        result = await db.execute(
-            select(RoutineRun)
-            .where(RoutineRun.routine_id == routine_id)
-            .order_by(RoutineRun.created_at.desc(), RoutineRun.id.desc())
-            .limit(1)
+    """The newest run of each routine, in one query rather than one per routine."""
+    if not routine_ids:
+        return {}
+    # Rank each routine's runs newest-first inside a subquery, then keep the
+    # row that ranks first. One statement for any number of routines.
+    inner = (
+        select(
+            RoutineRun.id.label("run_id"),
+            func.row_number()
+            .over(
+                partition_by=RoutineRun.routine_id,
+                order_by=(RoutineRun.created_at.desc(), RoutineRun.id.desc()),
+            )
+            .label("rank"),
         )
-        run = result.scalar_one_or_none()
-        if run is not None:
-            latest[routine_id] = run
-    return latest
+        .where(RoutineRun.routine_id.in_(routine_ids))
+        .subquery()
+    )
+    newest_ids = select(inner.c.run_id).where(inner.c.rank == 1)
+    runs = (
+        await db.execute(select(RoutineRun).where(RoutineRun.id.in_(newest_ids)))
+    ).scalars().all()
+    return {run.routine_id: run for run in runs}
 
 
 def export_document(routine: Routine) -> dict:

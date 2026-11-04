@@ -98,18 +98,26 @@ async def test_schedule_list_delivers_every_entry(
     db_session: AsyncSession, monkeypatch, bot_api, count: int, fill: str, paused: bool
 ):
     from app.db.session import get_db
+    from app.auth.routes import require_identity
     from app.routers.schedule import router
 
-    app = FastAPI()
-    app.include_router(router, prefix="/api/v1")
-    app.dependency_overrides[get_db] = lambda: db_session
     user = "1001"
+
+    def schedule_app(identity: str) -> FastAPI:
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        app.dependency_overrides[get_db] = lambda: db_session
+        app.dependency_overrides[require_identity] = lambda: identity
+        return app
+
+    app = schedule_app(user)
+    other = schedule_app("1002")
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://owned"
     ) as client:
         for index in range(count):
             response = await client.post("/api/v1/schedules", json={
-                "user_id": user, "provider": "claude", "box_id": "owned-box",
+                "provider": "claude", "box_id": "owned-box",
                 "prompt_text": (f"report-{index:03} " + fill * 60)[:60],
                 "cron_expression": "0 8 * * *", "timezone": "UTC",
             })
@@ -117,16 +125,21 @@ async def test_schedule_list_delivers_every_entry(
             if paused:
                 response = await client.post(
                     f"/api/v1/schedules/{response.json()['id']}/pause",
-                    params={"user_id": user},
                 )
                 assert response.status_code == 200
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=other), base_url="http://owned"
+    ) as client:
         response = await client.post("/api/v1/schedules", json={
-            "user_id": "1002", "provider": "claude", "box_id": "owned-box",
+            "provider": "claude", "box_id": "owned-box",
             "prompt_text": "other-user-owned-marker",
             "cron_expression": "0 8 * * *", "timezone": "UTC",
         })
         assert response.status_code == 200
-        response = await client.get("/api/v1/schedules", params={"user_id": user})
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://owned"
+    ) as client:
+        response = await client.get("/api/v1/schedules")
         assert response.status_code == 200
         rows = response.json()
         assert len(rows) == count

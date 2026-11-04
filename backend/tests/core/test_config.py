@@ -22,6 +22,14 @@ def test_database_password_round_trips(password: str, property_name: str, driver
     assert parsed.database == config.POSTGRES_DB
 
 
+def test_display_url_hides_the_postgres_password() -> None:
+    config = Settings(POSTGRES_PASSWORD="owned-secret", DATABASE_BACKEND="postgres")
+    shown = config.DATABASE_DISPLAY_URL
+    assert "owned-secret" not in shown
+    # The connect URLs still carry it (they must, to connect).
+    assert make_url(config.ASYNC_DATABASE_URL).password == "owned-secret"
+
+
 @pytest.mark.parametrize("password", ["owned-fixture", "owned@:/#%fixture"])
 def test_migration_command_accepts_reserved_password(password: str) -> None:
     environment = {**os.environ, "POSTGRES_PASSWORD": password, "DATABASE_BACKEND": "postgres"}

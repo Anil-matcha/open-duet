@@ -117,6 +117,11 @@ async def _write_permission_hook_config(box_id: str, user_id: str, task_id: int)
     hook_url = (
         f"{settings.PERMISSION_HOOK_BASE_URL}/api/v1/permissions/check/{user_id}/{task_id}"
     )
+    # A token good only for this one task: the install secret never leaves the
+    # backend, and a copy found inside the sandbox cannot answer for another
+    # user or task (core/hook_token.py).
+    from app.core.hook_token import scoped_token
+
     config = {
         "hooks": {
             "PermissionRequest": [
@@ -128,7 +133,7 @@ async def _write_permission_hook_config(box_id: str, user_id: str, task_id: int)
                             "url": hook_url,
                             "timeout": 120,
                             "headers": {
-                                "Authorization": f"Bearer {settings.HOOK_TOKEN}"
+                                "Authorization": f"Bearer {scoped_token(settings.HOOK_TOKEN, user_id, task_id)}"
                             },
                         }
                     ],

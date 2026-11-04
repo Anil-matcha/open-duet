@@ -306,6 +306,7 @@ export function Composer({
               rows={1}
               placeholder={blockedReason ?? (workingMode === "steer" ? t("composer.steerPlaceholder") : workingMode === "queue" ? t("composer.queuePlaceholder") : t("composer.placeholder"))}
               aria-label={t("composer.label")}
+              aria-describedby={blockedReason ? "composer-blocked-reason" : undefined}
               className="block w-full max-h-52 min-h-11 resize-none bg-transparent px-2.5 pt-1.5 pb-1 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint focus-visible:outline-none"
             />
           </div>
@@ -420,7 +421,11 @@ export function Composer({
             <Button variant="primary" size="sm" onClick={blockedAction.onClick}>{blockedAction.label}</Button>
           </div>
         )}
-        {blockedReason && value.trim() !== "" && <p className="mt-1.5 px-3 text-xs text-muted">{blockedReason}</p>}
+        {blockedReason && (
+          <p id="composer-blocked-reason" role="status" className="mt-1.5 px-3 text-xs text-muted">
+            {blockedReason}
+          </p>
+        )}
       </div>
     </div>
   );

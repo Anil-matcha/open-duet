@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 import re
 
@@ -50,6 +51,38 @@ POLL_ATTEMPTS = task_execution_service.MAX_TASK_SECONDS // POLL_INTERVAL_SECONDS
 
 # chat_id -> box_id, set while we're waiting for a pasted OAuth code.
 _awaiting_code: dict[int, str] = {}
+
+# The bot has no per-user accounts of its own: it spends the operator's Boat
+# quota and runs agent tasks as them. Every handler is wrapped so only the
+# configured Telegram user ids (TELEGRAM_ALLOWED_USER_IDS) are served; an
+# empty list refuses everyone, so turning the bot on without naming who may
+# use it cannot be abused by strangers.
+REFUSAL = (
+    "This bot isn't open to everyone. Ask the operator to add your Telegram "
+    "user id to TELEGRAM_ALLOWED_USER_IDS."
+)
+
+
+def only_allowed(handler):
+    """Wraps a Telegram handler so it runs only for an allowed user id.
+
+    Applied in build_application, so a handler added later is covered without
+    remembering this check. The refused user gets one generic reply and no
+    work is done on their behalf."""
+
+    @functools.wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user
+        if user is None or user.id not in settings.TELEGRAM_ALLOWED_USER_ID_SET:
+            logger.info("refused Telegram update from a user who is not allowed", user_id=getattr(user, "id", None))
+            if update.callback_query is not None:
+                await update.callback_query.answer()
+            elif update.message is not None:
+                await update.message.reply_text(REFUSAL)
+            return
+        return await handler(update, context)
+
+    return wrapper
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -457,20 +490,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 def build_application() -> Application:
+    if not settings.TELEGRAM_ALLOWED_USER_ID_SET:
+        logger.warning(
+            "TELEGRAM_BOT_TOKEN is set but TELEGRAM_ALLOWED_USER_IDS is empty: "
+            "the bot will refuse every message until you name who may use it"
+        )
     application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start_handler))
-    application.add_handler(CommandHandler("link", link_handler))
-    application.add_handler(CommandHandler("connect", connect_handler))
-    application.add_handler(CommandHandler("connect_github", connect_github_handler))
-    application.add_handler(CommandHandler("schedule", schedule_handler))
-    application.add_handler(CommandHandler("schedules", schedules_handler))
-    application.add_handler(CommandHandler("pause", pause_handler))
-    application.add_handler(CommandHandler("resume", resume_handler))
-    application.add_handler(CommandHandler("unschedule", unschedule_handler))
+    application.add_handler(CommandHandler("start", only_allowed(start_handler)))
+    application.add_handler(CommandHandler("link", only_allowed(link_handler)))
+    application.add_handler(CommandHandler("connect", only_allowed(connect_handler)))
+    application.add_handler(CommandHandler("connect_github", only_allowed(connect_github_handler)))
+    application.add_handler(CommandHandler("schedule", only_allowed(schedule_handler)))
+    application.add_handler(CommandHandler("schedules", only_allowed(schedules_handler)))
+    application.add_handler(CommandHandler("pause", only_allowed(pause_handler)))
+    application.add_handler(CommandHandler("resume", only_allowed(resume_handler)))
+    application.add_handler(CommandHandler("unschedule", only_allowed(unschedule_handler)))
     application.add_handler(
-        CallbackQueryHandler(permission_ask_callback_handler, pattern=r"^ask:")
+        CallbackQueryHandler(only_allowed(permission_ask_callback_handler), pattern=r"^ask:")
     )
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, only_allowed(text_handler))
+    )
     return application
 
 

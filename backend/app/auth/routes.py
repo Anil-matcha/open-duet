@@ -63,6 +63,17 @@ def require_admin(principal: Principal = Depends(current_principal)) -> Principa
     return principal
 
 
+async def require_identity(db: AsyncSession = Depends(get_db), _: Principal = Depends(require_admin)) -> str:
+    """The server-side identity of the owner (set from a claimed Telegram link
+    code or a guest id), never a value the client chose. Legacy task, schedule
+    and sandbox routes use this so an identifier cannot be picked by the caller
+    (audit finding M-2)."""
+    identity = await store.get_identity(db)
+    if not identity:
+        raise _error(409, "identity_unset", "This server has no identity yet. Link Telegram or continue as a guest in Settings.")
+    return identity
+
+
 def _set_session_cookie(request: Request, response: Response, token: str) -> None:
     response.set_cookie(
         COOKIE_NAME,

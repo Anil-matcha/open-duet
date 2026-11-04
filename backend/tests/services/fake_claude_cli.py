@@ -156,6 +156,14 @@ elif kind == "hang":
     log(event="hanging", pid=__import__("os").getpid())
     time.sleep(120)
 
+elif kind == "accept_then_hang":
+    # The engine produced a real message (stored as an `assistant.message`, so a
+    # later `_interrupt` classifies the turn `after_accept`), then wedges. Used
+    # by the crash harness to observe the after_accept phase deterministically.
+    say("working on it", "m1")
+    log(event="hanging", pid=__import__("os").getpid())
+    time.sleep(300)
+
 elif kind == "hang_with_child":
     # Like a CLI running a long tool: a child process of its own (in its
     # process group), whose pid the test reads to prove nothing is orphaned.

@@ -6,3 +6,15 @@ function initialized(c) { c.push(new TextEncoder().encode('RFB 003.008\n')); c.p
 test('RFB handshake and raw frame survive byte-by-byte chunks',()=> {const {client,sent,frames,ready}=setup(); initialized(client); assert.deepEqual(ready,[[2,1]]); assert.equal(sent.length,6); const update=new Uint8Array([0,0,0,1,0,0,0,0,0,2,0,1,0,0,0,0,3,2,1,0,6,5,4,0]); for (const b of update) client.push(new Uint8Array([b])); assert.equal(frames.length,1); assert.deepEqual([...frames[0][4]],[1,2,3,255,4,5,6,255]); });
 test('RFB rejects unsupported version/security, huge names, rectangles outside the frame',()=>{ assert.throws(()=>setup().client.push(new TextEncoder().encode('RFB 003.003\n'))); let c=setup().client; c.push(new TextEncoder().encode('RFB 003.008\n')); assert.throws(()=>c.push(new Uint8Array([1,2]))); c=setup().client; initialized(c); assert.throws(()=>c.push(new Uint8Array([0,0,0,1,0,0,0,0,0,3,0,1,0,0,0,0]))); c=setup().client; c.push(new TextEncoder().encode('RFB 003.008\n')); c.push(new Uint8Array([1,1,0,0,0,0])); const init=new Uint8Array(24); new DataView(init.buffer).setUint32(20,0xffffffff); assert.throws(()=>c.push(init)); });
 test('RFB bounds memory and explicitly encodes pointer and unicode keys',()=> {const {client,sent}=setup(); initialized(client); client.pointer(999,-10,1); assert.deepEqual([...sent.at(-1)],[5,1,0,1,0,0]); client.text('é中'); assert.equal(new DataView(sent.at(-1).buffer).getUint32(4),0x01004e2d); assert.throws(()=>client.push(new Uint8Array(8*1024*1024+1))); });
+import { isReleaseChord } from './desktop-rfb.ts';
+test('the desktop canvas has a chord that is never forwarded to the guest',()=> {
+  // F6 and Ctrl+Shift+Escape hand control back; everything the guest needs
+  // (Tab, plain Escape, letters) is still forwarded.
+  assert.equal(isReleaseChord({key:'F6'}), true);
+  assert.equal(isReleaseChord({key:'Escape',ctrlKey:true,shiftKey:true}), true);
+  assert.equal(isReleaseChord({key:'Escape',ctrlKey:true}), false);
+  assert.equal(isReleaseChord({key:'Escape',shiftKey:true}), false);
+  assert.equal(isReleaseChord({key:'Escape'}), false);
+  assert.equal(isReleaseChord({key:'Tab'}), false);
+  assert.equal(isReleaseChord({key:'a'}), false);
+});

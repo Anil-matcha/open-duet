@@ -116,6 +116,17 @@ def test_files_are_written_read_and_listed_in_the_container(machine, tmp_path):
     assert last["tool"] == "list_files" and last["subject"] == "src" and last["exit_code"] == 0
 
 
+def test_credential_paths_are_not_read_or_listed(machine):
+    _, _, launch, workspace = machine
+    (workspace / ".ssh").mkdir()
+    (workspace / ".ssh" / "id_rsa").write_text("PRIVATE", encoding="utf-8")
+    (workspace / ".env").write_text("TOKEN=secret", encoding="utf-8")
+    for tool, path in [("read_file", ".ssh/id_rsa"), ("read_file", ".env"), ("list_files", ".ssh")]:
+        grants.issue(grants_dir(launch), tool, {"path": path})
+        text, is_error = call(launch, tool, {"path": path})
+        assert is_error and "credentials" in text, (tool, path, text)
+
+
 def test_bad_arguments_are_refused_before_any_permit_is_spent(machine):
     _, _, launch, _ = machine
     grants.issue(grants_dir(launch), "exec", {"command": "ls", "extra": 1})

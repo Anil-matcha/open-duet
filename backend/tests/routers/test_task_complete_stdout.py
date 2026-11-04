@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.config import settings
+from app.auth.routes import require_identity
 from app.db.session import get_db
 from app.routers.task import router
 from app.services import permission_ask_service, task_execution_service
@@ -119,6 +120,7 @@ async def test_completed_task_uses_full_log(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://owned"
     ) as client:
@@ -201,6 +203,7 @@ async def test_waiting_approval_observes_finished_command(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://owned"
     ) as client:
@@ -266,6 +269,7 @@ async def test_completed_task_records_malformed_result_output(
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_identity] = lambda: user_id
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://owned",

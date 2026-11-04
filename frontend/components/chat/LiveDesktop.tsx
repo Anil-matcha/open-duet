@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, desktopViewerUrl } from "@/lib/api";
-import { DesktopRfb, DESKTOP_KEYS } from "@/lib/desktop-rfb";
+import { DesktopRfb, DESKTOP_KEYS, isReleaseChord } from "@/lib/desktop-rfb";
+import { RELEASE_CHORD_KEYS, type TrappedSurfaceProps } from "@/lib/a11y-invariants";
 import { takeover } from "@/lib/takeover";
+import { TrappedCanvas } from "./TrappedCanvas";
 
 const BUTTON = "cursor-pointer rounded border border-line px-2 py-1 text-xs disabled:opacity-50";
+
 export function LiveDesktop({ computerId }: { computerId: number }) {
   const [state, dispatch] = useReducer(takeover, "watching");
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +32,19 @@ export function LiveDesktop({ computerId }: { computerId: number }) {
     dispatch("release"); setExpanded(false);
     opener.current?.focus();
   }, [computerId]);
+  // The canvas forwards keys to the guest, so it must never swallow the way
+  // out. Its release contract is declared through TrappedSurfaceProps (below),
+  // and the runtime check reads the same RELEASE_CHORD_KEYS constant the type
+  // requires — one source of truth between declaration and behaviour.
+  const trapped: TrappedSurfaceProps = { escapeKeys: RELEASE_CHORD_KEYS, onEscape: release };
+  const { onEscape: onRelease } = trapped;
+  const onCanvasKeyDown = useCallback((event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (isReleaseChord(event)) {
+      event.preventDefault(); event.stopPropagation(); onRelease(); return;
+    }
+    const key=DESKTOP_KEYS[event.key] ?? (event.key.length === 1 ? event.key.codePointAt(0) : undefined);
+    if (key) { event.preventDefault(); client.current?.key(key,true); }
+  }, [onRelease]);
   useEffect(() => {
     mounted.current = true;
     window.addEventListener("pagehide", release);
@@ -90,12 +106,16 @@ export function LiveDesktop({ computerId }: { computerId: number }) {
       </>}
     </div>
     {active && <>
-      <canvas ref={canvas} tabIndex={0} role="application" aria-label="Computer desktop. Click to focus; Hand control back returns control to the agent." className="aspect-[16/10] min-h-0 w-full touch-none rounded border border-line bg-black object-contain outline-accent"
-        onPointerDown={event => { event.preventDefault(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId); pointer(event); }}
-        onPointerMove={event => pointer(event)} onPointerUp={event => pointer(event,0)} onPointerCancel={event => pointer(event,0)} onContextMenu={event => event.preventDefault()}
-        onWheel={event => { event.preventDefault(); const rect=event.currentTarget.getBoundingClientRect(); const x=(event.clientX-rect.left)*event.currentTarget.width/rect.width,y=(event.clientY-rect.top)*event.currentTarget.height/rect.height; client.current?.pointer(x,y,event.deltaY<0 ? 8:16); client.current?.pointer(x,y,0); }}
-        onKeyDown={event => { const key=DESKTOP_KEYS[event.key] ?? (event.key.length === 1 ? event.key.codePointAt(0) : undefined); if (key) { event.preventDefault(); client.current?.key(key,true); } }}
-        onKeyUp={event => { const key=DESKTOP_KEYS[event.key] ?? (event.key.length === 1 ? event.key.codePointAt(0) : undefined); if (key) { event.preventDefault(); client.current?.key(key,false); } }} />
+      <div role="group" aria-label="Computer desktop" className="space-y-2">
+        <button type="button" className={BUTTON} onClick={release}>Hand control back</button>
+        <TrappedCanvas ref={canvas} tabIndex={0} escapeKeys={trapped.escapeKeys} onEscape={trapped.onEscape} aria-label="Computer desktop. Click to focus; Tab, Escape and other keys go to the remote machine. Press F6 (or Ctrl+Shift+Escape) or the Hand control back button to return control to the agent."
+          className="aspect-[16/10] min-h-0 w-full touch-none rounded border border-line bg-black object-contain outline-accent"
+          onPointerDown={event => { event.preventDefault(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId); pointer(event); }}
+          onPointerMove={event => pointer(event)} onPointerUp={event => pointer(event,0)} onPointerCancel={event => pointer(event,0)} onContextMenu={event => event.preventDefault()}
+          onWheel={event => { event.preventDefault(); const rect=event.currentTarget.getBoundingClientRect(); const x=(event.clientX-rect.left)*event.currentTarget.width/rect.width,y=(event.clientY-rect.top)*event.currentTarget.height/rect.height; client.current?.pointer(x,y,event.deltaY<0 ? 8:16); client.current?.pointer(x,y,0); }}
+          onKeyDown={onCanvasKeyDown}
+          onKeyUp={event => { const key=DESKTOP_KEYS[event.key] ?? (event.key.length === 1 ? event.key.codePointAt(0) : undefined); if (key) { event.preventDefault(); client.current?.key(key,false); } }} />
+      </div>
       <form className="flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); client.current?.text(text); setText(""); }}>
         <input aria-label="Text to type on the desktop" maxLength={2000} className="min-w-0 flex-1 rounded border border-line bg-transparent px-2 py-1 text-sm" value={text} onChange={event=>setText(event.target.value)} />
         <button type="submit" className={BUTTON}>Type text</button>

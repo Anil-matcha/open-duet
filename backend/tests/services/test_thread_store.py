@@ -179,6 +179,29 @@ async def test_starting_a_turn_stores_it_its_event_and_a_title(sessions, owner):
     assert (event.seq, event.type, event.turn_id, event.data) == (1, "turn.started", turn.id, {"prompt_text": prompt})
 
 
+async def test_a_credential_in_a_prompt_or_event_is_redacted_before_it_is_stored(sessions, owner):
+    thread = await new_thread(sessions, owner)
+    secret = "sk-ant-api03-" + "a1B2" * 8
+    turn = await call(sessions, store.start_turn, thread.id, f"deploy with {secret} now")
+    assert secret not in turn.prompt_text and "[redacted]" in turn.prompt_text
+
+    await call(
+        sessions, store.append_event, thread.id, "tool.result",
+        {"input": {"command": f"curl -H 'Authorization: Bearer {secret}'"}, "output": f"token={secret}"},
+        turn_id=turn.id,
+    )
+    stored = await events_of(sessions, thread.id)
+    blob = repr([e.data for e in stored])
+    assert secret not in blob and "[redacted]" in blob
+
+    await call(
+        sessions, store.finish_turn, turn.id, turn.owner_token,
+        status="succeeded", result=f"leaked {secret}",
+    )
+    finished = await reload(sessions, Turn, turn.id)
+    assert secret not in (finished.result or "")
+
+
 async def test_a_title_is_set_once_and_turn_numbers_count_up(sessions, owner):
     thread = await new_thread(sessions, owner)
     first = await call(sessions, store.start_turn, thread.id, "first prompt")

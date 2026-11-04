@@ -25,7 +25,10 @@ def test_existing_routines_and_runs_start_without_uninterrupted_access(tmp_path)
 def test_single_alembic_head_and_offline_upgrade_sql(tmp_path):
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["e4c9a7b2d610"]
+    # The fork's merge migration joins this head with its own, so the id changes
+    # at every sync; the invariant under test is that exactly one head remains.
+    heads = ScriptDirectory.from_config(config).get_heads()
+    assert len(heads) == 1, heads
     result = run_alembic(tmp_path / "offline.db", "upgrade", "d7a4c91e5b26:head", "--sql")
     assert result.returncode == 0, result.stderr
     assert "ALTER TABLE routine ADD COLUMN uninterrupted_access" in result.stdout

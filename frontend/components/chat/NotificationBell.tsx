@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type AppNotification, type NotificationPreferences } from "@/lib/api";
 import { badgeText, formatWhen } from "@/lib/routines";
 import { useT } from "@/lib/use-i18n";
+import { bellCountAnnouncement } from "@/lib/attention";
 import { IconButton } from "@/components/ui/IconButton";
 import { dispatchNotification, getNewUnreadNotifications } from "@/lib/desktop-notifications";
 
@@ -30,6 +31,10 @@ export function NotificationBell({
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const seenNotificationIds = useRef<Set<number> | null>(null);
+  // The count change, spoken by a live sub-node: the badge itself is not a live
+  // region, so without this a change is silent to a screen reader.
+  const [countAnnounce, setCountAnnounce] = useState("");
+  const previousCount = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -42,6 +47,8 @@ export function NotificationBell({
   const refresh = useCallback(() => {
     api.unreadNotifications()
       .then((r) => {
+        setCountAnnounce(bellCountAnnouncement(previousCount.current, r.unread));
+        previousCount.current = r.unread;
         setUnread(r.unread);
         setFailed(false);
         // Compare IDs so a read item being replaced by a new one cannot hide the alert.
@@ -113,9 +120,10 @@ export function NotificationBell({
       >
         <Bell size={18} />
         {badge && (
-          <span className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] font-semibold leading-4 text-accent-fg">{badge}</span>
+          <span aria-hidden="true" className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] font-semibold leading-4 text-accent-fg">{badge}</span>
         )}
       </IconButton>
+      <span role="status" aria-live="polite" className="sr-only">{countAnnounce}</span>
       {open && (
         <div role="dialog" aria-label={t("notifications.title")} className="absolute right-0 top-11 z-40 w-[min(20rem,calc(100vw-1.5rem))] animate-pop-in rounded-card border border-line bg-raised shadow-xl">
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">

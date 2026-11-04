@@ -9,6 +9,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.auth.routes import require_identity
 from app.db.models.task import Tasks
 from app.db.models.user_credential import UserCredential
 from app.db.session import get_db
@@ -24,16 +25,17 @@ async def save_credential(db, user):
     )
 
 
-def task_app(session_dependency):
+def task_app(session_dependency, user="test-user-1"):
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_db] = session_dependency
+    app.dependency_overrides[require_identity] = lambda: user
     return app
 
 
 async def submit(client, user, parent=None):
     return await client.post("/api/v1/tasks", json={
-        "user_id": user, "provider": "claude", "box_id": "bx_abcdefgh",
+        "provider": "claude", "box_id": "bx_abcdefgh",
         "prompt_text": "continue report", "parent_task_id": parent,
     })
 
@@ -88,7 +90,10 @@ async def test_reply_wrong_user_remains_not_found(
         initial = await submit(client, user_id)
         assert initial.status_code == 200
         ancestor = await complete(client, state, initial)
-        refused = await submit(client, other_user_id, ancestor["id"])
+    # A second identity cannot reach the first identity's conversation.
+    other_app = task_app(lambda: db_session, user=other_user_id)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(other_app), base_url="http://owned") as other:
+        refused = await submit(other, other_user_id, ancestor["id"])
     assert refused.status_code == 404
     assert len(state["commands"]) == 1
 
@@ -134,7 +139,7 @@ async def test_reply_admission_is_atomic_across_transactions(
         async with sessions() as db:
             yield db
 
-    app = task_app(request_session)
+    app = task_app(request_session, user=user)
     requests = []
     try:
         async with sessions() as db:
