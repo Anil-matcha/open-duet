@@ -314,8 +314,21 @@ class CodexAdapter:
             label = item.get("displayName") if isinstance(item.get("displayName"), str) else item["id"]
             default_effort = item.get("defaultReasoningEffort") or item.get("default_reasoning_effort")
             efforts = item.get("supportedReasoningEfforts") or item.get("supported_reasoning_efforts") or ()
-            if isinstance(efforts, list):
-                efforts = tuple(efforts)
+            if isinstance(default_effort, dict):
+                default_effort = default_effort.get("reasoningEffort") or default_effort.get("reasoning_effort")
+            if not isinstance(default_effort, str):
+                default_effort = None
+            if isinstance(efforts, (list, tuple)):
+                # Recent Codex app-server versions return effort metadata
+                # objects, while older versions returned the ids as strings.
+                efforts = tuple(
+                    value for entry in efforts
+                    if isinstance(value := (
+                        entry if isinstance(entry, str) else
+                        entry.get("reasoningEffort") or entry.get("reasoning_effort")
+                        if isinstance(entry, dict) else None
+                    ), str)
+                )
             model_id = item["id"].lower()
             if not efforts and any(p in model_id for p in ("o1", "o3-mini", "o3", "o4")):
                 efforts = ("low", "medium", "high")
