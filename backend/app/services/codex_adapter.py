@@ -75,6 +75,7 @@ MAX_ERROR_CHARS = 2000
 # An app-server starting with the person's MCP servers can take a while.
 STARTUP_TIMEOUT_SECONDS = 120.0
 INTERRUPT_GRACE_SECONDS = 3.0
+STEER_TIMEOUT_SECONDS = 10.0
 MODEL_LIST_TIMEOUT_SECONDS = 8.0
 MODEL_CACHE_SECONDS = 600.0
 RAW_STREAM_SIZE_FACTOR = 8
@@ -219,7 +220,7 @@ class CodexAdapter:
     kind = "cli"
     capabilities = Capabilities(
         tools=True, approvals=True, mcp=True, images=False, resume=True, computers=True, memory_tools=True,
-        connected_apps=True,
+        connected_apps=True, steering=True,
     )
     models: list[ModelOption] = []
     custom_models = True
@@ -229,6 +230,7 @@ class CodexAdapter:
 
     def __init__(self) -> None:
         self._models: tuple[float, list[ModelOption]] | None = None
+        self._active_turns: dict[int, "_CodexTurn"] = {}
 
     def new_session_id(self) -> str:
         # The app's own id for the conversation's session; Codex's thread id
@@ -350,7 +352,22 @@ class CodexAdapter:
                 error_code="engine_without_computers",
             )
         run = _CodexTurn(ctx, sink, gate, exe, codex_thread)
-        return await run.go()
+        self._active_turns[ctx.turn_id] = run
+        try:
+            return await run.go()
+        finally:
+            self._active_turns.pop(ctx.turn_id, None)
+
+    async def steer_turn(self, turn_id: int, text: str) -> str:
+        run = self._active_turns.get(turn_id)
+        if run is None:
+            return "refused"
+        result = await run.steer(text)
+        if result == "steered":
+            recorded = await run._emit("turn.steered", {"text": text})
+            if not recorded:
+                return "indeterminate"
+        return result
 
 
 @dataclass(eq=False)
@@ -697,15 +714,36 @@ class _CodexTurn:
         except (RpcError, RpcClosed, asyncio.TimeoutError):
             pass
 
+    async def steer(self, text: str) -> str:
+        """Add text to this active Codex turn without changing its sandbox."""
+        if self.rpc is None or self.rpc.closed or not (self.thread_id and self.codex_turn_id) or self.completed:
+            return "refused"
+        try:
+            await self.rpc.request(
+                "turn/steer",
+                {
+                    "threadId": self.thread_id,
+                    "expectedTurnId": self.codex_turn_id,
+                    "input": [{"type": "text", "text": text}],
+                },
+                timeout=STEER_TIMEOUT_SECONDS,
+            )
+            return "steered"
+        except asyncio.TimeoutError:
+            return "indeterminate"
+        except (RpcError, RpcClosed):
+            return "refused"
+
     # -- what Codex sends ------------------------------------------------------------
 
-    async def _emit(self, type_: str, data: dict) -> None:
+    async def _emit(self, type_: str, data: dict) -> bool:
         if self.sink.lost:
-            return
+            return False
         try:
-            await self.sink.emit(type_, data)
+            return await self.sink.emit(type_, data)
         except Exception:  # noqa: BLE001
             logger.exception("could not record a Codex event", thread_id=self.ctx.thread_id)
+            return False
 
     async def _notification(self, message: dict) -> None:
         method = message.get("method")

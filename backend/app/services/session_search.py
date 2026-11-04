@@ -38,7 +38,7 @@ READ_MAX_CHARS = 8_000
 SNIPPET = (100, 200)
 _SPAN = re.compile(r"^(\d{1,4})\s*([hdw])$")
 _WHOLE_DAY = re.compile(r"^(?:today|yesterday|\d{4}-\d{2}-\d{2})$")
-_TYPES = {"turn.started": "user", "assistant.message": "assistant", "room.message": "assistant"}
+_TYPES = {"turn.started": "user", "turn.steered": "user", "assistant.message": "assistant", "room.message": "assistant"}
 
 
 class BadTime(ValueError):
@@ -181,7 +181,7 @@ async def _conversations(db, owner_id, agent_id, current_thread_id, terms, since
             author = (event.data or {}).get("author") or {}
             speaker = "you" if author.get("agent_id") == agent_id else (author.get("label") or "someone")
         else:
-            speaker = "the person" if event.type == "turn.started" else "you"
+            speaker = "the person" if event.type in ("turn.started", "turn.steered") else "you"
         snippet = (
             conversation_search.make_snippet(body, terms, before=SNIPPET[0], after=SNIPPET[1])[0]
             if terms
@@ -230,7 +230,7 @@ async def read(db, *, owner_id: str, agent_id: int, thread_id: int, seq: int) ->
     text, _ = agent_memory.redact_secrets(text)
     return {
         "thread_id": thread_id, "seq": seq, "at": event.created_at, "where": where, "private": private,
-        "speaker": "the person" if event.type == "turn.started" else "you",
+        "speaker": "the person" if event.type in ("turn.started", "turn.steered") else "you",
         "text": text if len(text) <= READ_MAX_CHARS else text[:READ_MAX_CHARS] + "…",
     }
 

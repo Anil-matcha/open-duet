@@ -45,6 +45,15 @@ keeps the saved key for the same URL; changing the URL drops it unless you
 enter a key again. **Forget settings** deletes the configuration and credential.
 For OpenRouter, save an API key. The address is fixed to OpenRouter over HTTPS; configure a proxy with the generic OpenAI-compatible engine.
 
+## Messages while an answer is running
+
+The composer stays available during a turn. Engines that advertise live steering
+receive a text message in the running turn; currently Codex uses the app-server
+`turn/steer` request. Other engines queue the text and send it as the next turn
+when the current one ends. Queued messages are kept in this browser profile and
+can be removed before they are sent. Attachments are not included in a mid-turn
+message.
+
 
 Settings forms come from each adapter's `config_fields` and `setup` descriptors.
 Ready engines appear before engines that need setup, including in engine pickers.

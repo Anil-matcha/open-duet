@@ -9,6 +9,7 @@
 ### Changed
 
 - Disable the hard active-time answer limit by default so an agent can finish long tasks; the inactivity watchdog still stops stalled turns.
+- Let people message while a turn is running: steer providers that support it, and queue follow-ups for the next turn on other engines.
 - Keep active rooms inside the chat workspace so conversation navigation stays visible. Center and widen the docked composer with the transcript; keep member controls, instructions and export/delete actions in a responsive details panel, with the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
 - Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
 
