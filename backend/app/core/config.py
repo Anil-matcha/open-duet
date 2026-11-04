@@ -118,7 +118,9 @@ class Settings(BaseSettings):
     TEAM_DELEGATE_QUEUE_SECONDS: int = 86400
     TEAM_QUESTION_WAIT_SECONDS: int = 1800
     ROOM_CHAIN_DEPTH: int = 2
-    LOCAL_TASK_TIMEOUT_SECONDS: int = 300
+    # Optional hard cap for a local agent turn. 0 leaves completion to the
+    # engine and the separate inactivity watchdog.
+    LOCAL_TASK_TIMEOUT_SECONDS: int = 0
     LOCAL_MAX_OUTPUT_BYTES: int = 1_000_000
     # Stored as a desktop preference; headless installs do not run the wizard.
     DESKTOP_ONBOARDING_COMPLETED: bool = False
@@ -177,8 +179,8 @@ class Settings(BaseSettings):
     THREAD_LEASE_SECONDS: int = 60
     # The turn watchdog: a turn whose engine does nothing (no event, no typing)
     # for this long, while not waiting on an approval, is stopped and fails with
-    # `engine_stalled`. Longer than LOCAL_TASK_TIMEOUT_SECONDS by default, so it
-    # only catches an engine whose own time limit did not end it. 0 turns it off.
+    # `engine_stalled`. This inactivity limit is separate from the active-time
+    # answer limit. 0 turns it off.
     TURN_STALL_SECONDS: float = 600
 
     # Memory upkeep (docs/MEMORY.md): a conversation with an agent that has been

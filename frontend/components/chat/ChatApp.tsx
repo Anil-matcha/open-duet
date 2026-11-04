@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
@@ -35,6 +35,7 @@ import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, useMediaQuery } from "@/lib/use-
 import { useT } from "@/lib/use-i18n";
 import { reportPresence } from "@/lib/presence";
 import { readCachedPreference, resolveEngineModel, writeCachedPreference } from "@/lib/engine-selection";
+import { EMPTY_QUEUED_FOLLOW_UPS, loadQueuedFollowUps, MAX_FOLLOW_UP_TEXT_CHARS, MAX_QUEUED_FOLLOW_UPS, newQueuedFollowUp, saveQueuedFollowUps, subscribeQueuedFollowUps, type QueuedFollowUp } from "@/lib/queued-follow-ups";
 import { chatHref, parsePanel, type Panel } from "@/lib/panel";
 import { parseSkillCommand, skillErrorText, toggleSkill, learnableTurn, type SkillSummary, type SkillLearnSource } from "@/lib/skills";
 import { RoomList } from "./RoomList";
@@ -49,6 +50,7 @@ import type { NeedsYouSnapshot } from "@/lib/needs-you";
 
 const LIST_REFRESH_MS = 15_000;
 const COMPUTER_STATUS_REFRESH_MS = 15_000;
+const emptyQueuedFollowUpsSnapshot = () => EMPTY_QUEUED_FOLLOW_UPS;
 
 type Gate =
   | { phase: "loading" }
@@ -149,6 +151,25 @@ export function ChatApp() {
   const setPanel = (next: Panel | null) => router.replace(chatHref(params.toString(), next));
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const subscribeToThreadQueue = useCallback(
+    (subscriber: () => void) => threadId === null ? () => {} : subscribeQueuedFollowUps(threadId, subscriber),
+    [threadId],
+  );
+  const getThreadQueue = useCallback(
+    () => threadId === null ? EMPTY_QUEUED_FOLLOW_UPS : loadQueuedFollowUps(threadId),
+    [threadId],
+  );
+  const threadQueuedFollowUps = useSyncExternalStore(
+    subscribeToThreadQueue,
+    getThreadQueue,
+    emptyQueuedFollowUpsSnapshot,
+  );
+  const currentThreadIdRef = useRef(threadId);
+  useEffect(() => { currentThreadIdRef.current = threadId; }, [threadId]);
+  const queuedDrainRef = useRef(false);
+  const [queuedTurn, setQueuedTurn] = useState<{ threadId: number; turnId: number } | null>(null);
+  const [queuedSending, setQueuedSending] = useState(false);
+  const [failedQueued, setFailedQueued] = useState<{ threadId: number; id: string } | null>(null);
   const [focusComposer, setFocusComposer] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [answering, setAnswering] = useState<string | null>(null);
@@ -476,6 +497,52 @@ export function ChatApp() {
   const skillTurnId = learnableTurn(transcript.items);
   const canSaveSkill = threadAgent !== null && threadId !== null && skillTurnId !== null && transcript.runningTurnId === null;
   const waiting = pendingApprovals(transcript).length > 0;
+  const canMessageDuringRun = stream.threadId === threadId && transcript.runningTurnId !== null && threadId !== null && thread?.kind === "chat" && !waiting;
+  const workingMode = canMessageDuringRun
+    ? selectedEngine?.capabilities.steering ? "steer" as const : "queue" as const
+    : null;
+  const failedQueuedId = failedQueued?.threadId === threadId ? failedQueued.id : null;
+  const queuedTurnPending = queuedTurn?.threadId === threadId &&
+    !transcript.items.some((item) => item.kind === "turn_end" && item.turnId === queuedTurn.turnId);
+
+  const writeQueuedFollowUps = (id: number, items: QueuedFollowUp[]) => {
+    saveQueuedFollowUps(id, items);
+  };
+
+  const enqueueFollowUp = (id: number, text: string): boolean => {
+    const current = loadQueuedFollowUps(id);
+    if (current.length >= MAX_QUEUED_FOLLOW_UPS) return false;
+    writeQueuedFollowUps(id, [...current, newQueuedFollowUp(text)]);
+    return true;
+  };
+
+  useEffect(() => {
+    const first = threadQueuedFollowUps[0];
+    if (
+      threadId === null || stream.threadId !== threadId || !first || stream.connection !== "live" || transcript.runningTurnId !== null ||
+      waiting || sending || queuedSending || queuedTurnPending || failedQueuedId === first.id || queuedDrainRef.current
+    ) return;
+    queuedDrainRef.current = true;
+    setQueuedSending(true);
+    void api.sendTurn(threadId, first.text).then((turn) => {
+      const current = loadQueuedFollowUps(threadId);
+      if (current[0]?.id === first.id) writeQueuedFollowUps(threadId, current.slice(1));
+      if (currentThreadIdRef.current === threadId) setQueuedTurn({ threadId, turnId: turn.id });
+      if (currentThreadIdRef.current === threadId) {
+        setSendError(null);
+        setFailedQueued(null);
+      }
+    }).catch((err) => {
+      if (currentThreadIdRef.current === threadId) {
+        setSendError(sendErrorText(err));
+        setFailedQueued({ threadId, id: first.id });
+      }
+    }).finally(() => {
+      queuedDrainRef.current = false;
+      setQueuedSending(false);
+    });
+  }, [threadId, threadQueuedFollowUps, stream.connection, transcript.runningTurnId, waiting, sending, queuedSending, queuedTurnPending, failedQueuedId]);
+
   const totals = conversationUsage(
     transcript.items.flatMap((item) => (item.kind === "turn_end" ? [{ usage: item.usage }] : []))
   );
@@ -491,8 +558,8 @@ export function ChatApp() {
   else if (thread?.session_state === "broken")
     blockedReason = "Start a new session to continue this conversation.";
   else if (waiting) blockedReason = "The engine is waiting for your answer above.";
-  else if (transcript.runningTurnId !== null) blockedReason = "An answer is running…";
-  else if (selectedEngine && !selectedEngine.available) blockedReason = selectedEngine.reason ?? "This engine is unavailable. Check its settings.";
+  else if (transcript.runningTurnId !== null && !canMessageDuringRun) blockedReason = "An answer is running…";
+  else if (selectedEngine && !selectedEngine.available && !canMessageDuringRun) blockedReason = selectedEngine.reason ?? "This engine is unavailable. Check its settings.";
 
   // A signed-out engine gets a button to its sign-in; there may be no terminal to use.
   const signInAction = selectedEngine && !selectedEngine.available && selectedEngine.signed_in === false
@@ -508,6 +575,8 @@ export function ChatApp() {
   if (blockedReason === null && hasAudio && (!audioCapability?.available || !audioConsent)) blockedReason = !audioCapability?.available ? t("chat.audioUnavailable") : t("chat.audioConsentRequired", { provider: audioCapability?.provider_label ?? "OpenAI" });
 
   if (blockedReason === null && audioUrl.trim() && attached.length >= MAX_ATTACHMENTS) blockedReason = `Attach at most ${MAX_ATTACHMENTS} files or audio links to one message.`;
+  if (blockedReason === null && canMessageDuringRun && (attached.length > 0 || audioUrl.trim()))
+    blockedReason = "Remove attachments and audio links to send a text follow-up while this answer is running.";
 
   const sendingReactionReplyDisabled = threadId === null || !ready || stream.connection === "failed" || thread === null ||
     thread.session_state === "broken" || waiting || transcript.runningTurnId !== null ||
@@ -527,6 +596,49 @@ export function ChatApp() {
   };
 
   const send = async () => {
+    if (transcript.runningTurnId !== null) {
+      if (!canMessageDuringRun || threadId === null) return;
+      const text = draft.trim();
+      if (!text) return;
+      if (text.length > MAX_FOLLOW_UP_TEXT_CHARS) {
+        setSendError(t("composer.messageTooLong"));
+        return;
+      }
+      if (attached.length > 0 || audioUrl.trim()) {
+        setSendError("Remove attachments and audio links before sending a message during a running answer.");
+        return;
+      }
+      setSendError(null);
+      setSending(true);
+      try {
+        let queued = workingMode === "queue";
+        if (!queued) {
+          try {
+            await api.steerThread(threadId, text);
+          } catch (err) {
+            if (err instanceof ApiError && ["steer_unsupported", "turn_not_steerable", "steer_rejected", "no_running_turn"].includes(err.code ?? "")) {
+              queued = true;
+            } else {
+              throw err;
+            }
+          }
+        }
+        if (queued && !enqueueFollowUp(threadId, text)) {
+          setSendError(t("composer.queueFull"));
+          return;
+        }
+        setDraft("");
+        setChosenSkills(() => []);
+        setAttachNotice(null);
+      } catch (err) {
+        setSendError(sendErrorText(err));
+      } finally {
+        setSending(false);
+        setListTick((n) => n + 1);
+      }
+      return;
+    }
+
     // `/name rest` for a skill that is on selects it; anything else is sent as typed.
     const command = parseSkillCommand(draft, agentSkills.filter((s) => s.enabled).map((s) => s.name));
     const usedSkills = command ? toggleSkillOn(chosenSkills, command.name) : chosenSkills;
@@ -1051,6 +1163,45 @@ export function ChatApp() {
               <p>{t("chat.transcriptCaveat")}</p>
             </details>
           </div>
+          {threadId !== null && threadQueuedFollowUps.length > 0 && (
+            <div className="mx-auto mb-1 w-full max-w-3xl px-3" aria-live="polite">
+              <div className="rounded-field border border-line bg-raised px-3 py-2">
+                <p className="text-xs font-medium text-muted">{t("composer.queuedForNext")}</p>
+                <ul className="mt-1 space-y-1">
+                  {threadQueuedFollowUps.map((item) => (
+                    <li key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                      <span className="min-w-0 whitespace-pre-wrap break-words">{item.text}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {failedQueuedId === item.id && (
+                          <button
+                            type="button"
+                            onClick={() => { setSendError(null); setFailedQueued(null); }}
+                            className="cursor-pointer text-xs text-accent underline"
+                          >
+                            {t("composer.retryQueued")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (failedQueuedId === item.id) {
+                              setFailedQueued(null);
+                              setSendError(null);
+                            }
+                            writeQueuedFollowUps(threadId, threadQueuedFollowUps.filter((queued) => queued.id !== item.id));
+                          }}
+                          aria-label={t("composer.removeQueued")}
+                          className="cursor-pointer text-muted hover:text-ink"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
           <Composer
             draftKey={threadId === null ? "new" : String(threadId)}
             focusRequested={focusComposer}
@@ -1058,11 +1209,12 @@ export function ChatApp() {
             value={draft}
             onChange={setDraft}
             onSend={send}
-            sending={sending}
+            sending={sending || queuedSending}
             blockedReason={blockedReason}
             blockedAction={signInAction}
             error={sendError}
             running={transcript.runningTurnId !== null}
+            workingMode={workingMode}
             stopping={stoppingTurn !== null && stoppingTurn === transcript.runningTurnId}
             onStop={stop}
             files={attached}

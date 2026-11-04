@@ -452,6 +452,20 @@ def test_credentials_control_characters_and_floor_commands_cannot_be_saved(kind,
         allow.validate_rule(kind, command)
 
 
+def test_long_file_paths_are_not_mistaken_for_credentials_in_saved_rules():
+    commands = [
+        "sed -n '1440,1515p' '/Users/alex/Downloads/mu_workflow/muapiapp/server/app/services/api_service.py'",
+        "sed -n '1300p' /tmp/candidate-garden-skills/skills/gpt-image-2/scripts/shared.js",
+    ]
+    for command in commands:
+        assert allow.validate_rule(EXACT, command, "/workspace") == command
+
+
+def test_an_unlabelled_long_token_cannot_be_saved():
+    with pytest.raises(InvalidRule, match="credentials"):
+        allow.validate_rule(EXACT, "echo 0123456789abcdef0123456789abcdef01234567", "/workspace")
+
+
 @pytest.mark.parametrize("workspace", ["relative/dir", "/a/../b", "", "/x\x00y", "/" + "a" * 5000])
 def test_a_rule_folder_must_be_absolute_and_plain(workspace):
     with pytest.raises(InvalidRule):

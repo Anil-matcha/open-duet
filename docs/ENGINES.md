@@ -45,6 +45,15 @@ keeps the saved key for the same URL; changing the URL drops it unless you
 enter a key again. **Forget settings** deletes the configuration and credential.
 For OpenRouter, save an API key. The address is fixed to OpenRouter over HTTPS; configure a proxy with the generic OpenAI-compatible engine.
 
+## Messages while an answer is running
+
+The composer stays available during a turn. Engines that advertise live steering
+receive a text message in the running turn; currently Codex uses the app-server
+`turn/steer` request. Other engines queue the text and send it as the next turn
+when the current one ends. Queued messages are kept in this browser profile and
+can be removed before they are sent. Attachments are not included in a mid-turn
+message.
+
 
 Settings forms come from each adapter's `config_fields` and `setup` descriptors.
 Ready engines appear before engines that need setup, including in engine pickers.
@@ -240,6 +249,7 @@ Codex reports back (a mismatch fails the turn before it starts):
 |---|---|---|---|
 | ask | `untrusted` | `workspace-write` | every command/file-change request becomes a card |
 | accept_edits | `untrusted` | `workspace-write` | a file change wholly inside the workspace is accepted without a card |
+| approve_for_me | `on-request` | `workspace-write` | Codex's native auto reviewer handles eligible requests; remaining requests become cards |
 | plan | `never` | `read-only` | any request that still arrives is declined |
 | tools off | `never` | `read-only` | as plan |
 
@@ -249,6 +259,14 @@ for servers in your own Codex config go through the gate; other requests
 (`item/tool/call`, user-input questions, extra permissions, other
 elicitations) are refused. Stop sends `turn/interrupt`, then the process group
 is killed. A missing Codex thread on resume marks the session `broken`.
+
+Cursor's **Approve for me** mode passes its native `--auto-review` flag before
+`acp`. Claude's mode uses its native `--permission-mode auto` reviewer
+for local CLI tools. Turns with connected apps, marketplace tools, team tools,
+or computer/browser controls use Ask so those tools keep their app-level approval
+gates. Claude may report that `auto` is unavailable for the selected model or
+account; in that case its normal Ask behavior applies. Engines without a native
+reviewer do not offer this mode and treat a stored/API-supplied value as Ask.
 
 **Agent computers.** A Codex agent can have a Docker computer (not the native
 Mac desktop, which stays Claude-only). The turn mounts the computer's MCP server

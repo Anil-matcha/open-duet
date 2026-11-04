@@ -166,7 +166,10 @@ class CursorAdapter(PresetAdapter):
     setup = {"install": "See https://cursor.com/docs/cli for Cursor's official install steps, then run cursor-agent login.", "sign_in": "cursor-agent login", "docs_url": "https://cursor.com/docs/cli", "credential": "either", "notes": ["Cursor's own allow rules can skip approval requests. Review its CLI configuration.", "Interactive Cursor question cards and Windows presets are not supported yet."]}
 
     def mode_args(self, ctx, config):
-        return ["acp"]
+        # Cursor's native reviewer is narrower than --force: it reviews
+        # eligible requests and leaves the rest on the ACP approval path.
+        review_args = ["--auto-review"] if ctx and ctx.approval_mode == "approve_for_me" else []
+        return [*review_args, "acp"]
 
     async def signed_in(self, env, config):
         if await super().signed_in(env, config):

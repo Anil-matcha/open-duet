@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { api, ApiError, isLocalApiEndpoint, type Agent, type AgentInput, type AgentMemory, type ApprovalMode, type Engine, type OpenBotDatabasePreview, type OpenBotDatabaseProfilePreview } from "@/lib/api";
 import {
-  APPROVAL_MODES,
+  approvalModesForProvider,
   agentFileHasNotes,
   agentFileText,
   approvalModeLabel,
@@ -95,7 +95,7 @@ function toDraft(agent: Agent): Draft {
     provider: agent.provider,
     model: agent.model,
     workspace_path: agent.workspace_path ?? "",
-    approval_mode: agent.approval_mode,
+    approval_mode: agent.approval_mode === "approve_for_me" && !approvalModesForProvider(agent.provider).some((mode) => mode.value === "approve_for_me") ? "ask" : agent.approval_mode,
     memory_enabled: agent.memory_enabled ?? true,
     fallback_provider: agent.fallback_provider ?? null,
     fallback_model: agent.fallback_model ?? null,
@@ -541,7 +541,8 @@ export function AgentsPanel({
   const editorDirty = draft !== null && (
     (originalDraft !== null && draftSignature(draft) !== draftSignature(originalDraft)) || leadDirty || membersDirty || templateSkillsDirty
   );
-  const modeInfo = APPROVAL_MODES.find((m) => m.value === draft?.approval_mode);
+  const availableApprovalModes = approvalModesForProvider(draft?.provider);
+  const modeInfo = availableApprovalModes.find((m) => m.value === draft?.approval_mode);
   const canEditConnectedApps = draft !== null && draft.id !== null && supportsConnectedApps(draft.provider);
   const heading = draft
     ? draft.id === null
@@ -732,7 +733,7 @@ export function AgentsPanel({
                   <TabPanel value="model" className="space-y-4">
                     <section className="space-y-2">
                       <h3 className="text-sm font-medium text-ink">Model</h3>
-                      <EngineModelFields engines={engines} provider={draft.provider} model={draft.model} disabled={busy} hasComputer={agents.some((agent) => agent.id === draft.id && agent.computer != null)} onChange={(provider, model) => setDraft({ ...draft, provider, model })} />
+                      <EngineModelFields engines={engines} provider={draft.provider} model={draft.model} disabled={busy} hasComputer={agents.some((agent) => agent.id === draft.id && agent.computer != null)} onChange={(provider, model) => setDraft({ ...draft, provider, model, approval_mode: approvalModesForProvider(provider).some((mode) => mode.value === draft.approval_mode) ? draft.approval_mode : "ask" })} />
                       <p className="text-xs text-muted">Engine changes apply to new conversations. Existing conversations keep their engine.</p>
                     </section>
 
@@ -778,7 +779,7 @@ export function AgentsPanel({
                     <fieldset className="space-y-2 text-xs text-muted">
                       <legend>Approvals</legend>
                       <div className="mt-1 flex flex-wrap gap-2">
-                        {APPROVAL_MODES.map((mode) => (
+                        {availableApprovalModes.map((mode) => (
                           <label
                             key={mode.value}
                             className={`cursor-pointer rounded-md border px-3 py-2 text-sm touch:min-h-11 ${

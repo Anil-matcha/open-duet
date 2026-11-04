@@ -66,6 +66,7 @@ class Capabilities:
     images: bool = False
     resume: bool = False
     computers: bool = False
+    steering: bool = False
     memory_tools: bool = False
     connected_apps: bool = False
 
@@ -81,6 +82,7 @@ class Capabilities:
             "images": self.images,
             "resume": self.resume,
             "computers": self.computers,
+            "steering": self.steering,
         }
 
 

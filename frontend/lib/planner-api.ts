@@ -14,7 +14,7 @@ export type WorkInput = Pick<WorkItem, "board_id" | "column_id" | "title" | "des
 export type WorkChanges = Partial<Omit<WorkInput, "board_id">> & { archived?: boolean };
 export type CalendarEvent = { id: string; kind: "routine" | "run"; routine_id: number; title: string; at: string; state: string; thread_id: number | null; work_item_id?: number | null };
 export type RoutineCalendar = { events: CalendarEvent[]; warnings: string[] };
-export type WorkRunInput = { revision: number; idempotency_key: string; agent_id: number; prompt: string; approval_mode: "ask" | "accept_edits" | "plan"; scheduled_for: string | null };
+export type WorkRunInput = { revision: number; idempotency_key: string; agent_id: number; prompt: string; approval_mode: "ask" | "accept_edits" | "approve_for_me" | "plan"; scheduled_for: string | null };
 export type WorkEvent = { id: number; receipt_id: number | null; kind: string; actor: string; detail: string | null; created_at: string };
 export type WorkRun = { id: number; work_item_id: number; attempt: number; routine_id: number; run_id: number | null; agent_id: number; prompt: string; approval_mode: WorkRunInput["approval_mode"]; state: string; scheduled_for: string | null; thread_id: number | null; result: string | null; error: string | null; started_at: string | null; finished_at: string | null; created_at: string };
 

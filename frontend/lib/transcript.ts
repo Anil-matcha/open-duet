@@ -196,6 +196,15 @@ export function applyEvent(state: Transcript, event: ThreadEvent): Transcript {
         ],
       };
 
+    case "turn.steered":
+      return {
+        ...base,
+        items: [
+          ...state.items,
+          { kind: "user", key, turnId: id, text: text(data.text), attachments: [], ts: event.ts },
+        ],
+      };
+
     case "assistant.message":
       return {
         ...base,

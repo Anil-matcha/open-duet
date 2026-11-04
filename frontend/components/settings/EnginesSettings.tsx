@@ -33,7 +33,7 @@ const fields: Record<string, { label: string; help: string; type: "file" | "fold
   LOCAL_CLAUDE_CLI_PATH: { label: "Claude executable", help: "Leave empty for automatic detection from PATH. A selected executable runs as your account. Windows npm claude.cmd shims are supported.", type: "file" },
   LOCAL_WORKSPACE_ROOT: { label: "Workspace root", help: "New conversations use a workspace subfolder here. Existing conversations keep their original folder. Leave empty for the app default.", type: "folder" },
   LOCAL_TOOLS_ENABLED: { label: "Allow local tools", help: "Allows file reads, file changes and commands on this computer. Calls Claude asks about still require Allow or Deny; your existing Claude permission rules also apply. When off, Claude can only chat.", type: "checkbox" },
-  LOCAL_TASK_TIMEOUT_SECONDS: { label: "Answer timeout (seconds)", help: "Waiting for approval pauses this timer.", type: "number", min: 30, max: 3600 },
+  LOCAL_TASK_TIMEOUT_SECONDS: { label: "Answer timeout (seconds)", help: "0 disables the hard time limit. Silent turns are still stopped by the inactivity watchdog. Waiting for approval pauses this timer.", type: "number", min: 0, max: 3600 },
   LOCAL_APPROVAL_TIMEOUT_SECONDS: { label: "Approval timeout (seconds)", help: "New approvals use this limit. Questions already waiting keep their deadline. Unanswered questions are denied.", type: "number", min: 30, max: 3600 },
   LOCAL_MAX_OUTPUT_BYTES: { label: "Answer output limit (bytes)", help: "Bounds the answer text retained from each run.", type: "number", min: 1024, max: 16000000 },
 };

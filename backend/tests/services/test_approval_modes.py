@@ -8,6 +8,7 @@ from app.services.approval_modes import (
     MODES,
     UnknownApprovalMode,
     cli_permission_mode,
+    modes_for_engine,
     validate_mode,
 )
 
@@ -22,6 +23,11 @@ def test_not_chosen_is_ask_and_there_is_no_full_access():
     assert validate_mode(None) == DEFAULT_MODE == "ask"
     assert cli_permission_mode(None) == "default"
     assert "full" not in MODES and "bypass" not in " ".join(MODES)
+
+
+def test_native_reviewer_is_available_for_supported_engines_only():
+    assert "approve_for_me" in modes_for_engine("cursor")
+    assert "approve_for_me" not in modes_for_engine("gemini")
 
 
 @pytest.mark.parametrize("bad", ["", "full", "bypassPermissions", "dontAsk", "ASK"])

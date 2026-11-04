@@ -54,7 +54,7 @@ DUE_BATCH = 20
 START_BATCH = 10
 # Stricter first: a routine run uses whichever of its own and its agent's
 # modes comes first here.
-_STRICTNESS = ("plan", "ask", "accept_edits")
+_STRICTNESS = ("plan", "ask", "accept_edits", "approve_for_me")
 
 LIMITS = {
     "run_limit_minutes": (1, 240),

@@ -64,7 +64,7 @@ async def test_racing_first_writes_have_exactly_one_winner(configured):
     ("LOCAL_TOOLS_ENABLED", "true", False),
     ("LOCAL_CLAUDE_CLI_PATH", "relative.exe", None),
     ("LOCAL_WORKSPACE_ROOT", "relative", None),
-    ("LOCAL_TASK_TIMEOUT_SECONDS", -1, 300),
+    ("LOCAL_TASK_TIMEOUT_SECONDS", -1, 0),
     ("LOCAL_APPROVAL_TIMEOUT_SECONDS", "forever", 300),
     ("LOCAL_MAX_OUTPUT_BYTES", 0, 1_000_000),
 ])
@@ -86,7 +86,7 @@ async def test_turn_snapshot_and_new_approval_apply_rules(configured):
         await put(configured, "LOCAL_TASK_TIMEOUT_SECONDS", 90)
         await put(configured, "LOCAL_APPROVAL_TIMEOUT_SECONDS", 60)
         assert config.get("LOCAL_TOOLS_ENABLED") is True
-        assert config.get("LOCAL_TASK_TIMEOUT_SECONDS") == 300
+        assert config.get("LOCAL_TASK_TIMEOUT_SECONDS") == 0
         assert config.get("LOCAL_APPROVAL_TIMEOUT_SECONDS", live=True) == 60
     assert config.get("LOCAL_TOOLS_ENABLED") is False
     assert config.get("LOCAL_TASK_TIMEOUT_SECONDS") == 90

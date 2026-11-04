@@ -5,6 +5,7 @@ the enforcing, so this app never re-implements what the CLI already decides.
 
     ask          every call the CLI would ask about waits for Allow or Deny
     accept_edits file edits inside the workspace go through; the rest still asks
+    approve_for_me the engine's native safety reviewer handles eligible requests
     plan         read-only: the CLI plans and edits nothing
 
 There is deliberately no "full access" mode: no run skips permissions.
@@ -22,12 +23,14 @@ meaning of the mode, not an oversight; `ask` is the default.
 """
 
 DEFAULT_MODE = "ask"
-MODES = ("ask", "accept_edits", "plan")
+MODES = ("ask", "accept_edits", "approve_for_me", "plan")
+NATIVE_REVIEW_ENGINES = frozenset({"claude", "codex", "cursor"})
 
 # The CLI's --permission-mode value for each mode.
 _CLI_MODE = {
     "ask": "default",
     "accept_edits": "acceptEdits",
+    "approve_for_me": "auto",
     "plan": "plan",
 }
 
@@ -48,3 +51,11 @@ def validate_mode(mode: str | None) -> str:
 def cli_permission_mode(mode: str | None) -> str:
     """The value for the CLI's `--permission-mode`."""
     return _CLI_MODE[validate_mode(mode)]
+
+
+def modes_for_engine(engine: str | None) -> tuple[str, ...]:
+    """Modes this engine can enforce natively; unsupported modes run as Ask."""
+    return tuple(
+        mode for mode in MODES
+        if mode != "approve_for_me" or engine in NATIVE_REVIEW_ENGINES
+    )

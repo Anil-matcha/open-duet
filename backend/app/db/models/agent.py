@@ -12,7 +12,7 @@ from sqlalchemy import Identity
 # Claude runner understands.
 # Checked in the service, not the database, so adding a mode never needs a
 # table rebuild on SQLite.
-APPROVAL_MODES = ("ask", "accept_edits", "plan")
+APPROVAL_MODES = ("ask", "accept_edits", "approve_for_me", "plan")
 
 
 class Agent(Base):

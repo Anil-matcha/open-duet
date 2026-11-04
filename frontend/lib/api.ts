@@ -383,7 +383,7 @@ export type PermissionAsk = {
   answered_at: string | null;
 };
 
-export type ApprovalMode = "ask" | "accept_edits" | "plan";
+export type ApprovalMode = "ask" | "accept_edits" | "approve_for_me" | "plan";
 
 // An agent's own isolated machine (a Docker container) where its turns run
 // their commands and file edits. Older backends never send these fields.
@@ -578,7 +578,7 @@ export type Engine = {
   models: EngineModel[];
   default_model: string | null;
   custom_models: boolean;
-  capabilities: { tools: boolean; approvals: boolean; mcp: boolean; images: boolean; resume: boolean; computers: boolean };
+  capabilities: { tools: boolean; approvals: boolean; mcp: boolean; images: boolean; resume: boolean; computers: boolean; steering?: boolean };
   configurable: boolean;
   can_write_text?: boolean;
   config: Record<string, unknown> | null;
@@ -751,6 +751,7 @@ export type AgentExport = {
 
 export type Thread = {
   id: number;
+  kind?: string;
   // Present once the backend supports named agents; null for a plain chat.
   agent_id?: number | null;
   title: string | null;
@@ -1319,6 +1320,13 @@ export const api = {
         ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
         ...(skills.length ? { skills } : {}),
       }),
+    }),
+
+  // Send text into the active turn for engines that support live steering.
+  steerThread: (threadId: number, text: string) =>
+    request<{ status: "steered"; turn_id: number }>(`/threads/${threadId}/steer`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
     }),
 
   // Stop the running answer. 202 once Claude was told to stop; the end arrives as

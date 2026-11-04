@@ -512,6 +512,20 @@ async def test_effort_is_set_alone_and_kept_by_a_rename_in_the_same_update(api):
     renamed = await api.patch(f"/api/v1/threads/{thread['id']}", json={"title": "just a name"})
     assert renamed.status_code == 200 and renamed.json()["effort"] == "low"
 
+async def test_reasoning_effort_can_be_changed_and_cleared(api):
+    thread = await create(api, model="sonnet", effort="medium")
+
+    changed = await api.patch(f"/api/v1/threads/{thread['id']}", json={"effort": "high"})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["model"] == "sonnet" and changed.json()["effort"] == "high"
+
+    cleared = await api.patch(
+        f"/api/v1/threads/{thread['id']}", json={"model": "sonnet", "effort": None}
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["effort"] is None
+    assert (await api.get(f"/api/v1/threads/{thread['id']}")).json()["effort"] is None
+
 
 @pytest.mark.parametrize("body", [{}, {"title": "   "}, {"title": ""}, {"title": "x" * 201}, {"archived": "maybe"}])
 async def test_a_bad_update_is_a_422_and_changes_nothing(api, body):

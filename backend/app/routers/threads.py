@@ -26,6 +26,8 @@ from app.schemas.thread import (
     ThreadResponse,
     ThreadUpdateRequest,
     TurnCreateRequest,
+    TurnSteerRequest,
+    TurnSteerResponse,
     TurnResponse,
 )
 from app.services import approval_allowlist, attachments
@@ -40,6 +42,9 @@ from app.services.thread_runtime import (
     SessionNotResettable,
     ThreadRuntime,
     TurnNotHere,
+    TurnNotSteerable,
+    SteerRejected,
+    SteerIndeterminate,
     UnknownProvider,
     AgentArchived,
     AgentProviderMismatch,
@@ -152,10 +157,11 @@ async def get_thread(thread_id: int, rt: ThreadRuntime = Depends(get_runtime)):
 async def update_thread(
     thread_id: int, payload: ThreadUpdateRequest, rt: ThreadRuntime = Depends(get_runtime)
 ):
-    """Rename, archive and/or change the model. Archiving hides a conversation
-    from the default list and deletes nothing; it is refused while a turn is
-    running. A new model is checked against the conversation's engine (422
-    `unknown_model`) and applies from the next message."""
+    """Rename, archive and/or change the model or reasoning effort. Archiving
+    hides a conversation from the default list and deletes nothing; it is
+    refused while a turn is running. A new model is checked against the
+    conversation's engine (422 `unknown_model`) and applies from the next
+    message; an explicit null effort uses the model's default."""
     current = await _thread_or_404(rt, thread_id)
     if "model" in payload.model_fields_set:
         try:
@@ -271,6 +277,28 @@ async def stop_turn(thread_id: int, rt: ThreadRuntime = Depends(get_runtime)):
             "This answer is running in another process, so it cannot be stopped from here. "
             "It ends by itself, or is marked stopped within a minute if that process is gone.",
         )
+
+
+@router.post("/{thread_id}/steer", response_model=TurnSteerResponse, status_code=202)
+async def steer_turn(
+    thread_id: int, payload: TurnSteerRequest, rt: ThreadRuntime = Depends(get_runtime)
+):
+    """Send a text message into a running turn when its provider supports it."""
+    thread = await _thread_or_404(rt, thread_id)
+    if thread.kind in ("room", "room_member"):
+        raise _error(409, thread.kind + "_thread", "Talk to this agent in the room.")
+    try:
+        return TurnSteerResponse(turn_id=await rt.steer_turn(thread_id, payload.text))
+    except NoRunningTurn:
+        raise _error(409, "no_running_turn", "Nothing is running in this conversation.")
+    except TurnNotHere:
+        raise _error(409, "turn_not_steerable", "This turn is running in another process and cannot be steered here.")
+    except TurnNotSteerable:
+        raise _error(409, "steer_unsupported", "This engine cannot accept messages during a running turn. Queue it for the next turn instead.")
+    except SteerRejected:
+        raise _error(409, "steer_rejected", "The engine rejected the message. It was not added to the running turn.")
+    except SteerIndeterminate:
+        raise _error(504, "steer_uncertain", "The engine did not confirm whether it received the message. Check the conversation before retrying.")
 
 
 @router.post("/{thread_id}/session/reset", response_model=ThreadResponse)

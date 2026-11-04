@@ -141,6 +141,18 @@ class TurnNotHere(Exception):
     when its lease runs out."""
 
 
+class TurnNotSteerable(Exception):
+    """This provider or turn does not accept in-run messages."""
+
+
+class SteerRejected(Exception):
+    """The provider refused an in-run message; it was not delivered."""
+
+
+class SteerIndeterminate(Exception):
+    """The provider did not confirm whether it received an in-run message."""
+
+
 class ProviderUnavailable(Exception):
     pass
 
@@ -1154,6 +1166,33 @@ class ThreadRuntime:
         run.stop_requested = True
         run.ctx.abort()
         return run.turn_id
+
+    async def steer_turn(self, thread_id: int, text: str) -> int:
+        """Send text into a live provider turn that advertises steering."""
+        run = next((r for r in self._runs.values() if r.thread_id == thread_id), None)
+        if run is None:
+            async with self.session() as db:
+                running = await store.running_turn_id(db, thread_id)
+            if running is None:
+                raise NoRunningTurn(thread_id)
+            raise TurnNotHere(thread_id)
+        adapter = self.adapters.get(run.engine_id)
+        if (
+            adapter is None
+            or not capabilities_of(adapter).steering
+            or run.routine_run_id is not None
+            or (run.gate is not None and run.gate.waiting)
+        ):
+            raise TurnNotSteerable(thread_id)
+        steer = getattr(adapter, "steer_turn", None)
+        if not callable(steer):
+            raise TurnNotSteerable(thread_id)
+        result = await steer(run.turn_id, text)
+        if result == "steered":
+            return run.turn_id
+        if result == "indeterminate":
+            raise SteerIndeterminate(thread_id)
+        raise SteerRejected(thread_id)
 
     async def _provider_status(self, adapter: ProviderAdapter, config: dict | None = None) -> ProviderStatus:
         loop = asyncio.get_running_loop()

@@ -13,7 +13,6 @@ class ThreadCreateRequest(BaseModel):
     # against the engine (422 `unknown_model`).
     model: str | None = Field(default=None, max_length=200)
     effort: str | None = Field(default=None, max_length=64)
-    effort: str | None = Field(default=None, max_length=64)
     # Omitted: set from the first prompt.
     title: str | None = Field(default=None, max_length=200)
     # Start the conversation from a named agent: its provider is used (naming a
@@ -24,10 +23,11 @@ class ThreadCreateRequest(BaseModel):
 
 
 class ThreadUpdateRequest(BaseModel):
-    """Rename, archive and/or change the model. Send at least one field.
+    """Rename, archive and/or change the model or reasoning effort. Send at least one field.
     `model` takes an explicit null to follow the agent's model (on the same
     engine), otherwise the engine default. The engine stays the one the
-    conversation started on."""
+    conversation started on. `effort` takes an explicit null to use the
+    model's default reasoning effort."""
 
     title: str | None = Field(default=None, max_length=200)
     archived: bool | None = None
@@ -47,7 +47,7 @@ class ThreadUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def _something_to_change(self):
         if self.title is None and self.archived is None and "model" not in self.model_fields_set and "effort" not in self.model_fields_set:
-            raise ValueError("send a title, archived, model, or several")
+            raise ValueError("send a title, archived, model, effort, or several")
         return self
 
 
@@ -119,6 +119,23 @@ class TurnCreateRequest(BaseModel):
         if not value.strip():
             raise ValueError("prompt_text must not be blank")
         return value
+
+
+class TurnSteerRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
+
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("text must not be blank")
+        return value
+
+
+class TurnSteerResponse(BaseModel):
+    status: Literal["steered"] = "steered"
+    turn_id: int
 
 
 class EventResponse(BaseModel):

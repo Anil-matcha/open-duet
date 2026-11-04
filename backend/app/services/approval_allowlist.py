@@ -38,7 +38,7 @@ BUCKET = "local_command"
 EXACT = "exact"
 PREFIX = "prefix"
 MATCH_KINDS = (EXACT, PREFIX)
-MAX_COMMAND_CHARS = 1000
+MAX_COMMAND_CHARS = 10_000
 MAX_WORKSPACE_CHARS = 4096
 MAX_RULES = 200
 BASH_TOOL = "Bash"
@@ -196,7 +196,7 @@ def validate_rule(kind: str, command: str, workspace: str | None = None) -> str:
         raise InvalidRule("match must be 'exact' or 'prefix'")
     if not command or len(command) > MAX_COMMAND_CHARS or _CONTROL.search(command):
         raise InvalidRule(f"command must be 1 to {MAX_COMMAND_CHARS} characters without control characters")
-    if decision_log.redact(command) != command:
+    if decision_log.contains_credential(command):
         raise InvalidRule("commands containing credentials cannot be saved; use an environment variable")
     if kind == PREFIX:
         if _has_shell_operators(command):
