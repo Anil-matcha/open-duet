@@ -20,7 +20,7 @@ import {
   type SchedulePreview,
 } from "@/lib/api";
 import type { ComposioAccount } from "@/lib/connected-apps";
-import { activeAgents, APPROVAL_MODES } from "@/lib/agents";
+import { activeAgents, approvalModesForProvider } from "@/lib/agents";
 import {
   curlExample,
   DAY_LABELS,
@@ -109,11 +109,12 @@ function newDraft(agents: Agent[]): Draft {
   };
 }
 
-function draftOf(routine: Routine): Draft {
+function draftOf(routine: Routine, provider?: string): Draft {
   return {
     id: routine.id, name: routine.name, agentId: routine.agent_id, prompt: routine.prompt,
     schedule: scheduleDraftOf(routine), runLimit: String(routine.run_limit_minutes),
-    approvalMode: routine.approval_mode, approvalWait: String(routine.approval_timeout_minutes),
+    approvalMode: routine.approval_mode === "approve_for_me" && !approvalModesForProvider(provider).some((mode) => mode.value === "approve_for_me") ? "ask" : routine.approval_mode,
+    approvalWait: String(routine.approval_timeout_minutes),
     catchUp: String(routine.catch_up_minutes), retryLimit: String(routine.retry_limit),
     quietReporting: routine.quiet_reporting ?? false,
     retryDelay: String(routine.retry_delay_minutes),
@@ -383,6 +384,8 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
 
   const agentName = (id: number) => agents.find((agent) => agent.id === id)?.name ?? `Agent ${id}`;
   const heading = draft ? (draft.id === null ? "New routine" : "Edit routine") : "Routines";
+  const routineAgent = draft ? agents.find((agent) => agent.id === draft.agentId) : undefined;
+  const availableApprovalModes = approvalModesForProvider(routineAgent?.provider);
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }} title={heading} size="wide">
@@ -396,7 +399,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                 <input aria-label="Routine name" required maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={input} />
               </label>
               <label className="block text-xs text-muted">Agent
-                <Select aria-label="Agent" value={draft.agentId ?? ""} onChange={(e) => setDraft({ ...draft, agentId: Number(e.target.value) })} className={input}>
+                <Select aria-label="Agent" value={draft.agentId ?? ""} onChange={(e) => { const agentId = Number(e.target.value); const provider = agents.find((agent) => agent.id === agentId)?.provider; setDraft({ ...draft, agentId, approvalMode: approvalModesForProvider(provider).some((mode) => mode.value === draft.approvalMode) ? draft.approvalMode : "ask" }); }} className={input}>
                   {live.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                 </Select>
               </label>
@@ -481,7 +484,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                   <label>Retry after (minutes)<input type="number" min={1} max={1440} value={draft.retryDelay} onChange={(e) => setDraft({ ...draft, retryDelay: e.target.value })} className={input} /></label>
                   <label>Approval mode
                     <Select value={draft.approvalMode} onChange={(e) => setDraft({ ...draft, approvalMode: e.target.value as ApprovalMode })} className={input}>
-                      {APPROVAL_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+                      {availableApprovalModes.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
                     </Select>
                   </label>
                 </div>
@@ -540,7 +543,7 @@ export function RoutinesPanel({ agents, onClose, routineId = null }: { agents: A
                         <div className="mt-2 flex flex-wrap gap-1">
                           <button disabled={busy || active} title={active ? "A run is in progress" : undefined} onClick={() => void act(() => api.runRoutineNow(routine.id), "Could not start the routine.")} className={button}>Run now</button>
                           <button disabled={busy} onClick={() => void act(() => (routine.paused ? api.resumeRoutine(routine.id) : api.pauseRoutine(routine.id)), "Could not change the routine.")} className={button}>{routine.paused ? "Resume" : "Pause"}</button>
-                          <button disabled={busy} onClick={() => { setValidPreviewKey(null); setDraft(draftOf(routine)); }} className={button}>Edit</button>
+                          <button disabled={busy} onClick={() => { setValidPreviewKey(null); setDraft(draftOf(routine, agents.find((agent) => agent.id === routine.agent_id)?.provider)); }} className={button}>Edit</button>
                           <button disabled={busy} onClick={() => setHistory(routine)} className={button}>History</button>
                           <button disabled={busy} onClick={() => void act(async () => {
                             const result = await api.enableRoutineWebhook(routine.id);

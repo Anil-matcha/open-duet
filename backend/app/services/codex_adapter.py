@@ -112,16 +112,21 @@ class CodexPolicy:
     approval: str
     sandbox: str  # thread/start and thread/resume spelling
     sandbox_type: str  # turn/start spelling
+    reviewer: str = "user"
 
 
 def codex_policy(mode: str | None, tools: bool, computer: bool = False) -> CodexPolicy:
     if not tools or mode == "plan":
-        return CodexPolicy("never", "read-only", "readOnly")
+        return CodexPolicy("never", "read-only", "readOnly", "user")
     if computer:
         # Nothing of Codex's own may touch this machine; MCP calls are asked about
         # through their own approval mode, not this sandbox.
-        return CodexPolicy("untrusted", "read-only", "readOnly")
-    return CodexPolicy("untrusted", "workspace-write", "workspaceWrite")
+        return CodexPolicy("untrusted", "read-only", "readOnly", "user")
+    if mode == "approve_for_me":
+        # OpenMausBot's native reviewer mode: Codex reviews requests while its
+        # workspace-write sandbox and on-request approval policy stay enabled.
+        return CodexPolicy("on-request", "workspace-write", "workspaceWrite", "auto_review")
+    return CodexPolicy("untrusted", "workspace-write", "workspaceWrite", "user")
 
 
 def resolve_codex_executable() -> Path | None:
@@ -411,7 +416,7 @@ class _CodexTurn:
         if has_gated_mcp and (not self.tools or self.mode == 'plan'):
             # Codex 0.164 refuses MCP elicitation with approvalPolicy=never. The
             # app still gates every attached MCP call; native tools stay read-only/denied.
-            self.policy = CodexPolicy('untrusted', 'read-only', 'readOnly')
+            self.policy = CodexPolicy('untrusted', 'read-only', 'readOnly', 'user')
         self.max_text = app_settings.get("LOCAL_MAX_OUTPUT_BYTES")
         self.clock = TurnClock(app_settings.get("LOCAL_TASK_TIMEOUT_SECONDS"))
         self.workspace = self.ctx.workspace or local_claude_runner.workspace_dir()
@@ -502,7 +507,7 @@ class _CodexTurn:
         common = {
             "cwd": str(self.workspace),
             "approvalPolicy": self.policy.approval,
-            "approvalsReviewer": "user",
+            "approvalsReviewer": self.policy.reviewer,
             "sandbox": self.policy.sandbox,
         }
         if self.ctx.model:
@@ -623,7 +628,7 @@ class _CodexTurn:
             "threadId": self.thread_id,
             "input": [{"type": "text", "text": self.ctx.prompt}],
             "approvalPolicy": self.policy.approval,
-            "approvalsReviewer": "user",
+            "approvalsReviewer": self.policy.reviewer,
             "sandboxPolicy": {"type": self.policy.sandbox_type},
         }
         if self.ctx.model:

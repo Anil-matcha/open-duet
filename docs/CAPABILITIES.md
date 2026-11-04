@@ -11,8 +11,8 @@ record before release.
 
 | Engine | Prerequisite and model choice | Attachments | Approvals | Teams and chat setup | Computers / browser | Continuation |
 |---|---|---|---|---|---|---|
-| Claude | Installed, signed-in `claude`; catalog suggestions and custom IDs | Text and images | Per-tool gate; Ask, Accept edits, Plan | Yes | Docker and opt-in native macOS; Docker Chromium | Native resume |
-| Codex | Installed, signed-in `codex`; catalog suggestions and custom IDs | Text | App-server approval requests and checked sandbox policy | Yes | Docker, including opt-in Chromium; native macOS unavailable | Native thread resume |
+| Claude | Installed, signed-in `claude`; catalog suggestions and custom IDs | Text and images | Per-tool gate; Ask, Accept edits, native Approve for me, Plan | Yes | Docker and opt-in native macOS; Docker Chromium | Native resume |
+| Codex | Installed, signed-in `codex`; catalog suggestions and custom IDs | Text | App-server approval requests, native auto reviewer, and checked sandbox policy | Yes | Docker, including opt-in Chromium; native macOS unavailable | Native thread resume |
 | Gemini CLI | Installed and authenticated CLI or saved key; selected model confirmed by ACP | Text | ACP permission requests; upstream configuration also matters | Unavailable | Unavailable | Native if advertised; otherwise stored transcript |
 | Cursor | Installed and authenticated CLI or saved key; live model catalog | Text | ACP permission requests; review upstream allow rules | Unavailable | Unavailable | Native if advertised; otherwise stored transcript |
 | Antigravity | Managed runtime and isolated personal Google sign-in; account model catalog | Text | ACP permission requests; default mode confirmed before prompt | Unavailable | Unavailable | Native resume within the same account profile |

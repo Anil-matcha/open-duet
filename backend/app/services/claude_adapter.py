@@ -443,6 +443,15 @@ class ClaudeAdapter:
             extra["system_prompt"] = "\n\n".join(notes)
         if ctx.images:
             extra["images"] = ctx.images
+        approval_mode = ctx.approval_mode
+        if approval_mode == "approve_for_me" and any((
+            ctx.computer, ctx.browser, ctx.team_launch,
+            ctx.composio_launch, ctx.community_launch,
+        )):
+            # These tools have app-level grants and must keep reaching their
+            # own approval gates. Claude's native reviewer is for local CLI
+            # tools only on this app's supported path.
+            approval_mode = "ask"
         try:
             attempt.output = await local_claude_runner.run_prompt(
                 ctx.prompt,
@@ -452,7 +461,7 @@ class ClaudeAdapter:
                 resume=resume,
                 tools=tools,
                 workspace=ctx.workspace,
-                approval_mode=ctx.approval_mode,
+                approval_mode=approval_mode,
                 **extra,
             )
         except Exception as exc:  # noqa: BLE001

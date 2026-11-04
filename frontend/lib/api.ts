@@ -384,7 +384,7 @@ export type PermissionAsk = {
   answered_at: string | null;
 };
 
-export type ApprovalMode = "ask" | "accept_edits" | "plan";
+export type ApprovalMode = "ask" | "accept_edits" | "approve_for_me" | "plan";
 
 // An agent's own isolated machine (a Docker container) where its turns run
 // their commands and file edits. Older backends never send these fields.

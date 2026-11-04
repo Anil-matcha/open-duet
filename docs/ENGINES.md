@@ -249,6 +249,7 @@ Codex reports back (a mismatch fails the turn before it starts):
 |---|---|---|---|
 | ask | `untrusted` | `workspace-write` | every command/file-change request becomes a card |
 | accept_edits | `untrusted` | `workspace-write` | a file change wholly inside the workspace is accepted without a card |
+| approve_for_me | `on-request` | `workspace-write` | Codex's native auto reviewer handles eligible requests; remaining requests become cards |
 | plan | `never` | `read-only` | any request that still arrives is declined |
 | tools off | `never` | `read-only` | as plan |
 
@@ -258,6 +259,13 @@ for servers in your own Codex config go through the gate; other requests
 (`item/tool/call`, user-input questions, extra permissions, other
 elicitations) are refused. Stop sends `turn/interrupt`, then the process group
 is killed. A missing Codex thread on resume marks the session `broken`.
+
+Claude's **Approve for me** mode uses its native `--permission-mode auto` reviewer
+for local CLI tools. Turns with connected apps, marketplace tools, team tools,
+or computer/browser controls use Ask so those tools keep their app-level approval
+gates. Claude may report that `auto` is unavailable for the selected model or
+account; in that case its normal Ask behavior applies. Engines without a native
+reviewer do not offer this mode and treat a stored/API-supplied value as Ask.
 
 **Agent computers.** A Codex agent can have a Docker computer (not the native
 Mac desktop, which stays Claude-only). The turn mounts the computer's MCP server
