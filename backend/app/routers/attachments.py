@@ -86,6 +86,37 @@ async def audio_capabilities():
     return audio_ingestion.capabilities()
 
 
+class DictationResponse(BaseModel):
+    text: str
+    duration_seconds: float = 0.0
+    device: str = "cpu"
+
+
+@router.post("/audio/dictate", response_model=DictationResponse)
+async def dictate_audio(file: UploadFile = File(...)):
+    """Transcribe a microphone recording using local Whisper on CPU/GPU."""
+    from app.services import local_whisper
+    data = await file.read(audio_ingestion.MAX_BYTES + 1)
+    if len(data) > audio_ingestion.MAX_BYTES:
+        raise _refuse(
+            attachments.AttachmentError(413, "too_large", "Voice recording is over the upload limit.")
+        )
+    if not data:
+        raise _refuse(
+            attachments.AttachmentError(400, "empty_file", "The voice recording is empty.")
+        )
+    filename = file.filename or "recording.webm"
+    try:
+        result = await asyncio.to_thread(local_whisper.transcribe_bytes, data, filename)
+        return DictationResponse(
+            text=result.get("text", "").strip(),
+            duration_seconds=result.get("duration_seconds", 0.0),
+            device=result.get("device", "cpu"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"error_code": "dictation_failed", "message": str(e)})
+
+
 class AudioURLRequest(BaseModel):
     url: str
     consent_provider: str

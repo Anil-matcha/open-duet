@@ -24,6 +24,8 @@ dependencies = [
     "pypdf>=6.21.4",
     "python-docx>=1.2.0",
     "openpyxl>=3.1.5",
+    "faster-whisper>=1.2.1",
+    "av>=14,<19",
 ]
 
 [tool.fastapi]

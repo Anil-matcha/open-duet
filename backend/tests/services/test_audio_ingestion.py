@@ -206,3 +206,15 @@ def test_audio_settings_load_from_dotenv_without_exposing_key(monkeypatch, tmp_p
     assert audio.capabilities()['model'] == 'whisper-1'
     assert 'dotenv-fixture-secret' not in json.dumps(audio.capabilities())
     assert 'dotenv-fixture-secret' not in repr(configured)
+
+
+async def test_local_whisper_fallback(monkeypatch):
+    monkeypatch.setattr(audio.settings, 'AUDIO_TRANSCRIPTION_API_KEY', '')
+    monkeypatch.setattr(audio.settings, 'AUDIO_TRANSCRIPTION_MODEL', 'gpt-transcribe')
+    caps = audio.capabilities()
+    assert caps['provider'] == 'local'
+    assert caps['available'] is True
+    monkeypatch.setattr(audio.local_whisper, 'transcribe_bytes', lambda data, name: {'text': 'local transcription', 'segments': [], 'duration_seconds': 1.0, 'provider': 'local', 'model': 'whisper-tiny', 'complete': True})
+    transcript = await audio.transcribe('test.wav', wav(), 'local')
+    assert transcript['provider'] == 'local'
+    assert transcript['text'] == 'local transcription'

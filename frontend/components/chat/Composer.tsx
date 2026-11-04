@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowUp, FileText, Image as ImageIcon, Music, Paperclip, Plus, Sparkles, Square, Video as VideoIcon, X } from "lucide-react";
+import { ArrowUp, Check, FileText, Image as ImageIcon, Loader2, Mic, Music, Paperclip, Plus, Sparkles, Square, Video as VideoIcon, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { api } from "@/lib/api";
 import { isLongPaste, isSendKey, livePastes, removePaste } from "@/lib/composer";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useT } from "@/lib/use-i18n";
@@ -192,6 +193,114 @@ export function Composer({
     picker.current.accept = acceptPattern;
     picker.current.click();
     setAttachMenuOpen(false);
+  };
+
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mimeType = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const chunks = audioChunksRef.current;
+        if (chunks.length === 0) {
+          setRecording(false);
+          setTranscribing(false);
+          return;
+        }
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
+        if (blob.size === 0) {
+          setRecording(false);
+          setTranscribing(false);
+          return;
+        }
+
+        setTranscribing(true);
+        try {
+          const res = await api.dictateAudio(blob, "recording.webm");
+          const text = res.text?.trim();
+          if (text) {
+            onChange(value.trim() ? `${value.trim()} ${text}` : text);
+          }
+        } catch (err) {
+          console.error("Dictation failed:", err);
+        } finally {
+          setTranscribing(false);
+          setRecording(false);
+          box.current?.focus();
+        }
+      };
+
+      recorder.start(250);
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((sec) => sec + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to access microphone:", err);
+      setRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const cancelRecording = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    audioChunksRef.current = [];
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = () => {
+          mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+        };
+        mediaRecorderRef.current.stop();
+      }
+    }
+    setRecording(false);
+    setTranscribing(false);
+    setRecordSeconds(0);
   };
 
   const canSend = !sending && blockedReason === null && value.trim() !== "";
@@ -476,6 +585,52 @@ export function Composer({
             </div>
 
             <div className="flex items-center gap-2">
+              {recording ? (
+                <div className="flex items-center gap-2 rounded-full border border-danger/40 bg-danger/10 px-3 py-1 text-xs font-medium text-danger animate-pulse">
+                  <span className="size-2 rounded-full bg-danger animate-ping" />
+                  <span>
+                    {Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, "0")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-danger text-white hover:opacity-90 cursor-pointer"
+                    title="Finish and transcribe"
+                    aria-label="Finish and transcribe"
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelRecording}
+                    className="inline-flex size-5 items-center justify-center rounded-full bg-danger/20 text-danger hover:bg-danger/30 cursor-pointer"
+                    title="Cancel recording"
+                    aria-label="Cancel recording"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : transcribing ? (
+                <div className="flex items-center gap-2 rounded-full border border-line bg-raised px-3 py-1.5 text-xs text-muted shadow-xs">
+                  <Loader2 size={13} className="animate-spin text-accent" />
+                  <span>Transcribing with local Whisper…</span>
+                </div>
+              ) : (
+                !running && (
+                  <Tooltip content="Dictate with local Whisper">
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      disabled={sending}
+                      aria-label="Dictate message"
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                    >
+                      <Mic size={18} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                )
+              )}
+
               {running ? (
                 <>
                   {workingMode && (

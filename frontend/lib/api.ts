@@ -1505,6 +1505,11 @@ export const api = {
     return requestForm<UploadedAttachment>(`/threads/${threadId}/attachments`, form, signal);
   },
   audioCapabilities: () => request<{ provider: string; provider_label: string; available: boolean; retention: string }>("/threads/audio/capabilities"),
+  dictateAudio: (file: Blob | File, filename = "recording.webm", signal?: AbortSignal) => {
+    const form = new FormData();
+    form.append("file", file, filename);
+    return requestForm<{ text: string; duration_seconds: number; device: string }>("/threads/audio/dictate", form, signal);
+  },
   importAudioUrl: (threadId: number, url: string, consentProvider: string, signal?: AbortSignal) => request<UploadedAttachment>(`/threads/${threadId}/attachments/audio-url`, { method: "POST", signal, body: JSON.stringify({ url, consent_provider: consentProvider }) }),
   // Object URLs for bytes behind the session (an <img> cannot send the CSRF or
   // launch headers some setups need). The caller revokes them.
