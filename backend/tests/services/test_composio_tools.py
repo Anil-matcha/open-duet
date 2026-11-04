@@ -60,8 +60,8 @@ def test_every_tool_is_one_fixed_tool_and_writes_are_a_short_list():
         "GMAIL_CREATE_EMAIL_DRAFT": {"gmail_create_draft_reply", "gmail_prepare_checked_reply"}}
 
     writes = {t.name for t in tools.TOOLS if t.kind == "write"}
-    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply", "gmail_send_email", "googlecalendar_create_event", "gmail_prepare_checked_reply"}
-    for word in ("delete", "merge", "push", "force", "settings", "collaborator", "secret", "token"):
+    assert writes == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_merge_pull_request", "github_fork_repository", "github_create_branch", "github_commit_file", "gmail_create_draft_reply", "gmail_send_email", "googlecalendar_create_event", "gmail_prepare_checked_reply"}
+    for word in ("delete", "push", "force", "settings", "collaborator", "secret", "token"):
         assert not any(word in t.name or word in t.slug.lower() for t in tools.TOOLS), word
 
 
@@ -69,7 +69,7 @@ def test_the_shim_shows_tools_by_level():
     read = {t["name"] for t in tools.mcp_tools({"github": "read"})}
     write = {t["name"] for t in tools.mcp_tools({"github": "write"})}
     assert tools.LIST_ACCOUNTS in read and tools.LIST_ACCOUNTS in write
-    assert read < write and write - read == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_fork_repository", "github_create_branch", "github_commit_file"}
+    assert read < write and write - read == {"github_create_issue", "github_comment_on_issue", "github_close_issue", "github_reopen_issue", "github_dispatch_workflow", "github_merge_pull_request", "github_fork_repository", "github_create_branch", "github_commit_file"}
     assert [t["name"] for t in tools.mcp_tools({})] == [tools.LIST_ACCOUNTS]
     assert [t["name"] for t in tools.mcp_tools({"github": "admin"})] == [tools.LIST_ACCOUNTS]
     assert all(t["inputSchema"]["additionalProperties"] is False for t in tools.mcp_tools({"github": "write"}))
@@ -514,3 +514,12 @@ def test_calendar_policy(name, levels, expected):
 
 def test_a_calendar_change_is_never_allowed_in_plan_mode():
     assert composio_policy.automatic(composio_policy.PREFIX + "googlecalendar_create_event", "plan", {"googlecalendar": "write"}) == ("denied", "plan_mode")
+
+
+def test_merge_pull_request_needs_the_approved_head_commit():
+    merge = tool("github_merge_pull_request")
+    ok = {"owner": O, "repo": R, "pull_number": 5, "sha": "a" * 40, "merge_method": "squash"}
+    assert tools.clean_arguments(merge, ok) == (ok, None)
+    for bad in ({k: v for k, v in ok.items() if k != "sha"}, {**ok, "sha": "main"}, {**ok, "merge_method": "fast"}, {**ok, "force": True}):
+        with pytest.raises(Exception):
+            tools.clean_arguments(merge, bad)
