@@ -377,8 +377,12 @@ async def update_routine(
             routine.timezone = (changes["timezone"] or "UTC").strip()
         _apply(routine, now)
         if routine.schedule_kind == "once" and routine.next_run_at is not None:
-            routine.paused = False
-            routine.paused_reason = None
+            agent = await db.get(Agent, routine.agent_id)
+            if agent is not None and agent.archived_at is None:
+                routine.paused = False
+                routine.paused_reason = None
+            else:
+                routine.next_run_at = None
     await db.flush()
     if commit:
         await db.commit()

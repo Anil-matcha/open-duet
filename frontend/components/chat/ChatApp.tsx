@@ -492,6 +492,13 @@ export function ChatApp() {
   }, []);
 
   useEffect(() => {
+    // A different conversation starts with no turn in flight; never carry
+    // the previous thread's turn state into it.
+    liveTurnStarted.current = false;
+    lastRunningTurnId.current = null;
+  }, [threadId]);
+
+  useEffect(() => {
     if (stream.connection === "live" && transcript.runningTurnId !== null && lastRunningTurnId.current === null) {
       liveTurnStarted.current = true;
     }

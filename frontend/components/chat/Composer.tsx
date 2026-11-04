@@ -117,6 +117,9 @@ export function Composer({
   const menuId = useId();
   // Long pasted blocks show as a chip; the text stays in the box so Send still includes it.
   const [pasted, setPasted] = useState<{ key: string | null; list: string[] }>({ key: draftKey, list: [] });
+  const latestValue = useRef(value);
+  useEffect(() => { latestValue.current = value; }, [value]);
+  const [dictationError, setDictationError] = useState<string | null>(null);
   const chips = pasted.key === draftKey ? livePastes(value, pasted.list) : [];
   const setPastes = (update: (all: string[]) => string[]) => setPasted({ key: draftKey, list: update(pasted.key === draftKey ? pasted.list : []) });
   // Drafts: put the saved text back when the conversation changes, then keep saving edits.
@@ -246,14 +249,17 @@ export function Composer({
         }
 
         setTranscribing(true);
+        setDictationError(null);
         try {
           const res = await api.dictateAudio(blob, "recording.webm");
           const text = res.text?.trim();
           if (text) {
-            onChange(value.trim() ? `${value.trim()} ${text}` : text);
+            const current = latestValue.current;
+            onChange(current.trim() ? `${current.trim()} ${text}` : text);
           }
         } catch (err) {
           console.error("Dictation failed:", err);
+          setDictationError("Voice dictation is unavailable right now.");
         } finally {
           setTranscribing(false);
           setRecording(false);
@@ -690,6 +696,7 @@ export function Composer({
             <Button variant="primary" size="sm" onClick={blockedAction.onClick}>{blockedAction.label}</Button>
           </div>
         )}
+        {dictationError && <p role="alert" className="mt-1.5 px-3 text-xs text-muted">{dictationError}</p>}
         {blockedReason && value.trim() !== "" && <p className="mt-1.5 px-3 text-xs text-muted">{blockedReason}</p>}
       </div>
     </div>

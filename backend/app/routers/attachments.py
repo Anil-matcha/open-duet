@@ -1,6 +1,7 @@
 """Files attached to messages (docs/EVERYDAY.md)."""
 
 import asyncio
+import logging
 import contextlib
 import threading
 from pathlib import Path
@@ -54,7 +55,7 @@ async def upload_attachment(
         if (file.content_type and file.content_type.startswith("audio/")) or Path(file.filename or "").suffix.lower() in audio_ingestion.TYPES:
             transcript = await _while_connected(request, audio_ingestion.transcribe(attachments.display_name(file.filename), data, consent_provider))
         await _thread_or_404(rt, thread_id)
-        saved = attachments.save(thread_id, file.filename, file.content_type, data, transcript=transcript)
+        saved = await run_in_threadpool(attachments.save, thread_id, file.filename, file.content_type, data, transcript=transcript)
     except attachments.AttachmentError as error:
         raise _refuse(error) from None
     return AttachmentResponse(**saved.public())
@@ -113,8 +114,11 @@ async def dictate_audio(file: UploadFile = File(...)):
             duration_seconds=result.get("duration_seconds", 0.0),
             device=result.get("device", "cpu"),
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail={"error_code": "dictation_failed", "message": str(e)})
+    except ImportError:
+        raise HTTPException(status_code=503, detail={"error_code": "dictation_unavailable", "message": "Local dictation is not available on this machine."})
+    except Exception:
+        logging.getLogger(__name__).exception("dictation failed")
+        raise HTTPException(status_code=500, detail={"error_code": "dictation_failed", "message": "Dictation failed. Try again."})
 
 
 class AudioURLRequest(BaseModel):

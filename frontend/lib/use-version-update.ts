@@ -52,6 +52,7 @@ export function useVersionUpdate(): VersionUpdateState & {
   const [info, setInfo] = useState<VersionInfo | null>(() => cachedVersionInfo);
   const [loading, setLoading] = useState<boolean>(() => cachedVersionInfo === null);
   const [error, setError] = useState<string | null>(null);
+  const [, setTick] = useState(0);
 
   const fetchVersion = useCallback(async (refresh = false) => {
     try {
@@ -77,7 +78,10 @@ export function useVersionUpdate(): VersionUpdateState & {
     }, 0);
 
     const listener = () => {
-      if (alive) setInfo(cachedVersionInfo);
+      if (alive) {
+        setInfo(cachedVersionInfo);
+        setTick((n) => n + 1);
+      }
     };
     listeners.add(listener);
 

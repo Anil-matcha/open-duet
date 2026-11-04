@@ -271,7 +271,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       .join(" ");
 
     const combinedClasses = `${className || ""} ${containerClassName || ""}`;
-    const hasCustomWidth = /\b(?:[a-z0-9-]+:)?w-/.test(combinedClasses);
+    const hasCustomWidth = /(?:^|\s)(?:[a-z0-9-]+:)?w-/.test(combinedClasses);
     const isExplicitAuto = /\bw-(?:auto|fit|36|48|56|64)\b/.test(combinedClasses);
     const isFlexGrow = /\bflex-1\b/.test(combinedClasses);
 
