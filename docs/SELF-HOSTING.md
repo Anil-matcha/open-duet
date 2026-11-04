@@ -240,10 +240,11 @@ cd /opt/open-dots/backend && set -a; . /etc/open-dots/open-dots.env; set +a
 
 It prints a full link when `OPEN_DOTS_PUBLIC_URL` is set. A code works once and expires.
 
-The [phone app](MOBILE.md) pairs the same way, with a *Chat only* code. It needs
-the server's HTTPS address (a release build refuses plain HTTP), your name in
+The [phone app](MOBILE.md) pairs the same way, with a *Chat only*, *Chat and files* or *Chat, files and agents* code. It needs
+the server's HTTPS address (plain HTTP works only for an address on your own
+network, such as `192.168.1.5`), your name in
 `TRUSTED_HOSTS`, and `LOCAL_EXECUTION_ENABLED=true` for conversations. The app is
-early and source-only; the guide says what has and has not been checked.
+early (no iOS build or store release yet); the guide says what has and has not been checked.
 
 ## Engines
 

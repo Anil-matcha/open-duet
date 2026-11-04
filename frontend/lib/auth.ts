@@ -1,5 +1,6 @@
 // Owner sign-in, pairing and devices (docs/AUTH.md).
 import { request, setCsrfToken } from "./api";
+import type { PairingScope } from "./access-label";
 import type { AuthStatus, Device, PairingCode, SessionInfo } from "./session";
 
 function remember(session: SessionInfo): SessionInfo {
@@ -28,7 +29,7 @@ export const auth = {
     });
     return remember(result.session);
   },
-  createPairingCode: (scope: "admin" | "chat" | "files", label: string) =>
+  createPairingCode: (scope: PairingScope, label: string) =>
     request<PairingCode>("/auth/pairing-codes", { method: "POST", body: JSON.stringify({ scope, label }) }),
   devices: () => request<Device[]>("/auth/devices"),
   revokeDevice: (id: number) => request<void>(`/auth/devices/${id}`, { method: "DELETE" }),

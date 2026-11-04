@@ -1,7 +1,7 @@
 // The three calls pairing needs, against the server's /api/v1/auth routes (docs/AUTH.md):
 // redeem a code for a device token, end a session, and ask whether a token still works.
 
-import { normalizeServerUrl } from './server-url';
+import { normalizeServerUrl, responseAllowed } from './server-url';
 
 export type PairingErrorCode =
   | 'insecure'
@@ -44,7 +44,10 @@ async function send(fetchImpl: FetchLike, url: string, init: RequestInit): Promi
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
+    const response = await fetchImpl(url, { ...init, signal: controller.signal });
+    // A redirect from a local http:// server to plain HTTP elsewhere is not followed to a result.
+    if (!responseAllowed(response.url)) throw new Error('response came from an unsafe address');
+    return response;
   } catch {
     throw new PairingError('unreachable');
   } finally {
@@ -74,12 +77,11 @@ export async function pairDevice(args: {
   server: string;
   code: string;
   label: string;
-  allowHttp: boolean;
   fetchImpl?: FetchLike;
 }): Promise<PairedSession> {
   const fetchImpl = args.fetchImpl ?? fetch;
   // Defence in depth: the screens validate too, but this is the call that sends the code.
-  const checked = normalizeServerUrl(args.server, { allowHttp: args.allowHttp });
+  const checked = normalizeServerUrl(args.server);
   if (!checked.ok) throw new PairingError('insecure');
   const server = checked.url;
 
@@ -129,25 +131,39 @@ export async function pairDevice(args: {
   };
 }
 
-/** 'revoked' only when the server says the token is no longer valid; anything else is 'unknown'. */
-export async function checkSession(server: string, token: string, fetchImpl: FetchLike = fetch): Promise<'valid' | 'revoked' | 'unknown'> {
+export type SessionRead = { status: 'valid'; scopes: string[] | null } | { status: 'revoked' | 'unknown' };
+
+/** Asks the server about this token. 'revoked' only when it says the token is no longer valid; anything else is 'unknown'. */
+export async function readSession(server: string, token: string, fetchImpl: FetchLike = fetch): Promise<SessionRead> {
   try {
     const response = await send(fetchImpl, `${server}/api/v1/auth/session`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
-    if (response.ok) return 'valid';
-    if (response.status === 401) return 'revoked';
-    return 'unknown';
+    if (response.status === 401) return { status: 'revoked' };
+    if (!response.ok) return { status: 'unknown' };
+    // The scopes are what the app shows and offers; a reply without them is still a valid session.
+    let scopes: string[] | null = null;
+    try {
+      const body = (await response.json()) as { scopes?: unknown } | null;
+      if (Array.isArray(body?.scopes) && body.scopes.every((scope) => typeof scope === 'string')) scopes = body.scopes as string[];
+    } catch {
+      scopes = null;
+    }
+    return { status: 'valid', scopes };
   } catch {
-    return 'unknown';
+    return { status: 'unknown' };
   }
+}
+
+export async function checkSession(server: string, token: string, fetchImpl: FetchLike = fetch): Promise<'valid' | 'revoked' | 'unknown'> {
+  return (await readSession(server, token, fetchImpl)).status;
 }
 
 export function describePairingError(error: PairingError): string {
   switch (error.code) {
     case 'insecure':
-      return 'This app only connects to a server over HTTPS.';
+      return 'This app connects over HTTPS, or over http:// only to an address on your own network.';
     case 'invalid_code':
       return 'That code is wrong, expired or already used. Create a new one in your server’s Settings → Devices.';
     case 'locked_out':

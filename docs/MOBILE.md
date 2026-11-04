@@ -22,9 +22,20 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
 - **Conversations.** List your conversations, start a new one, open one to read its
   history. If you have agents, **New conversation** first asks which to use: the
   server's default (Claude), or one of your agents, each shown with how it asks
-  before acting (asks first, accepts file edits, or plans only). Agents are made
-  and edited in the web app, not on the phone. The list names the agent a
+  before acting (Ask first, Accept edits, or Plan only). The list names the agent a
   conversation was started from.
+- **Agents.** A phone paired with a **Chat, files and agents** code (see below) shows **Agents**
+  in Settings: your agents with their approval mode, a **New agent** button, and a ⋯ menu
+  to duplicate, pin or archive one (archived ones come back with **Show archived**). The
+  editor has the web app's fields: name, title, description and instructions (limited to
+  24,000 bytes), engine and model, a fallback engine, how the agent asks before acting,
+  and whether it uses notes (with starter notes for a new agent). On the phone an agent can
+  be **Ask first** or **Plan only**; **Accept edits**, the workspace folder, connected
+  apps, skills, notes, computers, the team lead role and deleting an agent are web-only,
+  and the server refuses them from a phone. A copy made on the phone gets its own folder
+  and **Ask first**, even from an agent set to Accept edits. After a save, a new model or
+  approval mode applies to conversations already started from their next message, while
+  new instructions in practice reach only conversations started afterwards.
 - **Chat.** Send a message and watch the answer as it is written, with one-line
   tool steps. **Stop** ends a running answer. If the connection drops, the app
   reconnects and carries on from the last event it saw. Answers are shown as
@@ -74,23 +85,35 @@ an Android emulator in Expo Go, not on iOS or a physical phone. See
   happens, post to it, and tag agents with `@` (buttons add the names; `@everyone`
   asks all of them). **Stop** ends what the agents are working on. When an agent
   in the room asks to run a tool, the request is pinned with that agent's name
-  and you Allow or Deny it, as in a conversation. A chat-only phone cannot
-  create rooms or change who is in them; do that in the web app.
+  and you Allow or Deny it, as in a conversation. **Details** (top right of a room)
+  shows its shared instructions, how replies are routed and who is in it. A phone paired
+  with **Chat, files and agents** can also make rooms (**New room** on the Rooms
+  screen), change a room's name, members (1 to 12), shared instructions and who
+  answers without a tag, hold or resume a member, and delete a room after typing its
+  name. A removed member's queued replies are skipped and a member who is working must
+  be stopped first. A chat-only phone cannot do these; use the web app.
 - **Settings.** The server address, this phone's name and its access (chat only),
   and **Sign out and forget this server**, which also asks the server to end the
   session. If the phone cannot reach the server at that moment, it only forgets
   the token on the phone; revoke it in **Settings → Devices** on the web app.
 
 It does not do: push notifications (an approval reaches you only while the app is
-open), creating or editing agents or rooms, engine, routine or settings management, or
+open), deleting agents, engine, routine or settings management, exporting a room, or
 more than one server. "Always allow" rules are not offered; use the web app for those.
 
 ## What your server needs
 
-- **HTTPS.** The phone sends a token with every request, so release builds only
-  connect over HTTPS. Use a reverse proxy with a certificate, or Tailscale Serve;
-  see [self-hosting](SELF-HOSTING.md). Development builds also accept plain HTTP
-  (seen on Android in Expo Go, not tried on iOS).
+- **HTTPS, or plain HTTP on your own network.** The phone sends a token with every
+  request, so it connects over HTTPS, using a reverse proxy with a certificate or
+  Tailscale Serve; see [self-hosting](SELF-HOSTING.md). The one exception is plain
+  `http://` to an address on your own network: `localhost` and `127.x`, `10.x`,
+  `172.16`-`172.31.x`, `192.168.x`, `169.254.x`, IPv6 `::1` and `fc00::/7`, and
+  `.local` names (the Android emulator's `10.0.2.2` counts). Any other `http://`
+  address is refused, even a name that points at a private address, and so is the
+  `100.64.x.x` range that Tailscale uses. Pairing and Settings then say the
+  connection is not encrypted: anyone on that Wi-Fi network could read your chats.
+  The address must also be in `TRUSTED_HOSTS`. Plain HTTP was tried on Android in
+  Expo Go; a release build and iOS have not been tried.
 - **Agents turned on.** Conversations need `LOCAL_EXECUTION_ENABLED=true` on the
   server. Without it the app says "Your server has agents turned off".
 - **Your address in `TRUSTED_HOSTS`** (see [authentication](AUTH.md)). Otherwise the
@@ -110,8 +133,9 @@ more than one server. "Always allow" rules are not offered; use the web app for 
 The code works once and expires after five minutes. The app checks the code's
 format first, so a typo does not count as a wrong guess toward the lockout.
 
-The app accepts a **Chat only** or **Chat and files** code (choose the second to open
-files the agents made). If it is handed a full-access one, it
+The app accepts a **Chat only**, **Chat and files** or **Chat, files and agents** code (choose
+the second to open files the agents made, the third to also create and edit agents; it
+includes file access). If it is handed a full-access one, it
 refuses it and signs that session out on the server, so no full-access token is
 left behind. The token is kept in the phone's secure storage (Keychain on iOS,
 Keystore-backed storage on Android), on that device only. Revoke a phone any time
@@ -126,8 +150,9 @@ in **Settings → Devices**; the app notices and returns to pairing.
 | Your server does not accept this address | Add the name to `TRUSTED_HOSTS` on the server. |
 | That address answered, but it does not look like an Open Duet server | Check the address and any proxy in front of it. |
 | Could not reach the server | Check the connection and that the HTTPS certificate is trusted by the phone. |
-| This app only connects over HTTPS | Use the server's HTTPS address. |
-| That code gives full access | Create a code with Access set to **Chat only** or **Chat and files**. |
+| Plain http:// works only for addresses on your own network | Use the server's HTTPS address, or an address such as 192.168.1.5 on your own network. |
+| That code gives full access | Create a code with Access set to **Chat only**, **Chat and files** or **Chat, files and agents**. |
+| This phone was not paired to manage agents | Create a code with Access set to **Chat, files and agents** and pair again. |
 | This phone was paired without file access | Create a code with Access set to **Chat and files** and pair again. |
 | Your server has agents turned off | Set `LOCAL_EXECUTION_ENABLED=true` on the server. |
 | Your server signed this phone out | The phone was revoked or signed out; pair it again. |
@@ -147,6 +172,13 @@ Expo Go runs the app without building it. A custom link such as
 Android emulator reaches the computer running the server at `10.0.2.2`; add that
 name to `TRUSTED_HOSTS` for a local test. Building or running the iOS app needs
 macOS.
+
+A real phone needs the backend to listen on your network (`--host 0.0.0.0`, not
+the default `127.0.0.1`) and its address, such as `192.168.1.10`, in
+`TRUSTED_HOSTS`. In the split development setup (web page on port 3000, API on
+port 8000) the pairing QR for the app names the API, not the page. Open the web
+page by your computer's address (`http://192.168.1.10:3000`) rather than
+`localhost`, so the QR holds an address the phone can reach.
 
 Checks, the same as CI runs for `mobile/`:
 
@@ -168,6 +200,7 @@ from a short folder path, or build on EAS, WSL, Linux or macOS. See `mobile/AGEN
 | Markdown, attachments, dark theme, agent picker, rooms | Automated: Jest tests (including a 4.5:1 contrast check of every text and background pair in both looks), lint, typecheck and a bundle export. The app's networking code was run against a local backend: uploading a text file, a PNG, names with accents and quotes, an oversized file and an unsupported type, and reading an image back with the token; listing agents and starting a conversation from one; and, for rooms, the live stream of a room, posting, marking read, a pending request found on the right agent's thread and answered, and a chat-only device being refused when it tries to create a room. No agent was run for any of it. |
 | Tables and search | Automated: Jest tests, lint, typecheck and a bundle export; the server's paged search with its own tests on SQLite. On an Android emulator in Expo Go against a throwaway backend with seeded data (no agent run): a seven-column table with long cells scrolls sideways to every column, wraps, keeps right alignment and inline code, and shows the text after it, also at 1.5x system font size; search for a word in 91 hits loaded five pages (offsets 0 to 80, each once), marked the matches, closed the keyboard on drag, and a result in the middle of a 14-turn conversation opened at that message. Not checked: a standalone build, a physical phone, iOS, a server with thousands of conversations. In that same Expo Go session the message box was still hidden under the full Gboard keyboard (see the keyboard note below). |
 | QR scanning and HTTPS | The Android emulator in Expo Go: scanning the QR code from the web app filled in the server and code and waited for Connect; pairing worked over HTTPS with a valid certificate, and a server with an untrusted certificate was refused. |
+| Agents, rooms and plain HTTP on the local network | Automated: Jest tests, lint, typecheck and a bundle export, and backend tests for the `manage` scope and its field guards. On an Android emulator in Expo Go against a throwaway backend (no agent run): pairing with `http://10.0.2.2:8000` (the "Not encrypted" note showed), a "Chat, files and agents" phone seeing Settings → Agents, creating an agent that asks first, duplicating it, archiving the copy and showing archived ones, editing a name and a title, and the discard prompt; creating a room with two agents, holding a member, editing the instructions and removing a member (the server confirmed each), the discard prompt on room settings, and deleting a room by typing its name. Over real HTTP with a `manage` token the server refused a workspace folder, Accept edits and the lead role, refused deleting an agent and importing, and accepted a Plan only agent. |
 | CI | The `mobile` job (install, lint, typecheck, tests, bundle export) passed on GitHub Actions on Linux. |
 
 Partly checked: the Android keyboard. A Galaxy S23 Ultra report showed the
@@ -181,8 +214,10 @@ on the phone: open the Samsung keyboard, scroll a long response to its end,
 type and send a multiline message, expand a long approval input and scroll it,
 then repeat in a room and with the keyboard closed.
 
-Not checked: any of the Markdown, attachments, dark theme, agent picker and rooms
-screens on a device or emulator (only by tests and against the server, as above);
-photos and files on iOS; a room with agents actually running in it; iOS; a
-physical phone; a custom link opening the app; a release build (the HTTPS-only
-behavior); very long conversations.
+Not checked: the Markdown, attachments and dark theme screens on a device or
+emulator (only by tests and against the server, as above); photos and files on iOS;
+a room with agents actually running in it; agent templates (not on the phone);
+iOS, including whether it lets `http://` to an IP address through; a physical
+phone; a custom link opening the app; a release build (the HTTPS and local-network
+HTTP behavior, and whether the keyboard hides Save and Create there as it does in
+Expo Go); the web pairing QR code on an `http://` page; very long conversations.

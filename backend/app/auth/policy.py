@@ -90,6 +90,24 @@ FILES_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
 )
 
 
+# What the opt-in `manage` scope adds to chat and files: creating and editing agents, and creating, editing and
+# deleting rooms (and holding or resuming a member). Not deleting agents (archive instead), and not what is
+# sensitive in an agent: the handlers refuse the workspace folder, "accept edits", connected apps and the lead
+# role for anyone but admin (routers/agents.py). A room holds no such setting: its members keep their own
+# approvals, and a post from a device without admin is already marked restricted (routers/rooms.py).
+MANAGE_ROUTES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
+    (frozenset(methods), re.compile(f"^{API}{path}$"))
+    for methods, path in (
+        ({"POST"}, "/agents"),
+        ({"PATCH"}, f"/agents/{_ID}"),
+        ({"POST"}, f"/agents/{_ID}/duplicate"),
+        ({"POST"}, "/rooms"),
+        ({"PATCH", "DELETE"}, f"/rooms/{_ID}"),
+        ({"PATCH"}, f"/rooms/{_ID}/members/{_ID}"),
+    )
+)
+
+
 def _matches(rules, method: str, path: str) -> bool:
     return any(method in methods and pattern.match(path) for methods, pattern in rules)
 
@@ -101,7 +119,9 @@ def is_public(method: str, path: str) -> bool:
 def required_scope(method: str, path: str) -> str:
     if _matches(CHAT_ROUTES, method, path):
         return "chat"
-    return "files" if _matches(FILES_ROUTES, method, path) else "admin"
+    if _matches(FILES_ROUTES, method, path):
+        return "files"
+    return "manage" if _matches(MANAGE_ROUTES, method, path) else "admin"
 
 
 def allows(scopes: tuple[str, ...], needed: str) -> bool:

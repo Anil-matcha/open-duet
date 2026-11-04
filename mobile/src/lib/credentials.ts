@@ -5,7 +5,8 @@ import * as SecureStore from 'expo-secure-store';
 
 const KEY = 'paired_server';
 
-export type Credentials = { server: string; token: string; label: string };
+/** `scopes` is what the server said at pairing, kept so the app can show what this phone may do before it is online. */
+export type Credentials = { server: string; token: string; label: string; scopes: string[] };
 
 // Kept on this device only: not included in backups or moved to a new phone.
 const OPTIONS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
@@ -25,7 +26,8 @@ export async function loadCredentials(): Promise<Credentials | null> {
   try {
     const value = JSON.parse(raw) as Partial<Credentials> | null;
     if (value && typeof value.server === 'string' && typeof value.token === 'string' && value.server && value.token) {
-      return { server: value.server, token: value.token, label: typeof value.label === 'string' ? value.label : '' };
+      const scopes = Array.isArray(value.scopes) ? value.scopes.filter((scope): scope is string => typeof scope === 'string') : [];
+      return { server: value.server, token: value.token, label: typeof value.label === 'string' ? value.label : '', scopes };
     }
   } catch {
     // fall through: a damaged entry counts as not paired

@@ -126,11 +126,15 @@ when another conversation owns the screen. Keep isolated Docker as the default.
 
 ### P2 — Finish the phone app
 
-The [phone app](MOBILE.md) covers pairing, conversations, chat with Stop, and
-approvals. Still open: trying it on iOS and a physical phone, a store release
-(signing, a privacy policy, and a way for store reviewers to try it without
-your server), push notifications so approvals reach a closed app, a decision on
-plain-HTTP access for a home network, Markdown answers and a dark theme.
+The [phone app](MOBILE.md) covers pairing, conversations, chat with Stop,
+approvals, search, attachments, files an agent made, Markdown answers, a dark
+theme, rooms, and, for a phone paired with *Chat, files and agents*, creating and
+editing agents and rooms. Plain `http://` works for addresses on your own network
+only. Still open: trying it in a release build, on iOS and on a physical phone
+(the keyboard hiding Save and Create in Expo Go needs checking in a built app), a
+store release (signing, a privacy policy, and a way for store reviewers to try it
+without your server), push notifications so approvals reach a closed app, and
+agent templates on the phone.
 
 ### P2 — Add voice and richer media
 

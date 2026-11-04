@@ -5,16 +5,16 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { KeyboardScreen } from '@/components/keyboard-screen';
 import { Text, TextInput } from '@/components/text';
 import { MONO } from '@/lib/fonts';
-import { ALLOW_HTTP, useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context';
 import { describePairingError, describeServerCheck, PairingError } from '@/lib/pairing-api';
 import { formatPairingCode, normalizePairingCode } from '@/lib/pairing-link';
-import { describeServerUrlProblem, normalizeServerUrl, serverLabel } from '@/lib/server-url';
+import { describeServerUrlProblem, normalizeServerUrl, NOT_ENCRYPTED_NOTICE, serverLabel } from '@/lib/server-url';
 import { radius, touch, useStyles, useTheme, type Palette } from '@/lib/theme';
 import { useServerCheck } from '@/lib/use-server-check';
 
 const STEPS = [
   'On your server, open Settings → Devices.',
-  'Set Access to “Chat only” (or “Chat and files” to open the files agents make) and create a pairing code.',
+  'Set Access to “Chat only” (or “Chat and files” to open the files agents make, or “Chat, files and agents” to also create and edit agents) and create a pairing code.',
   'Scan its QR code here, or type the address and code below.',
 ];
 
@@ -42,7 +42,7 @@ export default function Pair() {
     }
   }
 
-  const target = normalizeServerUrl(server, { allowHttp: ALLOW_HTTP });
+  const target = normalizeServerUrl(server);
   const normalizedCode = normalizePairingCode(code);
   const canConnect = target.ok && normalizedCode !== null && !busy;
   // Asks the address, before any code is sent to it, whether it is a server this app can pair with.
@@ -105,6 +105,7 @@ export default function Pair() {
             {fromLink ? '. Make sure this is your own server before you connect.' : ''}
           </Text>
         ) : null}
+        {target.ok && !target.secure ? <Text style={styles.warn}>{NOT_ENCRYPTED_NOTICE}</Text> : null}
         {target.ok && check === 'checking' ? (
           <Text style={styles.checking} accessibilityLiveRegion="polite">
             Checking the address…
@@ -141,7 +142,7 @@ export default function Pair() {
         </Pressable>
 
         <Text style={styles.help}>
-          Trouble connecting? Your server has to be reachable from this phone: on the same Wi-Fi, over a VPN such as Tailscale, or at a public HTTPS address. The address must start with https://.
+          Trouble connecting? Your server has to be reachable from this phone: on the same Wi-Fi, over a VPN such as Tailscale, or at a public HTTPS address. Use an https:// address, or http:// for an address on your own network.
         </Text>
       </ScrollView>
     </KeyboardScreen>

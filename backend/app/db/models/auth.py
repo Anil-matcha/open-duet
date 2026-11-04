@@ -13,7 +13,7 @@ from app.db.base import Base
 from app.db.types import BigIntPK, UTCDateTime
 
 SESSION_KINDS = ("browser", "device")
-SCOPES = ("admin", "chat", "files")
+SCOPES = ("admin", "chat", "files", "manage")
 
 
 class OwnerAccount(Base):

@@ -5,6 +5,7 @@
 // and a stored event is applied at most once (transcript.ts), so reconnecting is always safe.
 
 import { createApi, type Session, type ThreadEvent } from './api';
+import { responseAllowed } from './server-url';
 
 export type Connection = 'connecting' | 'live' | 'reconnecting' | 'polling';
 
@@ -116,6 +117,7 @@ export async function followThread(options: FollowOptions): Promise<void> {
         },
         signal,
       });
+      if (!responseAllowed(response.url)) throw new Error('stream came from an unsafe address');
       if (response.status === 401) {
         options.onRevoked();
         return;

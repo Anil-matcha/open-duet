@@ -67,7 +67,8 @@ engine and provider account used for your work.
   are instructions you choose for a message. See [skills](docs/SKILLS.md) and
   [templates](docs/TEMPLATES.md).
 - **Use it from your phone.** Pair the phone app with your own server to chat,
-  stop an answer, or allow and deny a tool call. See the [phone app guide](docs/MOBILE.md).
+  stop an answer, allow or deny a tool call, or create and edit agents and rooms.
+  See the [phone app guide](docs/MOBILE.md).
 - **Work with files and history.** Search conversations, attach text and
   images, import audio for transcription with your consent and credentials,
   browse or download workspace files, and export your history.
@@ -185,8 +186,8 @@ details](backend/README.md#scheduling) and [environment settings](backend/.env.e
 - Open Duet is early and changing. The self-hosted server is experimental and
   intended for one owner with paired devices, not a multi-user organization.
 - Team delegation is new; lead agents need to use Claude or Codex.
-- The phone app is source-only and has been tried on an Android emulator, not
-  on iOS or a physical phone. It has no push notifications or store release.
+- The phone app has been tried on an Android emulator and an Android phone, not
+  on iOS. It has no push notifications or store release.
 - Docker computers, browser tools, and the macOS native desktop preview are
   experimental and opt-in.
 - Desktop installers are unsigned and have limited platform verification. See

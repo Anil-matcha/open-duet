@@ -2,7 +2,7 @@ import type { SkillDoc, SkillPreview, SkillSave, SkillSummary, SkillLearnPreview
 import type { TemplateCatalog, TemplateSkill } from "./templates";
 import type { ComposioAccount, ComposioApp, ComposioLink } from "./connected-apps";
 import type { MarketplaceCatalog, MarketplaceConnection, MarketplaceSection, MarketplaceTool } from "./marketplace";
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 export function isLocalApiEndpoint(): boolean {

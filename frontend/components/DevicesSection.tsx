@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError } from "@/lib/api";
-import { appPairLink } from "@/lib/app-link";
+import { API_BASE, ApiError } from "@/lib/api";
+import { appPairLink, appServerOrigin } from "@/lib/app-link";
 import { auth } from "@/lib/auth";
 import { encodeQr, qrSvgPath } from "@/lib/qr";
+import { codeAccess, deviceAccess, PAIRING_CHOICES, type PairingScope } from "@/lib/access-label";
 import type { Device, PairingCode } from "@/lib/session";
 import { useSession } from "./AuthGate";
 import { Button } from "@/components/ui/Button";
@@ -42,7 +43,7 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
   }, []);
   const left = Math.max(0, Math.round((new Date(code.expires_at).getTime() - now) / 1000));
   const link = `${window.location.origin}/pair#code=${encodeURIComponent(code.display_code)}`;
-  const appLink = appPairLink(window.location.origin, code.display_code);
+  const appLink = appPairLink(appServerOrigin(window.location.origin, API_BASE), code.display_code);
   return (
     <div className="space-y-3 rounded-md border border-line p-4" aria-live="polite">
       {left > 0 ? (
@@ -52,7 +53,7 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
             <QrCode text={link} />
             <div>
               <p className="font-mono text-2xl font-semibold tracking-widest" data-testid="pairing-code">{code.display_code}</p>
-              <p className="text-xs text-muted">{code.scope === "admin" ? "Full access" : code.scope === "files" ? "Chat and files" : "Chat only"} · works once · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</p>
+              <p className="text-xs text-muted">{codeAccess(code.scope)} · works once · {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} left</p>
             </div>
           </div>
           {code.scope !== "admin" ? (
@@ -61,7 +62,7 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
               <QrCode text={appLink} label="Phone app pairing QR code" testId="app-pairing-qr" />
             </div>
           ) : (
-            <p className="text-xs text-muted">The phone app only accepts a Chat only or Chat and files code. Create one to pair the app.</p>
+            <p className="text-xs text-muted">The phone app does not accept a Full access code. Create a Chat only, Chat and files, or Chat, files and agents code to pair the app.</p>
           )}
         </>
       ) : (
@@ -78,7 +79,7 @@ export function DevicesSection() {
   const router = useRouter();
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [scope, setScope] = useState<"admin" | "chat" | "files">("chat");
+  const [scope, setScope] = useState<PairingScope>("chat");
   const [label, setLabel] = useState("");
   const [code, setCode] = useState<PairingCode | null>(null);
   const [busy, setBusy] = useState(false);
@@ -149,7 +150,7 @@ export function DevicesSection() {
       <p className="text-xs text-muted">
         {session.kind === "loopback"
           ? "This request is trusted because it comes from this machine (LOOPBACK_TRUST)."
-          : `Signed in as ${session.label ?? "this browser"} · ${session.scopes.includes("admin") ? "full access" : "chat only"}.`}
+          : `Signed in as ${session.label ?? "this browser"} · ${deviceAccess(session.scopes)}.`}
       </p>
       {error && <Banner tone="danger">{error}</Banner>}
       {admin && (
@@ -162,10 +163,8 @@ export function DevicesSection() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label htmlFor="pair-scope" className="block text-sm font-medium">Access</label>
-                  <Select id="pair-scope" value={scope} onChange={(e) => setScope(e.target.value as "admin" | "chat" | "files")}>
-                    <option value="chat">Chat only</option>
-                    <option value="files">Chat and files (open files the agent made)</option>
-                    <option value="admin">Full access (settings, devices)</option>
+                  <Select id="pair-scope" value={scope} onChange={(e) => setScope(e.target.value as PairingScope)}>
+                    {PAIRING_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
                   </Select>
                 </div>
                 <div className="space-y-1">
@@ -186,7 +185,7 @@ export function DevicesSection() {
                   <li key={device.id} className="flex flex-wrap items-center justify-between gap-2 py-2" data-testid="device-row">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{device.label}{device.current && <span className="ml-2 rounded bg-inset px-1.5 py-0.5 text-xs font-normal">this browser</span>}</p>
-                      <p className="text-xs text-muted">{device.kind === "browser" ? "Browser" : "Device token"} · {device.scopes.includes("admin") ? "full access" : device.scopes.includes("files") ? "chat and files" : "chat only"} · last seen {when(device.last_seen_at)} · since {when(device.created_at)}</p>
+                      <p className="text-xs text-muted">{device.kind === "browser" ? "Browser" : "Device token"} · {deviceAccess(device.scopes)} · last seen {when(device.last_seen_at)} · since {when(device.created_at)}</p>
                     </div>
                     <Button type="button" disabled={busy} onClick={() => revoke(device)} aria-label={`Revoke ${device.label}`}>
                       {confirming === device.id ? "Confirm revoke" : "Revoke"}

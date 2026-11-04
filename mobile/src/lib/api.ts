@@ -5,7 +5,9 @@ import type { Agent } from './agents';
 import { buildMultipart, type Attachment } from './attachments';
 import { readFolder, readPreview } from './files';
 import type { ApprovalRow, Room } from './rooms';
+import { readEngines } from './engines';
 import { readSearchPage, SEARCH_PAGE_SIZE } from './search';
+import { normalizeServerUrl, responseAllowed } from './server-url';
 
 export type Session = { server: string; token: string };
 
@@ -77,8 +79,11 @@ async function errorFrom(response: Response): Promise<ApiError> {
 
 export function createApi(session: Session, options: { onRevoked?: () => void; fetchImpl?: FetchLike } = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  // The token goes only to an https:// server or a plain http:// one on the person's own network.
+  const serverAllowed = normalizeServerUrl(session.server).ok;
 
   async function request<T>(method: string, path: string, body?: unknown, raw?: Raw): Promise<T> {
+    if (!serverAllowed) throw new ApiError(0, 'unreachable', '');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), raw ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     let response: Response;
@@ -94,6 +99,8 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
         body: raw ? (raw.body as unknown as BodyInit) : body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
+      // A redirect from a local http:// server to plain HTTP elsewhere is not used.
+      if (!responseAllowed(response.url)) throw new Error('response came from an unsafe address');
     } catch {
       throw new ApiError(0, 'unreachable', '');
     } finally {
@@ -104,6 +111,8 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
       throw new ApiError(401, 'session_invalid', '');
     }
     if (!response.ok) throw await errorFrom(response);
+    // A delete answers 204 with no body.
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
 
@@ -115,8 +124,16 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
       readSearchPage(await request<unknown>('GET', `/search?q=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`), query),
     // Engine and model are left out, so the server's own default (or the agent's) applies.
     createThread: (agentId?: number) => request<Thread>('POST', '/threads', agentId === undefined ? {} : { agent_id: agentId }),
-    // Not archived ones, pinned first.
-    listAgents: () => request<Agent[]>('GET', '/agents'),
+    // Not archived ones, pinned first; with `includeArchived` the archived ones too.
+    listAgents: (includeArchived = false) => request<Agent[]>('GET', includeArchived ? '/agents?include_archived=true' : '/agents'),
+    getAgent: (id: number) => request<Agent>('GET', `/agents/${id}`),
+    // The next four need a phone paired with "Chat, files and agents"; any other gets 403 `scope_denied`.
+    createAgent: (body: Record<string, unknown>) => request<Agent>('POST', '/agents', body),
+    updateAgent: (id: number, body: Record<string, unknown>) => request<Agent>('PATCH', `/agents/${id}`, body),
+    // The copy is never looser than the original: its own folder, and "Ask first" for "Accept edits".
+    duplicateAgent: (id: number) => request<Agent>('POST', `/agents/${id}/duplicate`),
+    // The engines this server has and the models each offers; readable by any paired phone.
+    listEngines: async () => readEngines(await request<unknown>('GET', '/engines')),
     getThread: (id: number) => request<ThreadDetail>('GET', `/threads/${id}`),
     listEvents: (id: number, after: number, limit = 500) =>
       request<EventsPage>('GET', `/threads/${id}/events?after=${after}&limit=${limit}`),
@@ -145,6 +162,12 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
     postRoomMessage: (id: number, text: string) => request<{ seq: number }>('POST', `/rooms/${id}/messages`, { text }),
     // Stops every agent working in the room.
     stopRoom: (id: number) => request<unknown>('POST', `/rooms/${id}/stop`, {}),
+    // The next four need a phone paired with "Chat, files and agents"; any other gets 403 `scope_denied`.
+    createRoom: (body: Record<string, unknown>) => request<Room>('POST', '/rooms', body),
+    updateRoom: (id: number, body: Record<string, unknown>) => request<Room>('PATCH', `/rooms/${id}`, body),
+    deleteRoom: (id: number) => request<void>('DELETE', `/rooms/${id}`),
+    // Held: the member is skipped until resumed.
+    holdRoomMember: (id: number, agentId: number, held: boolean) => request<unknown>('PATCH', `/rooms/${id}/members/${agentId}`, { held }),
     markRoomRead: (id: number, seq: number) => request<{ seq: number }>('POST', `/rooms/${id}/read`, { seq }),
     // Without saying which thread each belongs to; see `loadRoomApprovals`.
     listRoomApprovals: (id: number) => request<ApprovalRow[]>('GET', `/rooms/${id}/approvals`),
