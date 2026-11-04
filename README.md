@@ -51,7 +51,7 @@ engine and provider account used for your work.
   runs. Review each result and answer requests for approval; a routine never
   approves an action by itself. See [routines](docs/ROUTINES.md).
 - **Choose how much freedom agents have.** Use Ask first, Accept edits, Approve
-  for me (Claude and Codex), or Plan only. Review tool activity and approval
+  for me (Claude, Codex, and Cursor), or Plan only. Review tool activity and approval
   decisions in the app.
 - **Connect tools and apps.** Connect services such as GitHub, Gmail, and Google
   Calendar through your own Composio key, then grant access to selected Claude

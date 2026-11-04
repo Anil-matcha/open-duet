@@ -260,7 +260,8 @@ for servers in your own Codex config go through the gate; other requests
 elicitations) are refused. Stop sends `turn/interrupt`, then the process group
 is killed. A missing Codex thread on resume marks the session `broken`.
 
-Claude's **Approve for me** mode uses its native `--permission-mode auto` reviewer
+Cursor's **Approve for me** mode passes its native `--auto-review` flag before
+`acp`. Claude's mode uses its native `--permission-mode auto` reviewer
 for local CLI tools. Turns with connected apps, marketplace tools, team tools,
 or computer/browser controls use Ask so those tools keep their app-level approval
 gates. Claude may report that `auto` is unavailable for the selected model or

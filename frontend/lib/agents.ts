@@ -17,7 +17,7 @@ export const APPROVAL_MODES: { value: ApprovalMode; label: string; description: 
   {
     value: "approve_for_me",
     label: "Approve for me",
-    description: "Claude or Codex reviews eligible local requests. External tools and computer controls still ask you. Other engines use Ask first.",
+    description: "Claude, Codex, or Cursor reviews eligible requests. External tools and computer controls still ask you. Other engines use Ask first.",
   },
   {
     value: "plan",
@@ -27,7 +27,7 @@ export const APPROVAL_MODES: { value: ApprovalMode; label: string; description: 
 ];
 
 export function approvalModesForProvider(provider: string | null | undefined) {
-  return APPROVAL_MODES.filter((mode) => mode.value !== "approve_for_me" || provider === "claude" || provider === "codex");
+  return APPROVAL_MODES.filter((mode) => mode.value !== "approve_for_me" || provider === "claude" || provider === "codex" || provider === "cursor");
 }
 
 export function approvalModeLabel(mode: string): string {

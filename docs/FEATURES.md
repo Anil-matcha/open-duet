@@ -40,7 +40,7 @@ platform and release qualification limits.
   Engine capabilities differ: for example,
   attachments, teams, memory tools and computers are not available on every
   engine. See [engine setup and capabilities](ENGINES.md).
-- **Approvals.** Ask, Accept edits, Approve for me (native Claude/Codex reviewer) and Plan modes, saved command rules, a safety
+- **Approvals.** Ask, Accept edits, Approve for me (native Claude/Codex/Cursor reviewer) and Plan modes, saved command rules, a safety
   floor, a redacted decision log and a read-only health scan. Computer actions
   use the same approval boundary. See [setup and approvals](SETUP.md#approval-modes-saved-rules-and-the-decision-log).
 - **Agent computers.** An agent can run in its own Docker shell or Linux
