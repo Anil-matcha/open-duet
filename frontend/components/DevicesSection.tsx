@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError } from "@/lib/api";
-import { appPairLink } from "@/lib/app-link";
+import { API_BASE, ApiError } from "@/lib/api";
+import { appPairLink, appServerOrigin } from "@/lib/app-link";
 import { auth } from "@/lib/auth";
 import { encodeQr, qrSvgPath } from "@/lib/qr";
 import { codeAccess, deviceAccess, PAIRING_CHOICES, type PairingScope } from "@/lib/access-label";
@@ -43,7 +43,7 @@ function OpenCode({ code, onDone }: { code: PairingCode; onDone: () => void }) {
   }, []);
   const left = Math.max(0, Math.round((new Date(code.expires_at).getTime() - now) / 1000));
   const link = `${window.location.origin}/pair#code=${encodeURIComponent(code.display_code)}`;
-  const appLink = appPairLink(window.location.origin, code.display_code);
+  const appLink = appPairLink(appServerOrigin(window.location.origin, API_BASE), code.display_code);
   return (
     <div className="space-y-3 rounded-md border border-line p-4" aria-live="polite">
       {left > 0 ? (

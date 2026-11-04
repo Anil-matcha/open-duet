@@ -105,7 +105,8 @@ without a preflight. That closes login CSRF.
    `ABCD-EFGH`, with a QR code of `<web UI>/pair#code=ABCD-EFGH`. The code is
    carried in the URL fragment, so it never reaches a server log. For a
    chat-only, chat-and-files or chat, files and agents code the screen shows a second QR code and link for the
-   [phone app](MOBILE.md), `suparagent://pair?server=<web UI>#code=ABCD-EFGH`.
+   [phone app](MOBILE.md), `suparagent://pair?server=<API address>#code=ABCD-EFGH`. The address is the web UI's when the
+   backend serves the UI, and the API's own address when the UI is a separate dev server.
 2. On the device, scan the QR or open `/pair` and type the code. A browser
    exchanges it for its own session cookie; any other client
    (`POST /api/v1/auth/pair` without `"cookie": true`) receives a bearer token

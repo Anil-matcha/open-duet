@@ -173,6 +173,13 @@ Android emulator reaches the computer running the server at `10.0.2.2`; add that
 name to `TRUSTED_HOSTS` for a local test. Building or running the iOS app needs
 macOS.
 
+A real phone needs the backend to listen on your network (`--host 0.0.0.0`, not
+the default `127.0.0.1`) and its address, such as `192.168.1.10`, in
+`TRUSTED_HOSTS`. In the split development setup (web page on port 3000, API on
+port 8000) the pairing QR for the app names the API, not the page. Open the web
+page by your computer's address (`http://192.168.1.10:3000`) rather than
+`localhost`, so the QR holds an address the phone can reach.
+
 Checks, the same as CI runs for `mobile/`:
 
 ```sh
