@@ -122,7 +122,7 @@ These apply to local Claude turns with tools on (`LOCAL_TOOLS_ENABLED`). Everyth
 
 - `exact` matches the whole command; `prefix` matches the leading words (`git status` allows `git status -s`) and never a command containing `;`, `&`, `|`, `<`, `>`, a backtick, `$(` or a newline.
 - A rule with a workspace applies only there, matched on the folder exactly as stored (no symlink or `..` folding). A rule without one applies in every folder.
-- Only the Bash tool has rules. Commands containing a credential, control characters, or anything on the safety floor cannot be saved. At most 200 rules.
+- Only the Bash tool has rules. A saved command can be up to 10,000 characters; commands containing a credential, control characters, or anything on the safety floor cannot be saved. At most 200 rules.
 - A matching rule answers the question immediately. The approval is still recorded and shown in the conversation, and its `approval.resolved` event carries `"by": "saved_rule"` and the `rule_id`, so the Chat page says a rule allowed it rather than you.
 - The answer to `remember` says what happened: `rule_id` is the saved rule, or it is null and `remember_error` says why nothing was saved (a credential, the safety floor, a conversation without a folder...); the call was then allowed this once only.
 - `GET /api/v1/approval-rules?workspace=/abs/folder` lists the rules that apply in that folder: the ones tied to it and the ones with no folder.
