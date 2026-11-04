@@ -146,7 +146,8 @@ def validate(name: str, data: bytes, cancelled=None) -> tuple[str, float]:
 
 
 async def transcribe(name: str, data: bytes, provider: str | None) -> dict:
-    if provider == 'local' or (provider is None and not settings.AUDIO_TRANSCRIPTION_API_KEY.strip() and local_whisper.is_available()):
+    require_consent(provider)
+    if provider == 'local':
         cancelled = threading.Event()
         try:
             mime, duration = await asyncio.to_thread(validate, name, data, cancelled)
@@ -161,7 +162,6 @@ async def transcribe(name: str, data: bytes, provider: str | None) -> dict:
         except Exception:
             raise AttachmentError(502, 'transcription_failed', 'Local Whisper transcription failed. Try again.') from None
 
-    require_consent(provider)
     cancelled = threading.Event()
     try:
         mime, duration = await asyncio.to_thread(validate, name, data, cancelled)

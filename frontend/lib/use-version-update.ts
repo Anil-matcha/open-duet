@@ -70,9 +70,11 @@ export function useVersionUpdate(): VersionUpdateState & {
 
   useEffect(() => {
     let alive = true;
-    if (!cachedVersionInfo) {
-      void fetchVersion(false);
-    }
+    const timer = setTimeout(() => {
+      if (!cachedVersionInfo) {
+        void fetchVersion(false);
+      }
+    }, 0);
 
     const listener = () => {
       if (alive) setInfo(cachedVersionInfo);
@@ -102,6 +104,7 @@ export function useVersionUpdate(): VersionUpdateState & {
     }
 
     return () => {
+      clearTimeout(timer);
       alive = false;
       listeners.delete(listener);
       stopBridge?.();
@@ -114,7 +117,7 @@ export function useVersionUpdate(): VersionUpdateState & {
     if (info?.latest_version) {
       dismissUpdate(info.latest_version);
     }
-  }, [info?.latest_version]);
+  }, [info]);
 
   const refresh = useCallback(() => fetchVersion(true), [fetchVersion]);
 

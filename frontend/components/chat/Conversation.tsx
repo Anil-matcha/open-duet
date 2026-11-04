@@ -32,6 +32,26 @@ import { DelegationCard, AgentCreatedCard, TeamNoticeCard, TeamSetupCard } from 
 
 const STICK_DISTANCE_PX = 80;
 
+function findDateDividerItemKeys(items: readonly { key: string; [k: string]: unknown }[]): Set<string> {
+  let lastDateKey: string | null = null;
+  const dividerKeys = new Set<string>();
+  for (const item of items) {
+    const ts = "ts" in item && typeof item.ts === "string" ? item.ts : null;
+    if (ts) {
+      const d = new Date(ts);
+      if (!Number.isNaN(d.getTime())) {
+        const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        if (dateKey !== lastDateKey) {
+          lastDateKey = dateKey;
+          dividerKeys.add(item.key);
+        }
+      }
+    }
+  }
+  return dividerKeys;
+}
+
+
 // Says the few things worth hearing (an approval waiting, a finished answer, a failure) once,
 // in a visually hidden polite region. The transcript itself is not live: it would be re-read on
 // every tool update.
@@ -137,6 +157,8 @@ export function Conversation({
   const waitingOnYou = transcript.items.some((i) => i.kind === "approval" && i.status === "pending");
   const empty = transcript.items.length === 0 && transcript.typing === null && !loading;
   const showSkeleton = loading && transcript.items.length === 0 && transcript.typing === null;
+  const groupedItems = groupToolRuns(transcript.items);
+  const dividerKeys = findDateDividerItemKeys(groupedItems);
   return (
     <div className="relative min-h-0 flex-1">
       <Announcer items={transcript.items} />
@@ -166,21 +188,11 @@ export function Conversation({
             </div>
           )}
 
-          {(() => {
-            let lastDateKey: string | null = null;
-            return groupToolRuns(transcript.items).map((item) => {
-              const ts = "ts" in item && typeof item.ts === "string" ? item.ts : null;
-              let dateDivider = null;
-              if (ts) {
-                const d = new Date(ts);
-                if (!Number.isNaN(d.getTime())) {
-                  const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-                  if (dateKey !== lastDateKey) {
-                    lastDateKey = dateKey;
-                    dateDivider = <DateDivider key={`date-${dateKey}`} ts={ts} />;
-                  }
-                }
-              }
+          {groupedItems.map((item) => {
+            const ts = "ts" in item && typeof item.ts === "string" ? item.ts : null;
+            const dateDivider = dividerKeys.has(item.key) && ts ? (
+              <DateDivider key={`date-${item.key}`} ts={ts} />
+            ) : null;
 
               let node: React.ReactNode = null;
               switch (item.kind) {
@@ -266,8 +278,7 @@ export function Conversation({
                 );
               }
               return node;
-            });
-          })()}
+            })}
 
           {transcript.typing !== null && transcript.typing !== "" && <AssistantMessage text={transcript.typing} live />}
 

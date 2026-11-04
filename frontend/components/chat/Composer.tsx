@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Check, FileText, Image as ImageIcon, Loader2, Mic, Music, Paperclip, Plus, Sparkles, Square, Video as VideoIcon, X } from "lucide-react";
+import { ArrowUp, Check, FileText, Image as ImageIcon, Loader2, Mic, Music, Plus, Sparkles, Square, Video as VideoIcon, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
