@@ -193,6 +193,7 @@ from a short folder path, or build on EAS, WSL, Linux or macOS. See `mobile/AGEN
 | Markdown, attachments, dark theme, agent picker, rooms | Automated: Jest tests (including a 4.5:1 contrast check of every text and background pair in both looks), lint, typecheck and a bundle export. The app's networking code was run against a local backend: uploading a text file, a PNG, names with accents and quotes, an oversized file and an unsupported type, and reading an image back with the token; listing agents and starting a conversation from one; and, for rooms, the live stream of a room, posting, marking read, a pending request found on the right agent's thread and answered, and a chat-only device being refused when it tries to create a room. No agent was run for any of it. |
 | Tables and search | Automated: Jest tests, lint, typecheck and a bundle export; the server's paged search with its own tests on SQLite. On an Android emulator in Expo Go against a throwaway backend with seeded data (no agent run): a seven-column table with long cells scrolls sideways to every column, wraps, keeps right alignment and inline code, and shows the text after it, also at 1.5x system font size; search for a word in 91 hits loaded five pages (offsets 0 to 80, each once), marked the matches, closed the keyboard on drag, and a result in the middle of a 14-turn conversation opened at that message. Not checked: a standalone build, a physical phone, iOS, a server with thousands of conversations. In that same Expo Go session the message box was still hidden under the full Gboard keyboard (see the keyboard note below). |
 | QR scanning and HTTPS | The Android emulator in Expo Go: scanning the QR code from the web app filled in the server and code and waited for Connect; pairing worked over HTTPS with a valid certificate, and a server with an untrusted certificate was refused. |
+| Agents, rooms and plain HTTP on the local network | Automated: Jest tests, lint, typecheck and a bundle export, and backend tests for the `manage` scope and its field guards. On an Android emulator in Expo Go against a throwaway backend (no agent run): pairing with `http://10.0.2.2:8000` (the "Not encrypted" note showed), a "Chat, files and agents" phone seeing Settings → Agents, creating an agent that asks first, duplicating it, archiving the copy and showing archived ones, editing a name and a title, and the discard prompt; creating a room with two agents, holding a member, editing the instructions and removing a member (the server confirmed each), the discard prompt on room settings, and deleting a room by typing its name. Over real HTTP with a `manage` token the server refused a workspace folder, Accept edits and the lead role, refused deleting an agent and importing, and accepted a Plan only agent. |
 | CI | The `mobile` job (install, lint, typecheck, tests, bundle export) passed on GitHub Actions on Linux. |
 
 Partly checked: the Android keyboard. A Galaxy S23 Ultra report showed the
@@ -206,8 +207,10 @@ on the phone: open the Samsung keyboard, scroll a long response to its end,
 type and send a multiline message, expand a long approval input and scroll it,
 then repeat in a room and with the keyboard closed.
 
-Not checked: any of the Markdown, attachments, dark theme, agent picker and rooms
-screens on a device or emulator (only by tests and against the server, as above);
-photos and files on iOS; a room with agents actually running in it; iOS; a
-physical phone; a custom link opening the app; a release build (the HTTPS and
-local-network HTTP behavior); very long conversations.
+Not checked: the Markdown, attachments and dark theme screens on a device or
+emulator (only by tests and against the server, as above); photos and files on iOS;
+a room with agents actually running in it; agent templates (not on the phone);
+iOS, including whether it lets `http://` to an IP address through; a physical
+phone; a custom link opening the app; a release build (the HTTPS and local-network
+HTTP behavior, and whether the keyboard hides Save and Create there as it does in
+Expo Go); the web pairing QR code on an `http://` page; very long conversations.
