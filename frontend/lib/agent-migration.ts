@@ -17,31 +17,47 @@ const MAX_DESCRIPTION = 4_000;
 const MAX_INSTRUCTIONS_BYTES = 24_000;
 
 export const GROK_AGENT_EXPORT_PROMPT = [
-  "Please export this bot so I can recreate its basic setup in another agent app.",
-  "Reply with one JSON code block in this shape. Keep the full standing instructions exactly as written.",
+  "Export this bot as one versioned JSON manifest so I can review and recreate its basic setup in another agent app.",
+  "Keep the full standing instructions exactly as written. Include notes only if they are useful and text-only skills only if their complete definition is plain text.",
   "{",
-  '  "format": "open-dots.grok-agent/1",',
-  '  "name": "Agent name",',
-  '  "title": "Short role title",',
-  '  "description": "Short description",',
-  '  "instructions": "Full standing instructions"',
+  '  "format": "open-dots.agent-migration",',
+  '  "version": 1,',
+  '  "source": "grok",',
+  '  "agents": [{ "format": "open-dots.agent", "version": 1, "agent": { "name": "Agent name", "title": "Short role title", "description": "Short description", "instructions": "Full standing instructions" }, "notes": { "MEMORY.md": "Optional notes" }, "skills": [{ "name": "Skill name", "description": "Text description", "body": "Text-only skill body" }] }]',
   "}",
-  "Do not include API keys, passwords, tokens, private customer data, connected accounts, routines, tools, skills, or conversation history.",
-  "Use empty strings for optional fields you do not have. Do not add explanatory text outside the JSON block.",
+  "Omit credentials, private customer data, connections, routines, tools, executable skills, files and conversation history. Do not include avatars, schedules, or workspace state.",
+  "Do not add explanatory text outside the JSON. Optional notes and skills may be omitted.",
+  "Replace every example value with real content. Omit the notes or skills property when there is no real content; never return labels such as Agent name, Optional notes, or Skill name as data.",
+  "Do not add explanatory text outside the JSON block.",
 ].join("\n");
 
 export const HERMES_AGENT_EXPORT_PROMPT = [
-  "Please export the basic setup of the Hermes Agent profile we are using so I can recreate it in another agent app.",
-  "Reply with one JSON code block in this shape. Copy the full standing persona/instructions from SOUL.md when available.",
+  "Export the basic setup of the Hermes Agent profile we are using as one versioned JSON manifest for review in another agent app.",
+  "Copy the full standing persona/instructions from SOUL.md when available. Include optional notes and text-only skills when useful.",
   "{",
-  '  "format": "open-dots.hermes-agent/1",',
-  '  "name": "Agent name",',
-  '  "title": "Short role title",',
-  '  "description": "Short description",',
-  '  "instructions": "Full standing persona and instructions"',
+  '  "format": "open-dots.agent-migration",',
+  '  "version": 1,',
+  '  "source": "hermes",',
+  '  "agents": [{ "format": "open-dots.agent", "version": 1, "agent": { "name": "Agent name", "title": "Short role title", "description": "Short description", "instructions": "Full standing persona and instructions" }, "notes": { "MEMORY.md": "Optional notes" }, "skills": [{ "name": "Skill name", "description": "Text description", "body": "Text-only skill body" }] }]',
   "}",
-  "Do not include API keys, passwords, tokens, private customer data, memories, connected accounts, routines, tools, skills, or conversation history.",
-  "Use empty strings for optional fields you do not have. Do not add explanatory text outside the JSON block.",
+  "Omit credentials, private customer data, connections, routines, tools, executable skills, files and conversation history. Do not include avatars, schedules, or workspace state.",
+  "Do not add explanatory text outside the JSON. Optional notes and skills may be omitted.",
+  "Replace every example value with real content. Omit the notes or skills property when there is no real content; never return labels such as Agent name, Optional notes, or Skill name as data.",
+  "Do not add explanatory text outside the JSON block.",
+].join("\n");
+
+export const GROK_AGENT_BASIC_EXPORT_PROMPT = [
+  "Export one agent as a single JSON object for a basic setup import.",
+  '{ "name": "Agent name", "title": "Short role title", "description": "Short description", "instructions": "Full standing instructions" }',
+  "Omit credentials, private data, connections, routines, tools, skills, files and conversation history.",
+  "Return only the JSON object.",
+].join("\n");
+
+export const HERMES_AGENT_BASIC_EXPORT_PROMPT = [
+  "Export one Hermes Agent profile as a single JSON object for a basic setup import. Copy standing instructions from SOUL.md when available.",
+  '{ "name": "Agent name", "title": "Short role title", "description": "Short description", "instructions": "Full standing instructions" }',
+  "Omit credentials, private data, memories, connections, routines, tools, skills, files and conversation history.",
+  "Return only the JSON object.",
 ].join("\n");
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,7 +117,13 @@ export function parseExternalAgentSetup(
   source: AgentMigrationSource,
 ): AgentMigrationPreview {
   const root = parseObject(input);
-  const nestedAgent = isRecord(root.agent) ? root.agent : {};
+  const isManifest = root.format === "open-dots.agent-migration" && root.version === 1;
+  const firstManifestAgent = isManifest && Array.isArray(root.agents) && isRecord(root.agents[0])
+    ? root.agents[0]
+    : {};
+  const nestedAgent = isRecord(firstManifestAgent.agent)
+    ? firstManifestAgent.agent
+    : isRecord(root.agent) ? root.agent : {};
   const persona = isRecord(root.persona) ? root.persona : {};
   const name = firstText(root.name, root.botName, nestedAgent.name, persona.name);
   const title = firstText(root.title, nestedAgent.title, persona.title);
@@ -129,12 +151,20 @@ export function parseExternalAgentSetup(
     throw new Error("The instructions are longer than 24,000 bytes.");
   }
 
-  const agent: Record<string, string> = { name, instructions };
+  const agent: Record<string, unknown> = { name, instructions };
   if (title) agent.title = title;
   if (description && description !== instructions) agent.description = description;
+  const notes = isRecord(firstManifestAgent.notes) ? firstManifestAgent.notes : {};
+  const skills = Array.isArray(firstManifestAgent.skills) ? firstManifestAgent.skills : [];
 
   return {
-    document: { format: "open-dots.agent", version: 1, agent },
+    document: {
+      format: "open-dots.agent",
+      version: 1,
+      agent,
+      ...(Object.keys(notes).length ? { notes } : {}),
+      ...(skills.length ? { skills } : {}),
+    },
     sourceLabel: source === "grok"
       ? "Grok Bot"
       : source === "hermes"

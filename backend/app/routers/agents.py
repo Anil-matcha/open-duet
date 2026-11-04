@@ -8,19 +8,26 @@ Errors a client acts on carry a machine-readable code:
 `{"detail": {"error_code": "...", "message": "..."}}`.
 """
 
+import logging
+import os
+import shutil
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.exc import IntegrityError
 
 from app.auth.middleware import principal_of
 from app.core.config import settings
+from app.db.transactions import begin_write
 from app.schemas.agent import (
     OpenBotDatabasePreviewResponse,
     AgentCreateRequest,
     AgentExportResponse,
     AgentImportRequest,
+    AgentMigrationPreviewResponse,
     AgentMemoryResponse,
     AgentMemoryWriteRequest,
     AgentResponse,
@@ -34,6 +41,7 @@ from app.schemas.agent import (
     TopicWriteRequest,
 )
 from app.services import agent_memory, agent_package, agent_skills, memory_entries, memory_journal, memory_log, memory_proposals, memory_topics, openbot_database_import
+from app.services import agent_migration_archive
 from app.services import agent_store as store
 from app.services.agent_removal import remove_agent
 from app.services.local_access_policy import require_local_access
@@ -46,6 +54,7 @@ router = APIRouter(
     tags=["Agents"],
     dependencies=[Depends(require_local_access)],
 )
+logger = logging.getLogger(__name__)
 
 
 def get_runtime() -> ThreadRuntime:
@@ -138,33 +147,105 @@ def _start_notes(agent_id: int, notes: str | None) -> None:
 def _start_imported_skills(agent_id: int, items: list[dict]) -> None:
     """An imported agent is new: it starts with exactly the file's skills, all
     turned off until the person reviews and turns them on. Text only."""
-    agent_skills.remove_all(agent_id)
     for item in items:
-        try:
-            agent_skills.write_skill(
-                agent_id, item["name"], item["description"], item["body"], enabled=False, source="imported"
-            )
-        except agent_skills.SkillError:
-            continue
+        agent_skills.write_skill(
+            agent_id, item["name"], item["description"], item["body"], enabled=False, source="imported"
+        )
 
 
 def _start_imported_notes(agent_id: int, parsed: dict | None) -> None:
     """An imported agent is new, so no notes of its own can be overwritten: it
     starts with exactly the file's notes and topic notes. Each file written is
     a journal row by `import`, so it can be undone."""
-    _start_notes(agent_id, parsed["notes"] if parsed else None)
     if not parsed:
         return
     if parsed["notes"] and parsed["notes"].strip():
-        memory_journal.record(
+        agent_memory.write_memory(agent_id, parsed["notes"])
+        row = memory_journal.record(
             agent_id, agent_memory.MEMORY_FILE, actor="import", before=None, after=agent_memory.read_memory(agent_id).text
         )
+        if row is None:
+            raise OSError("The imported notes could not be journaled.")
     for name, text in parsed["topics"].items():
-        try:
-            doc, _, _ = memory_topics.write_topic(agent_id, name, text)
-        except (agent_memory.MemoryTooLarge, memory_topics.InvalidTopicName, memory_topics.TooManyTopics):
-            continue
-        memory_journal.record(agent_id, memory_journal.note_path(name), actor="import", before=None, after=doc.text)
+        doc, _, _ = memory_topics.write_topic(agent_id, name, text)
+        row = memory_journal.record(agent_id, memory_journal.note_path(name), actor="import", before=None, after=doc.text)
+        if row is None:
+            raise OSError("The imported topic note could not be journaled.")
+
+
+def _reserve_import_path(path: Path, *, directory: bool) -> tuple[Path, tuple[int, int]]:
+    """Claim a fresh path; never inherit or clear an earlier agent's files."""
+    if any(parent.is_symlink() for parent in path.parents):
+        raise OSError("The agent folder has a linked parent.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if directory:
+        path.mkdir(mode=0o700, exist_ok=False)
+    else:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
+    identity = path.stat(follow_symlinks=False)
+    return path, (identity.st_dev, identity.st_ino)
+
+
+def _cleanup_import_path(reserved: tuple[Path, tuple[int, int]]) -> None:
+    """Only remove the path this import exclusively created, if unchanged."""
+    path, identity = reserved
+    try:
+        if any(parent.is_symlink() for parent in path.parents) or path.is_symlink():
+            logger.error("Could not safely clean up a failed agent import.")
+            return
+        current = path.stat(follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != identity:
+            logger.error("The failed import folder was replaced; leaving it untouched.")
+            return
+        if stat.S_ISDIR(current.st_mode):
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.exception("Could not clean up a failed agent import.")
+
+
+async def _import_package(rt: ThreadRuntime, parsed: dict, payload: AgentImportRequest):
+    """Publish the row only after optional files succeed; rollback on any failure."""
+    reserved: list[tuple[Path, tuple[int, int]]] = []
+    commit_started = False
+    try:
+        async with rt.session() as db:
+            await begin_write(db)
+            name = await store.free_name(db, rt.owner_id, parsed["name"])
+            now = datetime.now(UTC)
+            agent = store.Agent(
+                owner_id=rt.owner_id,
+                name=name,
+                title=parsed["title"],
+                description=parsed["description"],
+                instructions=parsed["instructions"],
+                approval_mode="ask",
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(agent)
+            await db.flush()
+            reserved.append(_reserve_import_path(agent_memory.agent_home(agent.id), directory=True))
+            if payload.include_notes and (parsed["notes"] or parsed["topics"]):
+                reserved.append(_reserve_import_path(memory_journal.journal_path(agent.id), directory=False))
+            _start_imported_notes(agent.id, parsed if payload.include_notes else None)
+            _start_imported_skills(agent.id, parsed["skills"] if payload.include_skills else [])
+            commit_started = True
+            await db.commit()
+        return agent
+    except BaseException as exc:
+        if commit_started and not isinstance(exc, IntegrityError):
+            # A disconnected/cancelled commit can have succeeded remotely.
+            # Preserve its files rather than deleting data from a live agent.
+            logger.exception("Agent import commit status is uncertain; preserving imported files.")
+        else:
+            for path in reversed(reserved):
+                _cleanup_import_path(path)
+        raise
 
 
 def _check_engine(rt: ThreadRuntime, provider: str, model: str | None) -> None:
@@ -831,22 +912,29 @@ async def import_agent(payload: AgentImportRequest, rt: ThreadRuntime = Depends(
     except agent_package.PackageError as exc:
         raise _error(422, "invalid_agent_file", str(exc)) from None
     try:
-        async with rt.session() as db:
-            name = await store.free_name(db, rt.owner_id, parsed["name"])
-            agent = await store.create_agent(
-                db,
-                owner_id=rt.owner_id,
-                name=name,
-                title=parsed["title"],
-                description=parsed["description"],
-                instructions=parsed["instructions"],
-                approval_mode="ask",
-            )
-    except store.AgentNameTaken:
+        return await _import_package(rt, parsed, payload)
+    except (store.AgentNameTaken, IntegrityError):
         raise _error(409, "agent_name_taken", "Try again: that name was just taken.") from None
-    _start_imported_notes(agent.id, parsed if payload.include_notes else None)
-    _start_imported_skills(agent.id, parsed["skills"] if payload.include_skills else [])
-    return agent
+    except FileExistsError:
+        raise _error(409, "agent_import_folder_exists", "The new agent folder already exists; no existing files were changed.") from None
+    except (OSError, agent_skills.SkillError, agent_memory.MemoryTooLarge, memory_topics.InvalidTopicName, memory_topics.TooManyTopics):
+        raise _error(500, "agent_import_failed", "The agent could not be imported. Refresh the agent list before trying again.") from None
+
+
+@router.post("/import/migration/preview", response_model=AgentMigrationPreviewResponse)
+async def preview_migration_archive(request: Request):
+    """Preview JSON or a one-manifest ZIP from raw request bytes, without saving it."""
+    if settings.HOST_EXECUTION_DISABLED:
+        raise _error(403, "migration_import_unavailable", "Agent migration is available only in the local Open Dots app.")
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > agent_migration_archive.MAX_SOURCE_BYTES:
+            raise _error(413, "migration_file_too_large", "The migration file is larger than 10 MB.")
+        data.extend(chunk)
+    try:
+        return await run_in_threadpool(agent_migration_archive.preview_archive, bytes(data))
+    except agent_migration_archive.MigrationArchiveError as exc:
+        raise _error(422, "invalid_migration_archive", str(exc)) from None
 
 
 @router.post("/import/openbot/preview", response_model=OpenBotDatabasePreviewResponse)

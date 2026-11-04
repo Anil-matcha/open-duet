@@ -4,7 +4,7 @@
 
 ### Added
 
-- Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, common single-agent JSON, and supported OpenBot databases. Preview the name, title and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
+- Add local desktop import for prompt-generated JSON and compatible version 1 profile ZIPs with one root JSON profile list. Preview up to 20 profiles and import one at a time as fresh Ask-first agents with the default model and new folders. Optional memory facts require opt-in; standalone `SKILL.md` skills arrive disabled, and supported full persona text can come from `INSTRUCTIONS.md` or `SOUL.md`. The reader skips skills that require supporting files, arbitrary workspace files, routines, avatars and channels; native allowlisting and secret redaction apply. Credentials, connected accounts, tools, executable skill content and history are excluded. Hosted accounts keep the basic single-profile prompt-and-paste flow.
 - Let the phone app create and edit agents. A new **Chat, files and agents** pairing choice gives a phone the `manage` scope (chat and files, plus agents and rooms): create, edit, duplicate, pin and archive agents with the web editor's fields, and create, edit, hold members of and delete rooms. The server refuses the workspace folder, Accept edits, connected apps and the lead role from any device without full access, and a copy made by such a device is never looser than the original.
 
 ### Changed

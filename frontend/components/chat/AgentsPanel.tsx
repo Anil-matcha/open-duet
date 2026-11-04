@@ -13,6 +13,7 @@ import { Tab, TabList, TabPanel, Tabs } from "@/components/ui/Tabs";
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { api, ApiError, isLocalApiEndpoint, type Agent, type AgentInput, type AgentMemory, type ApprovalMode, type Engine, type OpenBotDatabasePreview, type OpenBotDatabaseProfilePreview } from "@/lib/api";
+import { type AgentMigrationFilePreview, type AgentMigrationFileProfilePreview } from "@/lib/api";
 import {
   approvalModesForProvider,
   agentFileHasNotes,
@@ -26,6 +27,8 @@ import {
 import {
   GROK_AGENT_EXPORT_PROMPT,
   HERMES_AGENT_EXPORT_PROMPT,
+  GROK_AGENT_BASIC_EXPORT_PROMPT,
+  HERMES_AGENT_BASIC_EXPORT_PROMPT,
   parseExternalAgentSetup,
   type AgentMigrationPreview,
   type AgentMigrationSource,
@@ -143,8 +146,11 @@ type ImportState = {
   document: Record<string, unknown>;
   name: string;
   hasNotes: boolean;
+  hasSkills: boolean;
   includeNotes: boolean;
+  includeSkills: boolean;
   migration?: AgentMigrationPreview;
+  migrationFileProfile?: AgentMigrationFileProfilePreview;
 };
 type MigrationState = { source: AgentMigrationSource | null; text: string; copied: boolean };
 
@@ -223,6 +229,7 @@ export function AgentsPanel({
   const [importing, setImporting] = useState<ImportState | null>(null);
   const [migration, setMigration] = useState<MigrationState | null>(null);
   const [openBotDatabase, setOpenBotDatabase] = useState<OpenBotDatabasePreview | null>(null);
+  const [migrationFilePreview, setMigrationFilePreview] = useState<AgentMigrationFilePreview | null>(null);
   const [computerOf, setComputerOf] = useState<Agent | null>(null);
   const [skillsOf, setSkillsOf] = useState<Agent | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Agent | null>(initialDeleteAgent);
@@ -251,11 +258,13 @@ export function AgentsPanel({
   }, []);
   useEffect(() => { let live = true; collaboration.team().then(value => { if (live) setTeam(value); }).catch(() => {}); return () => { live = false; }; }, []);
   const fileInput = useRef<HTMLInputElement>(null);
+  const migrationFileInput = useRef<HTMLInputElement>(null);
   const openBotDatabaseInput = useRef<HTMLInputElement>(null);
   const keepEditingRef = useRef<HTMLButtonElement>(null);
   const keepAgentRef = useRef<HTMLButtonElement>(null);
   const deleteConfirmationRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+  const canReadLocalBackend = isLocalApiEndpoint();
   const canReadOpenBotDatabase = isLocalApiEndpoint();
 
   useEffect(() => {
@@ -446,10 +455,11 @@ export function AgentsPanel({
     setError(null);
     try {
       const parsed = parseAgentFile(await file.text());
-      const agent = parsed.agent as { name?: unknown } | undefined;
-      const name = typeof agent?.name === "string" ? agent.name : file.name;
+      const parsedAgent = parsed.agent as Record<string, unknown> | undefined;
+      const name = typeof parsedAgent?.name === "string" ? parsedAgent.name : file.name;
       const hasNotes = agentFileHasNotes(parsed);
-      setImporting({ document: parsed, name, hasNotes, includeNotes: hasNotes });
+      const hasSkills = Array.isArray(parsedAgent?.skills) && parsedAgent.skills.length > 0;
+      setImporting({ document: parsed, name, hasNotes, hasSkills, includeNotes: false, includeSkills: false });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -457,16 +467,35 @@ export function AgentsPanel({
     }
   };
 
-  const previewMigration = () => {
+  const previewMigration = async () => {
     if (!migration?.source || migration.source === "openbot") return;
     setError(null);
+    if ((migration.source === "grok" || migration.source === "hermes") && canReadLocalBackend) {
+      setBusy(true);
+      try {
+        const file = new File([migration.text], "agent-migration.json", { type: "application/json" });
+        const preview = await api.previewAgentMigration(file);
+        setMigrationFilePreview(preview);
+      } catch (err) {
+        setError(errorText(err));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     try {
       const preview = parseExternalAgentSetup(migration.text, migration.source);
+      const notes = preview.document.notes;
+      const skills = preview.document.skills;
+      const hasNotes = Boolean(notes && typeof notes === "object" && Object.keys(notes).length > 0);
+      const hasSkills = Array.isArray(skills) && skills.length > 0;
       setImporting({
         document: preview.document,
         name: preview.name,
-        hasNotes: false,
+        hasNotes,
+        hasSkills,
         includeNotes: false,
+        includeSkills: false,
         migration: preview,
       });
       setMigration(null);
@@ -479,9 +508,9 @@ export function AgentsPanel({
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
       const prompt = migration?.source === "hermes"
-        ? HERMES_AGENT_EXPORT_PROMPT
+        ? canReadLocalBackend ? HERMES_AGENT_EXPORT_PROMPT : HERMES_AGENT_BASIC_EXPORT_PROMPT
         : migration?.source === "grok"
-          ? GROK_AGENT_EXPORT_PROMPT
+          ? canReadLocalBackend ? GROK_AGENT_EXPORT_PROMPT : GROK_AGENT_BASIC_EXPORT_PROMPT
           : null;
       if (!prompt) throw new Error("Choose an export source first.");
       await navigator.clipboard.writeText(prompt);
@@ -511,7 +540,9 @@ export function AgentsPanel({
       document: profile.document,
       name: profile.name,
       hasNotes: false,
+      hasSkills: false,
       includeNotes: false,
+      includeSkills: false,
       migration: {
         document: profile.document,
         sourceLabel: "OpenBot database",
@@ -523,6 +554,57 @@ export function AgentsPanel({
       },
     });
     setOpenBotDatabase(null);
+    setMigration(null);
+  };
+
+  const previewAgentMigrationFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!canReadLocalBackend) {
+      setError("Manifest file import is available only in the local app.");
+      if (migrationFileInput.current) migrationFileInput.current.value = "";
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const preview = await api.previewAgentMigration(file);
+      setMigrationFilePreview(preview);
+      setMigration((current) => current ? { ...current, source: preview.source } : current);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+      if (migrationFileInput.current) migrationFileInput.current.value = "";
+    }
+  };
+
+  const reviewMigrationFileProfile = (profile: AgentMigrationFileProfilePreview) => {
+    const agent = profile.document.agent && typeof profile.document.agent === "object"
+      ? profile.document.agent as Record<string, unknown>
+      : {};
+    const stringField = (key: string) => typeof agent[key] === "string" ? agent[key] as string : "";
+    const notes = profile.document.notes;
+    const skills = profile.document.skills;
+    const hasNotes = Boolean(notes && typeof notes === "object" && Object.keys(notes).length > 0);
+    const hasSkills = Array.isArray(skills) && skills.length > 0;
+    setImporting({
+      document: profile.document,
+      name: profile.name,
+      hasNotes,
+      hasSkills,
+      includeNotes: false,
+      includeSkills: false,
+      migrationFileProfile: profile,
+      migration: {
+        document: profile.document,
+        sourceLabel: `${migrationFilePreview?.source === "hermes" ? "Hermes Agent" : "Grok Bot"} manifest`,
+        name: profile.name,
+        title: profile.title,
+        description: stringField("description"),
+        instructions: stringField("instructions"),
+      },
+    });
+    setMigrationFilePreview(null);
     setMigration(null);
   };
 
@@ -585,6 +667,7 @@ export function AgentsPanel({
     setExporting(null);
     setImporting(null);
     setMigration(null);
+    setMigrationFilePreview(null);
     setOpenBotDatabase(null);
     setComputerOf(null);
     setSkillsOf(null);
@@ -914,22 +997,10 @@ export function AgentsPanel({
             <div className="space-y-3 text-sm">
               {migration.source === null ? (
                 <>
-                  <p>Choose how you want to bring in a single agent setup.</p>
+                  <p>Choose a source for the instructions and profile details you want to bring in.</p>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMigration({ ...migration, source: "grok" })}
-                      className={BUTTON}
-                    >
-                      Grok Bot export
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMigration({ ...migration, source: "hermes" })}
-                      className={BUTTON}
-                    >
-                      Hermes Agent export
-                    </button>
+                    <button type="button" onClick={() => setMigration({ ...migration, source: "grok" })} className={BUTTON}>Grok Bot export</button>
+                    <button type="button" onClick={() => setMigration({ ...migration, source: "hermes" })} className={BUTTON}>Hermes Agent export</button>
                     <button
                       type="button"
                       onClick={() => { setOpenBotDatabase(null); setMigration({ ...migration, source: "openbot" }); }}
@@ -939,13 +1010,7 @@ export function AgentsPanel({
                     >
                       OpenBot database{canReadOpenBotDatabase ? "" : " · local app only"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setMigration({ ...migration, source: "other" })}
-                      className={BUTTON}
-                    >
-                      Another agent JSON
-                    </button>
+                    <button type="button" onClick={() => setMigration({ ...migration, source: "other" })} className={BUTTON}>Another agent JSON</button>
                   </div>
                   <button type="button" onClick={back} className={BUTTON}>Cancel</button>
                 </>
@@ -979,10 +1044,7 @@ export function AgentsPanel({
                     </button>
                   ) : (
                     <>
-                      <p className="text-xs text-muted">
-                        Found {openBotDatabase.profiles.length} agent{openBotDatabase.profiles.length === 1 ? "" : "s"}
-                        in schema version {openBotDatabase.schema_version}. Choose one to review; import the others one at a time.
-                      </p>
+                      <p className="text-xs text-muted">Found {openBotDatabase.profiles.length} agent{openBotDatabase.profiles.length === 1 ? "" : "s"} in schema version {openBotDatabase.schema_version}. Choose one to review; import the others one at a time.</p>
                       <div className="max-h-64 space-y-2 overflow-auto rounded-md border border-line p-2">
                         {openBotDatabase.profiles.map((profile) => (
                           <button
@@ -1012,46 +1074,67 @@ export function AgentsPanel({
                 <>
                   <p>
                     {migration.source === "grok"
-                      ? "Copy the prompt into Grok Bot, then paste its JSON reply below."
+                      ? canReadLocalBackend ? "Copy the bundle prompt into Grok Bot, then paste its versioned manifest for roster preview." : "Copy the basic single-profile prompt into Grok Bot, then paste its JSON reply below."
                       : migration.source === "hermes"
-                        ? "Copy the prompt into Hermes Agent, then paste its JSON reply below."
-                        : "Paste one agent's JSON export. We will read common name, title, description and instruction fields."}
+                        ? canReadLocalBackend ? "Copy the bundle prompt into Hermes Agent, then paste its versioned manifest for roster preview." : "Copy the basic single-profile prompt into Hermes Agent, then paste its JSON reply below."
+                        : "Paste one native agent JSON export. We will read its name, title, description and instructions."}
                   </p>
-                  {migration.source !== "other" ? (
+                  {migration.source === "grok" || migration.source === "hermes" ? (
                     <details className="rounded-md border border-line p-3">
                       <summary className="cursor-pointer font-medium">Export prompt</summary>
                       <div className="mt-2 space-y-2">
-                        <textarea
-                          readOnly
-                          aria-label={`${migration.source === "hermes" ? "Hermes Agent" : "Grok Bot"} export prompt`}
-                          value={migration.source === "hermes" ? HERMES_AGENT_EXPORT_PROMPT : GROK_AGENT_EXPORT_PROMPT}
-                          rows={8}
-                          className={`${FIELD} font-mono text-xs`}
-                        />
-                        <button type="button" onClick={copyMigrationPrompt} className={BUTTON}>
-                          {migration.copied ? "Copied" : "Copy prompt"}
-                        </button>
+                        <textarea readOnly aria-label={`${migration.source} export prompt`} value={migration.source === "hermes" ? canReadLocalBackend ? HERMES_AGENT_EXPORT_PROMPT : HERMES_AGENT_BASIC_EXPORT_PROMPT : canReadLocalBackend ? GROK_AGENT_EXPORT_PROMPT : GROK_AGENT_BASIC_EXPORT_PROMPT} rows={9} className={`${FIELD} font-mono text-xs`} />
+                        <button type="button" onClick={copyMigrationPrompt} className={BUTTON}>{migration.copied ? "Copied" : "Copy prompt"}</button>
                       </div>
                     </details>
-                  ) : (
-                    <div className="rounded-md border border-line p-3 text-xs text-muted">
-                      Expected fields: name, title, description and instructions. Other settings are ignored.
-                    </div>
-                  )}
+                  ) : migration.source === "other" ? (
+                    <div className="rounded-md border border-line p-3 text-xs text-muted">Expected fields: name, title, description and instructions. Other settings are ignored.</div>
+                  ) : null}
+                  {migration.source === "grok" || migration.source === "hermes" ? (
+                    <>
+                      <input ref={migrationFileInput} type="file" accept=".json,.zip,application/json,application/zip" className="hidden" aria-label="Choose migration manifest file" onChange={(event) => previewAgentMigrationFile(event.target.files?.[0])} />
+                      <div className="rounded-md border border-line p-3">
+                        <p className="text-xs text-muted">On the local app, pasted JSON and JSON/ZIP files are previewed as a full roster. Hosted accounts use the basic single-profile paste fallback. File content is sent only to this device&apos;s Open Dots backend.</p>
+                        <button type="button" onClick={() => migrationFileInput.current?.click()} disabled={!canReadLocalBackend || busy} title={!canReadLocalBackend ? "Available only in the local app." : undefined} className={`${BUTTON} mt-2`}>
+                          Choose manifest file{canReadLocalBackend ? "" : " · local app only"}
+                        </button>
+                        {!canReadLocalBackend && <p className="mt-1 text-xs text-muted">File import is unavailable for hosted accounts. Paste the source response below instead.</p>}
+                      </div>
+                      {migrationFilePreview && (
+                        <div className="space-y-2 rounded-md border border-line p-3">
+                          <p className="font-medium">{migrationFilePreview.profiles.length} profile{migrationFilePreview.profiles.length === 1 ? "" : "s"} found · {migrationFilePreview.source}</p>
+                          {migrationFilePreview.skipped.length > 0 && <p className="text-xs text-muted">Skipped from manifest: {migrationFilePreview.skipped.join(", ")}</p>}
+                          <div className="max-h-56 space-y-1 overflow-auto">
+                            {migrationFilePreview.profiles.map((profile) => (
+                              <div key={profile.key} className="rounded-md px-3 py-2 hover:bg-hover">
+                                <p className="font-medium">{profile.name}{profile.title ? ` · ${profile.title}` : ""}</p>
+                                <p className="mt-1 text-xs text-muted">Included: {["name", "title", "description", "instructions", ...(profile.document.notes ? ["notes"] : []), ...(Array.isArray(profile.document.skills) && profile.document.skills.length ? ["text-only skills"] : [])].filter((field) => field === "name" ? Boolean(profile.name) : field === "title" ? Boolean(profile.title) : field === "notes" || field === "text-only skills" ? true : Boolean((profile.document.agent as Record<string, unknown> | undefined)?.[field])).join(", ") || "None"}</p>
+                                <p className="mt-1 text-xs text-muted">Skipped: {profile.skipped.length ? profile.skipped.join(", ") : "None"}</p>
+                                <p className="mt-1 text-xs text-muted">Redacted: {profile.redacted.length ? profile.redacted.join(", ") : "None"}</p>
+                                <button type="button" onClick={() => reviewMigrationFileProfile(profile)} className={`${BUTTON} mt-2`}>Review profile</button>
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" onClick={() => { setMigrationFilePreview(null); migrationFileInput.current?.click(); }} disabled={busy || !canReadLocalBackend} className={BUTTON}>Choose another file</button>
+                        </div>
+                      )}
+                    </>
+                  ) : null}
                   <label className="block space-y-1">
-                    <span className="text-xs font-medium">Paste JSON export</span>
+                    <span className="text-xs font-medium">{migration.source === "grok" || migration.source === "hermes" ? canReadLocalBackend ? "Paste versioned manifest" : "Paste basic agent JSON" : "Paste JSON export"}</span>
                     <textarea
                       aria-label="Paste agent setup JSON"
                       value={migration.text}
                       onChange={(event) => setMigration({ ...migration, text: event.target.value, copied: false })}
                       rows={9}
                       className={`${FIELD} font-mono text-xs`}
-                      placeholder='{"name":"Research assistant","instructions":"..."}'
+                      placeholder={migration.source === "grok" || migration.source === "hermes" ? canReadLocalBackend ? '{"format":"open-dots.agent-migration","version":1,"source":"grok","agents":[...]}' : '{"name":"Research assistant","instructions":"..."}' : '{"name":"Research assistant","instructions":"..."}'}
                     />
                   </label>
                   <p className="text-xs text-muted">
-                    Only name, title, description and instructions are imported. Skills, routines, connected apps,
-                    credentials, memories, tools, files and chat history are not transferred.
+                    On hosted accounts, paste creates one basic profile from name, title, description and instructions.
+                    Local manifest preview can include notes and text-only skills. Credentials, connections, routines,
+                    executable skills, files and conversation history are excluded.
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -1060,7 +1143,7 @@ export function AgentsPanel({
                       disabled={!migration.text.trim() || busy}
                       className={PRIMARY}
                     >
-                      Review import
+                      {busy ? "Previewing…" : canReadLocalBackend && (migration.source === "grok" || migration.source === "hermes") ? "Preview manifest roster" : "Review import"}
                     </button>
                     <button type="button" onClick={back} disabled={busy} className={BUTTON}>Cancel</button>
                   </div>
@@ -1109,9 +1192,17 @@ export function AgentsPanel({
                     </dl>
                   </div>
                   <p className="text-xs text-muted">
-                    Skills, routines, connected apps, credentials, memories, tools, files and chat history are not
-                    transferred. Configure those separately after reviewing the agent.
+                    {importing.migration
+                      ? "Only the reviewed profile fields and optional notes or text-only skills can be copied. Schedules, tools, files, avatars, conversations and full workspace state are not imported."
+                      : "Skills, routines, connected apps, credentials, memories, tools, files and chat history are not transferred. Configure those separately after reviewing the agent."}
                   </p>
+                  {importing.migrationFileProfile && (
+                    <div className="rounded-md border border-line p-3 text-xs">
+                      <p className="font-medium">Preview details</p>
+                      <p className="mt-1">Skipped: {importing.migrationFileProfile.skipped.length ? importing.migrationFileProfile.skipped.join(", ") : "None reported"}</p>
+                      <p className="mt-1">Redacted: {importing.migrationFileProfile.redacted.length ? importing.migrationFileProfile.redacted.join(", ") : "None reported"}</p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p>
@@ -1126,12 +1217,18 @@ export function AgentsPanel({
                     checked={importing.includeNotes}
                     onChange={() => setImporting({ ...importing, includeNotes: !importing.includeNotes })}
                   />
-                  Keep the file&apos;s starter notes
+                  Include notes as starter notes
+                </label>
+              )}
+              {importing.hasSkills && (
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+                  <input type="checkbox" checked={importing.includeSkills} onChange={() => setImporting({ ...importing, includeSkills: !importing.includeSkills })} />
+                  Include text-only skills; imported skills start disabled
                 </label>
               )}
               <div className="flex gap-2">
                 <button
-                  onClick={() => run(() => api.importAgent(importing.document, importing.includeNotes), back)}
+                  onClick={() => run(() => api.importAgent(importing.document, importing.includeNotes, importing.includeSkills), back)}
                   disabled={busy}
                   className={PRIMARY}
                 >

@@ -511,6 +511,23 @@ export type Agent = {
   computer?: ComputerSummary | null;
 };
 
+export type AgentMigrationFileProfilePreview = {
+  key: string;
+  name: string;
+  title: string | null;
+  document: Record<string, unknown>;
+  skipped: string[];
+  redacted: string[];
+};
+
+export type AgentMigrationFilePreview = {
+  format: "open-dots.agent-migration";
+  version: number;
+  source: "grok" | "hermes";
+  profiles: AgentMigrationFileProfilePreview[];
+  skipped: string[];
+};
+
 export type OpenBotDatabaseProfilePreview = {
   key: string;
   name: string;
@@ -1239,10 +1256,17 @@ export const api = {
 
   // A new agent from an agent file; it always starts on "Ask first".
   // 422 invalid_agent_file when the file is not one.
-  importAgent: (document: unknown, includeNotes = true) =>
+  importAgent: (document: unknown, includeNotes = true, includeSkills = false) =>
     request<Agent>("/agents/import", {
       method: "POST",
-      body: JSON.stringify({ document, include_notes: includeNotes }),
+      body: JSON.stringify({ document, include_notes: includeNotes, include_skills: includeSkills }),
+    }),
+
+  previewAgentMigration: (file: File) =>
+    request<AgentMigrationFilePreview>("/agents/import/migration/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file,
     }),
 
   previewOpenBotDatabase: (file: File) => {

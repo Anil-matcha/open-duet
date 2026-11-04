@@ -225,6 +225,24 @@ class AgentImportRequest(BaseModel):
     include_skills: bool = True
 
 
+class AgentMigrationProfilePreview(BaseModel):
+    key: str
+    name: str
+    title: str | None
+    # A normalized native agent package; send it to the existing import API.
+    document: dict
+    skipped: list[str]
+    redacted: list[str]
+
+
+class AgentMigrationPreviewResponse(BaseModel):
+    format: Literal["open-dots.agent-migration"]
+    version: Literal[1]
+    source: Literal["grok", "hermes"]
+    profiles: list[AgentMigrationProfilePreview]
+    skipped: list[str]
+
+
 class OpenBotDatabaseProfilePreview(BaseModel):
     key: str
     name: str
