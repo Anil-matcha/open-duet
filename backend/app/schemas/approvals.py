@@ -38,7 +38,7 @@ class DecisionsPage(BaseModel):
 
 class ApprovalRuleCreate(BaseModel):
     match: Literal["exact", "prefix"] = "exact"
-    command: str = Field(min_length=1, max_length=1000)
+    command: str = Field(min_length=1, max_length=10_000)
     # Absolute folder the rule applies in; omitted means any workspace.
     workspace: str | None = Field(default=None, max_length=4096)
 

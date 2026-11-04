@@ -17,6 +17,7 @@ class EngineCapabilities(BaseModel):
     images: bool
     resume: bool
     computers: bool
+    steering: bool = False
 
 
 class EngineSetup(BaseModel):

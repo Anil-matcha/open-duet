@@ -93,7 +93,7 @@ class WorkRunCreate(BaseModel):
     idempotency_key: str = Field(min_length=16, max_length=128)
     agent_id: int = Field(gt=0)
     prompt: str = Field(min_length=1, max_length=20_000)
-    approval_mode: Literal["ask", "accept_edits", "plan"] = "ask"
+    approval_mode: Literal["ask", "accept_edits", "approve_for_me", "plan"] = "ask"
     scheduled_for: AwareDatetime | None = None
 
 

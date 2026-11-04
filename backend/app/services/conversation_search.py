@@ -18,7 +18,7 @@ MIN_QUERY_CHARS = 2
 MAX_TERMS = 6
 SNIPPET_BEFORE = 60
 SNIPPET_AFTER = 100
-MESSAGE_TYPES = {"turn.started": "user", "assistant.message": "assistant", "room.message": "assistant"}
+MESSAGE_TYPES = {"turn.started": "user", "turn.steered": "user", "assistant.message": "assistant", "room.message": "assistant"}
 
 
 @dataclass

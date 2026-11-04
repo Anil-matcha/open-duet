@@ -14,6 +14,7 @@ UPDATE; the caller learns whether it won from the return value.
 Event payloads, so adapters and readers agree:
 
     turn.started        {"prompt_text", "attachments"?: [{"id", "name", "mime", "bytes", "kind"}]}
+    turn.steered        {"text"}
     assistant.message   {"text", "incomplete"?}
     tool.started        {"call_id", "name", "input"}
     tool.completed      {"call_id", "ok", "output", "truncated"}
@@ -157,7 +158,7 @@ async def set_model(db: AsyncSession, thread_id: int, model: str | None, effort:
     state = dict(thread.provider_state or {})
     if effort is not None:
         state["effort"] = effort
-    elif "effort" in state and model is None:
+    else:
         state.pop("effort", None)
     return await _change_quietly(db, thread_id, model=model, provider_state=state)
 
@@ -255,6 +256,8 @@ def history_items(events: list[Event]) -> list[dict]:
         data = event.data or {}
         if event.type == "turn.started":
             items.append({"role": "user", "text": data.get("prompt_text", ""), "turn_id": event.turn_id})
+        elif event.type == "turn.steered":
+            items.append({"role": "user", "text": data.get("text", ""), "turn_id": event.turn_id})
         elif event.type == "assistant.message":
             items.append(
                 {

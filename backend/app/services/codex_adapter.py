@@ -75,6 +75,7 @@ MAX_ERROR_CHARS = 2000
 # An app-server starting with the person's MCP servers can take a while.
 STARTUP_TIMEOUT_SECONDS = 120.0
 INTERRUPT_GRACE_SECONDS = 3.0
+STEER_TIMEOUT_SECONDS = 10.0
 MODEL_LIST_TIMEOUT_SECONDS = 8.0
 MODEL_CACHE_SECONDS = 600.0
 RAW_STREAM_SIZE_FACTOR = 8
@@ -111,16 +112,21 @@ class CodexPolicy:
     approval: str
     sandbox: str  # thread/start and thread/resume spelling
     sandbox_type: str  # turn/start spelling
+    reviewer: str = "user"
 
 
 def codex_policy(mode: str | None, tools: bool, computer: bool = False) -> CodexPolicy:
     if not tools or mode == "plan":
-        return CodexPolicy("never", "read-only", "readOnly")
+        return CodexPolicy("never", "read-only", "readOnly", "user")
     if computer:
         # Nothing of Codex's own may touch this machine; MCP calls are asked about
         # through their own approval mode, not this sandbox.
-        return CodexPolicy("untrusted", "read-only", "readOnly")
-    return CodexPolicy("untrusted", "workspace-write", "workspaceWrite")
+        return CodexPolicy("untrusted", "read-only", "readOnly", "user")
+    if mode == "approve_for_me":
+        # OpenMausBot's native reviewer mode: Codex reviews requests while its
+        # workspace-write sandbox and on-request approval policy stay enabled.
+        return CodexPolicy("on-request", "workspace-write", "workspaceWrite", "auto_review")
+    return CodexPolicy("untrusted", "workspace-write", "workspaceWrite", "user")
 
 
 def resolve_codex_executable() -> Path | None:
@@ -219,7 +225,7 @@ class CodexAdapter:
     kind = "cli"
     capabilities = Capabilities(
         tools=True, approvals=True, mcp=True, images=False, resume=True, computers=True, memory_tools=True,
-        connected_apps=True,
+        connected_apps=True, steering=True,
     )
     models: list[ModelOption] = []
     custom_models = True
@@ -229,6 +235,7 @@ class CodexAdapter:
 
     def __init__(self) -> None:
         self._models: tuple[float, list[ModelOption]] | None = None
+        self._active_turns: dict[int, "_CodexTurn"] = {}
 
     def new_session_id(self) -> str:
         # The app's own id for the conversation's session; Codex's thread id
@@ -307,8 +314,21 @@ class CodexAdapter:
             label = item.get("displayName") if isinstance(item.get("displayName"), str) else item["id"]
             default_effort = item.get("defaultReasoningEffort") or item.get("default_reasoning_effort")
             efforts = item.get("supportedReasoningEfforts") or item.get("supported_reasoning_efforts") or ()
-            if isinstance(efforts, list):
-                efforts = tuple(efforts)
+            if isinstance(default_effort, dict):
+                default_effort = default_effort.get("reasoningEffort") or default_effort.get("reasoning_effort")
+            if not isinstance(default_effort, str):
+                default_effort = None
+            if isinstance(efforts, (list, tuple)):
+                # Recent Codex app-server versions return effort metadata
+                # objects, while older versions returned the ids as strings.
+                efforts = tuple(
+                    value for entry in efforts
+                    if isinstance(value := (
+                        entry if isinstance(entry, str) else
+                        entry.get("reasoningEffort") or entry.get("reasoning_effort")
+                        if isinstance(entry, dict) else None
+                    ), str)
+                )
             model_id = item["id"].lower()
             if not efforts and any(p in model_id for p in ("o1", "o3-mini", "o3", "o4")):
                 efforts = ("low", "medium", "high")
@@ -350,7 +370,22 @@ class CodexAdapter:
                 error_code="engine_without_computers",
             )
         run = _CodexTurn(ctx, sink, gate, exe, codex_thread)
-        return await run.go()
+        self._active_turns[ctx.turn_id] = run
+        try:
+            return await run.go()
+        finally:
+            self._active_turns.pop(ctx.turn_id, None)
+
+    async def steer_turn(self, turn_id: int, text: str) -> str:
+        run = self._active_turns.get(turn_id)
+        if run is None:
+            return "refused"
+        result = await run.steer(text)
+        if result == "steered":
+            recorded = await run._emit("turn.steered", {"text": text})
+            if not recorded:
+                return "indeterminate"
+        return result
 
 
 @dataclass(eq=False)
@@ -394,7 +429,7 @@ class _CodexTurn:
         if has_gated_mcp and (not self.tools or self.mode == 'plan'):
             # Codex 0.164 refuses MCP elicitation with approvalPolicy=never. The
             # app still gates every attached MCP call; native tools stay read-only/denied.
-            self.policy = CodexPolicy('untrusted', 'read-only', 'readOnly')
+            self.policy = CodexPolicy('untrusted', 'read-only', 'readOnly', 'user')
         self.max_text = app_settings.get("LOCAL_MAX_OUTPUT_BYTES")
         self.clock = TurnClock(app_settings.get("LOCAL_TASK_TIMEOUT_SECONDS"))
         self.workspace = self.ctx.workspace or local_claude_runner.workspace_dir()
@@ -485,7 +520,7 @@ class _CodexTurn:
         common = {
             "cwd": str(self.workspace),
             "approvalPolicy": self.policy.approval,
-            "approvalsReviewer": "user",
+            "approvalsReviewer": self.policy.reviewer,
             "sandbox": self.policy.sandbox,
         }
         if self.ctx.model:
@@ -606,7 +641,7 @@ class _CodexTurn:
             "threadId": self.thread_id,
             "input": [{"type": "text", "text": self.ctx.prompt}],
             "approvalPolicy": self.policy.approval,
-            "approvalsReviewer": "user",
+            "approvalsReviewer": self.policy.reviewer,
             "sandboxPolicy": {"type": self.policy.sandbox_type},
         }
         if self.ctx.model:
@@ -697,15 +732,36 @@ class _CodexTurn:
         except (RpcError, RpcClosed, asyncio.TimeoutError):
             pass
 
+    async def steer(self, text: str) -> str:
+        """Add text to this active Codex turn without changing its sandbox."""
+        if self.rpc is None or self.rpc.closed or not (self.thread_id and self.codex_turn_id) or self.completed:
+            return "refused"
+        try:
+            await self.rpc.request(
+                "turn/steer",
+                {
+                    "threadId": self.thread_id,
+                    "expectedTurnId": self.codex_turn_id,
+                    "input": [{"type": "text", "text": text}],
+                },
+                timeout=STEER_TIMEOUT_SECONDS,
+            )
+            return "steered"
+        except asyncio.TimeoutError:
+            return "indeterminate"
+        except (RpcError, RpcClosed):
+            return "refused"
+
     # -- what Codex sends ------------------------------------------------------------
 
-    async def _emit(self, type_: str, data: dict) -> None:
+    async def _emit(self, type_: str, data: dict) -> bool:
         if self.sink.lost:
-            return
+            return False
         try:
-            await self.sink.emit(type_, data)
+            return await self.sink.emit(type_, data)
         except Exception:  # noqa: BLE001
             logger.exception("could not record a Codex event", thread_id=self.ctx.thread_id)
+            return False
 
     async def _notification(self, message: dict) -> None:
         method = message.get("method")
