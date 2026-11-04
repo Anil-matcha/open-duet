@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Paperclip, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, FileText, Image as ImageIcon, Music, Paperclip, Plus, Sparkles, Square, Video as VideoIcon, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { isLongPaste, isSendKey, livePastes, removePaste } from "@/lib/composer";
@@ -12,6 +12,33 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { PendingAttachments } from "./Attachments";
 
 const MAX_HEIGHT_PX = 200;
+
+const UPLOAD_CATEGORIES = [
+  {
+    id: "documents",
+    label: "Document",
+    icon: FileText,
+    accept: ".pdf,.docx,.doc,.xlsx,.xls,.pptx,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.ms-excel",
+  },
+  {
+    id: "images",
+    label: "Image",
+    icon: ImageIcon,
+    accept: "image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp",
+  },
+  {
+    id: "videos",
+    label: "Video",
+    icon: VideoIcon,
+    accept: "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.mkv",
+  },
+  {
+    id: "audio",
+    label: "Audio",
+    icon: Music,
+    accept: "audio/*,.wav,.mp3,.m4a,.ogg,.flac,.webm",
+  },
+];
 
 // The message box: full-width text area with chips on top and action bar (paperclip, skills, Send/Stop) on the bottom.
 // Enter sends, Shift+Enter adds a line, and Enter during IME composition does neither.
@@ -82,6 +109,9 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const attachButtonRef = useRef<HTMLButtonElement>(null);
   const [focused, setFocused] = useState(false);
   const menuId = useId();
   // Long pasted blocks show as a chip; the text stays in the box so Send still includes it.
@@ -131,6 +161,38 @@ export function Composer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    function onPointerDown(e: MouseEvent | TouchEvent) {
+      if (
+        attachMenuRef.current &&
+        !attachMenuRef.current.contains(e.target as Node) &&
+        attachButtonRef.current &&
+        !attachButtonRef.current.contains(e.target as Node)
+      ) {
+        setAttachMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setAttachMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachMenuOpen]);
+
+  const triggerUploadCategory = (acceptPattern: string) => {
+    if (!picker.current) return;
+    picker.current.accept = acceptPattern;
+    picker.current.click();
+    setAttachMenuOpen(false);
+  };
 
   const canSend = !sending && blockedReason === null && value.trim() !== "";
   const carriesFiles = (types: readonly string[]) => types.includes("Files");
@@ -291,11 +353,12 @@ export function Composer({
                     return;
                   }
                 }
-                if (e.key === "Escape" && (slashOpen || pickerOpen)) {
+                if (e.key === "Escape" && (slashOpen || pickerOpen || attachMenuOpen)) {
                   e.preventDefault();
                   e.stopPropagation();
                   dismissMenu();
                   setPickerOpen(false);
+                  setAttachMenuOpen(false);
                   return;
                 }
                 if (isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.nativeEvent.keyCode })) {
@@ -314,7 +377,7 @@ export function Composer({
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
             <div className="flex items-center gap-1">
               {onAddFiles && (
-                <>
+                <div className="relative">
                   <input
                     ref={picker}
                     type="file"
@@ -322,30 +385,82 @@ export function Composer({
                     hidden
                     aria-hidden
                     tabIndex={-1}
-                    accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
+                    accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.wav,.mp3,.m4a,.ogg,.flac,.webm,image/png,image/jpeg,image/gif,image/webp,.mp4,.mov,.txt,.md,.csv,.tsv,.json,.log,.yaml,.yml,.xml,.html,.css,.js,.ts,.tsx,.py,.sh,.sql,.toml,.ini"
                     onChange={(e) => {
                       onAddFiles(Array.from(e.target.files ?? []));
                       e.target.value = "";
                     }}
                   />
-                  <Tooltip content={t("composer.attach")}>
+                  <Tooltip content={attachMenuOpen ? "Close menu" : t("composer.attach")}>
                     <button
+                      ref={attachButtonRef}
                       type="button"
-                      onClick={() => picker.current?.click()}
+                      onClick={() => {
+                        dismissMenu();
+                        setPickerOpen(false);
+                        setAttachMenuOpen((open) => !open);
+                      }}
                       disabled={sending || running}
                       aria-label={t("composer.attachButton")}
-                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                      aria-haspopup="menu"
+                      aria-expanded={attachMenuOpen}
+                      className={cn(
+                        "inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-all duration-(--dur-base) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10",
+                        attachMenuOpen && "bg-hover text-ink shadow-xs"
+                      )}
                     >
-                      <Paperclip size={18} aria-hidden="true" />
+                      <Plus
+                        size={19}
+                        className={cn(
+                          "transition-transform duration-(--dur-base) ease-[var(--ease-ui)]",
+                          attachMenuOpen && "rotate-45 text-accent"
+                        )}
+                        aria-hidden="true"
+                      />
                     </button>
                   </Tooltip>
-                </>
+
+                  {/* Smooth Animated Minimal Upload Category Menu */}
+                  <div
+                    ref={attachMenuRef}
+                    role="menu"
+                    aria-label="Upload options"
+                    className={cn(
+                      "absolute bottom-full left-0 mb-2 w-40 origin-bottom-left rounded-xl border border-line bg-raised/95 p-1 shadow-lg backdrop-blur-md transition-all duration-(--dur-base) ease-[var(--ease-ui)] z-50",
+                      attachMenuOpen
+                        ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+                        : "opacity-0 scale-95 translate-y-1 pointer-events-none"
+                    )}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      {UPLOAD_CATEGORIES.map((cat) => {
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => triggerUploadCategory(cat.accept)}
+                            className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-ink transition-colors duration-(--dur-fast) hover:bg-hover hover:text-accent cursor-pointer"
+                          >
+                            <Icon size={15} className="shrink-0 text-muted transition-colors group-hover:text-accent" aria-hidden="true" />
+                            <span>{cat.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               )}
               {onToggleSkill && (
                 <Tooltip content={t("composer.pickSkills")}>
                   <button
                     type="button"
-                    onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
+                    onClick={() => {
+                      dismissMenu();
+                      setAttachMenuOpen(false);
+                      setPickerOpen((open) => !open);
+                    }}
                     disabled={sending || running}
                     aria-label={t("composer.pickSkillsButton")}
                     aria-expanded={pickerOpen}

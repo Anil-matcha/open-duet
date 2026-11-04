@@ -78,8 +78,14 @@ test('conversation totals count only reported turns', () => {
 test('attachments are checked like the server does', () => {
   assert.equal(attachmentProblem({ name: 'a.png', type: 'image/png', size: 10 }), null);
   assert.equal(attachmentProblem({ name: 'notes.MD', type: '', size: 10 }), null);
+  assert.equal(attachmentProblem({ name: 'document.pdf', type: 'application/pdf', size: 100 }), null);
+  assert.equal(attachmentProblem({ name: 'report.docx', type: '', size: 100 }), null);
+  assert.equal(attachmentProblem({ name: 'data.xlsx', type: '', size: 100 }), null);
+  assert.equal(attachmentProblem({ name: 'clip.mp4', type: 'video/mp4', size: 1000 }), null);
   assert.match(attachmentProblem({ name: 'big.png', type: 'image/png', size: 11 * 1024 * 1024 }), /10 MB/);
   assert.match(attachmentProblem({ name: 'big.txt', type: 'text/plain', size: 2 * 1024 * 1024 }), /1 MB/);
+  assert.match(attachmentProblem({ name: 'big.pdf', type: 'application/pdf', size: 26 * 1024 * 1024 }), /25 MB/);
+  assert.match(attachmentProblem({ name: 'big.mp4', type: 'video/mp4', size: 55 * 1024 * 1024 }), /50 MB/);
   assert.match(attachmentProblem({ name: 'setup.exe', type: 'application/x-msdownload', size: 10 }), /can't be attached/);
   assert.match(attachmentProblem({ name: 'empty.txt', type: 'text/plain', size: 0 }), /empty/);
 });

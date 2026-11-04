@@ -17,7 +17,7 @@ from app.services.thread_runtime import ThreadRuntime
 
 router = APIRouter(prefix="/threads", tags=["Attachments"], dependencies=[Depends(require_local_access)])
 
-_READ_LIMIT = max(attachments.IMAGE_MAX_BYTES, audio_ingestion.MAX_BYTES) + 1
+_READ_LIMIT = max(attachments.IMAGE_MAX_BYTES, audio_ingestion.MAX_BYTES, attachments.DOCUMENT_MAX_BYTES, attachments.VIDEO_MAX_BYTES) + 1
 
 
 class AttachmentResponse(BaseModel):
@@ -25,9 +25,10 @@ class AttachmentResponse(BaseModel):
     name: str
     mime: str
     bytes: int
-    # image | text | audio
+    # image | text | audio | document | video
     kind: str
     transcript: dict | None = None
+    extracted_text: str | None = None
 
 
 def _refuse(error: attachments.AttachmentError) -> HTTPException:
@@ -45,7 +46,7 @@ async def upload_attachment(
     if len(data) >= _READ_LIMIT:
         raise _refuse(
             attachments.AttachmentError(
-                413, "too_large", f"{attachments.display_name(file.filename)} is over the 25 MB upload limit."
+                413, "too_large", f"{attachments.display_name(file.filename)} is over the upload limit."
             )
         )
     try:
@@ -68,7 +69,7 @@ async def get_attachment(thread_id: int, attachment_id: str, rt: ThreadRuntime =
         attachment, data = await run_in_threadpool(attachments.read_bytes, thread_id, attachment_id)
     except attachments.AttachmentError as error:
         raise _refuse(error) from None
-    media = attachment.mime if attachment.kind in ("image", "audio") else "text/plain; charset=utf-8"
+    media = attachment.mime if attachment.kind in ("image", "audio", "video", "document") else "text/plain; charset=utf-8"
     return Response(
         content=data,
         media_type=media,

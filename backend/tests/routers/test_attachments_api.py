@@ -109,8 +109,9 @@ def test_saved_files_get_a_uuid_name_in_a_private_folder(attachments_dir):
     folder = attachments_dir / "5"
     assert sorted(p.name for p in folder.iterdir()) == sorted([f"{saved.id}.png", f"{saved.id}.json"])
     assert saved.name == "holiday photo.png"
-    assert oct(os.stat(folder).st_mode & 0o777) == "0o700"
-    assert oct(os.stat(folder / f"{saved.id}.png").st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct(os.stat(folder).st_mode & 0o777) == "0o700"
+        assert oct(os.stat(folder / f"{saved.id}.png").st_mode & 0o777) == "0o600"
     with pytest.raises(attachments.AttachmentError):
         attachments.load(5, "../" + saved.id)
     with pytest.raises(attachments.AttachmentError):
@@ -294,3 +295,128 @@ async def test_audio_deleted_thread_is_rechecked_before_save(api, owner, session
     assert response.status_code == 404
     assert checks == [thread_id, thread_id]
     assert not attachments.thread_dir(thread_id).exists()
+
+
+# --- BL-49 document and media extraction tests ---------------------------------------------------
+
+
+def test_pdf_document_extraction_and_prompt_injection(attachments_dir):
+    import io
+    import pypdf
+
+    # Build a minimal valid PDF with text
+    content_stream = b"BT /F1 12 Tf 72 712 Td (Quarterly Financial Report 2026) Tj ET"
+    stream_len = len(content_stream)
+    pdf_bytes = f"""%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj
+4 0 obj << /Length {stream_len} >> stream
+""".encode("latin-1") + content_stream + b"""
+endstream
+endobj
+5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000244 00000 n 
+0000000350 00000 n 
+trailer << /Size 6 /Root 1 0 R >>
+startxref
+428
+%%EOF"""
+
+    saved = attachments.save(2, "report.pdf", "application/pdf", pdf_bytes)
+    assert saved.kind == "document"
+    assert saved.extracted_text is not None
+    assert "Quarterly Financial Report 2026" in saved.extracted_text
+
+    loaded_att, path = attachments.load(2, saved.id)
+    assert loaded_att.kind == "document"
+    prompt = attachments.prompt_with_text_files("Summarise this report", [(loaded_att, path)])
+    assert "Attached file report.pdf:" in prompt
+    assert "Quarterly Financial Report 2026" in prompt
+
+
+def test_docx_document_extraction(attachments_dir):
+    import io
+    import docx
+
+    doc = docx.Document()
+    doc.add_heading("Project Overview", level=1)
+    doc.add_paragraph("This is the design specification for Open Duet.")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Score"
+    table.cell(1, 0).text = "Accuracy"
+    table.cell(1, 1).text = "99%"
+    buf = io.BytesIO()
+    doc.save(buf)
+
+    saved = attachments.save(3, "spec.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buf.getvalue())
+    assert saved.kind == "document"
+    assert "Project Overview" in saved.extracted_text
+    assert "This is the design specification" in saved.extracted_text
+    assert "Metric | Score" in saved.extracted_text
+
+
+def test_xlsx_spreadsheet_extraction(attachments_dir):
+    import io
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Budgets"
+    ws.append(["Category", "Q1", "Q2"])
+    ws.append(["Engineering", 10000, 15000])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    saved = attachments.save(4, "budget.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buf.getvalue())
+    assert saved.kind == "document"
+    assert "--- Sheet: Budgets ---" in saved.extracted_text
+    assert "Category\tQ1\tQ2" in saved.extracted_text
+    assert "Engineering\t10000\t15000" in saved.extracted_text
+
+
+def test_encrypted_pdf_is_refused_with_clear_error(attachments_dir):
+    import io
+    import pypdf
+
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.encrypt("topsecret")
+    buf = io.BytesIO()
+    writer.write(buf)
+
+    with pytest.raises(attachments.AttachmentError) as exc:
+        attachments.save(1, "confidential.pdf", "application/pdf", buf.getvalue())
+    assert exc.value.status == 422
+    assert exc.value.code == "encrypted_document"
+    assert "password protected" in exc.value.message
+
+
+def test_corrupted_document_is_refused_with_clear_error(attachments_dir):
+    with pytest.raises(attachments.AttachmentError) as exc:
+        attachments.save(1, "corrupt.pdf", "application/pdf", b"garbage not a pdf")
+    assert exc.value.status == 422
+    assert exc.value.code == "corrupt_document"
+
+    with pytest.raises(attachments.AttachmentError) as exc_docx:
+        attachments.save(1, "corrupt.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", b"not a docx")
+    assert exc_docx.value.status == 422
+    assert exc_docx.value.code == "corrupt_document"
+
+
+def test_video_attachment_classification_and_prompt(attachments_dir):
+    video_bytes = b"\x00\x00\x00 ftypisom\x00\x00\x02\x00isomiso2avc1mp41" + b"\x00" * 100
+    saved = attachments.save(5, "demo.mp4", "video/mp4", video_bytes)
+    assert saved.kind == "video"
+    assert saved.mime == "video/mp4"
+
+    loaded_att, path = attachments.load(5, saved.id)
+    prompt = attachments.prompt_with_text_files("What is in this video?", [(loaded_att, path)])
+    assert "Attached video file: demo.mp4" in prompt
