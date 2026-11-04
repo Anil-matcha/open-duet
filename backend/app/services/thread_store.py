@@ -158,7 +158,7 @@ async def set_model(db: AsyncSession, thread_id: int, model: str | None, effort:
     state = dict(thread.provider_state or {})
     if effort is not None:
         state["effort"] = effort
-    elif "effort" in state and model is None:
+    else:
         state.pop("effort", None)
     return await _change_quietly(db, thread_id, model=model, provider_state=state)
 
