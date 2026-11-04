@@ -494,6 +494,7 @@ class _AcpTurn:
         caps = init.get("agentCapabilities") if isinstance(init.get("agentCapabilities"), dict) else {}
         can_load = caps.get("loadSession") is True
         self.preamble = ""
+        resumed = False
         if self.ctx.resume and self.saved_session and can_load:
             try:
                 # Replayed history arrives before the prompt and is dropped.
@@ -502,19 +503,25 @@ class _AcpTurn:
                     {"sessionId": self.saved_session, "cwd": str(self.workspace), "mcpServers": self._mcp_servers()},
                     handle_incoming=True,
                 )
+                self.session_id = self.saved_session
+                resumed = True
             except RpcError as exc:
                 if self.adapter.is_auth_error(exc):
                     return self._failed(self.adapter.signed_out_message(), "engine_signed_out")
-                return self._failed(
-                    "The agent could not load this conversation's session, so it cannot continue it. "
-                    f"Start a new session to go on. ({exc})",
-                    "session_resume_failed",
-                    session_state="broken",
-                )
+                if getattr(self.adapter, "auto_recover_session", False):
+                    logger.info("Could not load previous session (%s); starting a new session with replayed history", exc)
+                    self.saved_session = None
+                else:
+                    return self._failed(
+                        "The agent could not load this conversation's session, so it cannot continue it. "
+                        f"Start a new session to go on. ({exc})",
+                        "session_resume_failed",
+                        session_state="broken",
+                    )
             except (RpcClosed, asyncio.TimeoutError) as exc:
                 return self._failed(self._why(exc, "The agent did not load the session."), "cli_error")
-            self.session_id = self.saved_session
-        else:
+
+        if not resumed:
             if self.ctx.resume:
                 try:
                     self.preamble = history_preamble(await self.ctx.history(), self.ctx.turn_id)

@@ -55,6 +55,7 @@ export const pl: Record<MessageKey, string> = {
   "time.now": "przed chwilą",
   "time.minutes": "{n} min temu",
   "time.hours": "{n} godz. temu",
+  "time.today": "dzisiaj",
   "time.yesterday": "wczoraj",
   "time.days": "{n} dni temu",
   "palette.title": "Przejdź do",

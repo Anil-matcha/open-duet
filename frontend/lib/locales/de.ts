@@ -55,6 +55,7 @@ export const de: Record<MessageKey, string> = {
   "time.now": "gerade eben",
   "time.minutes": "vor {n} Min.",
   "time.hours": "vor {n} Std.",
+  "time.today": "heute",
   "time.yesterday": "gestern",
   "time.days": "vor {n} Tagen",
   "palette.title": "Gehe zu",

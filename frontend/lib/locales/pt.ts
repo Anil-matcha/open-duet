@@ -55,6 +55,7 @@ export const pt: Record<MessageKey, string> = {
   "time.now": "agora mesmo",
   "time.minutes": "há {n} min",
   "time.hours": "há {n} h",
+  "time.today": "hoje",
   "time.yesterday": "ontem",
   "time.days": "há {n} dias",
   "palette.title": "Ir para",

@@ -12,6 +12,7 @@ import { RoomSettings } from "./RoomSettings";
 import { SharedApproval } from "./SharedApproval";
 import { Markdown } from "./Markdown";
 import { useT } from "@/lib/use-i18n";
+import { formatMessageTime } from "@/lib/relative-time";
 
 const BUTTON = "rounded-field border border-line px-3 py-1.5 text-sm hover:bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50";
 const ACTIVE_DISPATCH_STATES = ["queued", "running", "needs_input"];
@@ -230,7 +231,7 @@ export function RoomView({ roomId, agents, onClose, onSelect, onTitleChange }: {
           >
             {messages.length === 0 && <p className="mx-auto max-w-xl rounded-card border border-dashed border-line p-6 text-center text-sm text-muted">{t("room.startConversation")} {t("room.tagToReply")}</p>}
             {messages.map(message => <article key={message.seq} className="mx-auto max-w-4xl space-y-1.5">
-              <p className="text-xs font-semibold text-muted">{messageAuthorName(message)} <time className="ml-1 font-normal" dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></p>
+              <p className="text-xs font-semibold text-muted">{messageAuthorName(message)} <time className="ml-1 font-normal" dateTime={message.created_at}>{formatMessageTime(message.created_at, t)}</time></p>
               <div className="break-words text-sm leading-relaxed"><Markdown text={message.text} /></div>
               {message.source?.thread_id && <Link className="text-xs underline" href={`/chat?thread=${message.source.thread_id}`}>{t("room.seeWork")}</Link>}
             </article>)}

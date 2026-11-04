@@ -55,6 +55,7 @@ export const ko: Record<MessageKey, string> = {
   "time.now": "방금",
   "time.minutes": "{n}분 전",
   "time.hours": "{n}시간 전",
+  "time.today": "오늘",
   "time.yesterday": "어제",
   "time.days": "{n}일 전",
   "palette.title": "이동",

@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/Button";
 import { Markdown } from "./Markdown";
 import { copyToClipboard } from "@/lib/clipboard";
 import { MessageAttachments } from "./Attachments";
+import { formatDateDivider, formatMessageTime } from "@/lib/relative-time";
+export { formatDateDivider, formatMessageTime };
 
 type Item<K extends TranscriptItem["kind"]> = Extract<TranscriptItem, { kind: K }>;
 
@@ -44,12 +46,20 @@ function LongText({ value }: { value: string }) {
   );
 }
 
-// Copies a message's text. Revealed on hover or keyboard focus, and always visible on touch screens.
-export function formatMessageTime(ts?: string | null): string | null {
-  if (!ts) return null;
-  const date = new Date(ts);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+export function DateDivider({ ts }: { ts: string }) {
+  const t = useT();
+  const label = formatDateDivider(ts, t);
+  if (!label) return null;
+  return (
+    <div className="relative my-3 flex items-center justify-center select-none" role="separator" aria-label={label}>
+      <div className="absolute inset-0 flex items-center" aria-hidden="true">
+        <div className="w-full border-t border-line/60" />
+      </div>
+      <span className="relative rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11px] font-medium text-muted shadow-2xs">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 function CopyButton({ text, className }: { text: string; className?: string }) {
@@ -84,7 +94,8 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
 }
 
 export function UserMessage({ item, threadId = null }: { item: Item<"user">; threadId?: number | null }) {
-  const timeStr = formatMessageTime(item.ts);
+  const t = useT();
+  const timeStr = formatMessageTime(item.ts, t);
   return (
     <div className="group/msg flex flex-col items-end gap-1">
       <MessageAttachments threadId={threadId} items={item.attachments ?? []} />
@@ -130,7 +141,7 @@ export function AssistantMessage({
   disabled?: boolean;
 }) {
   const t = useT();
-  const timeStr = formatMessageTime(ts);
+  const timeStr = formatMessageTime(ts, t);
   return (
     <div className="group/msg max-w-full text-[15px] leading-relaxed">
       <Markdown text={text} />
