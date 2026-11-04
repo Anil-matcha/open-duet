@@ -24,6 +24,7 @@ export function Composer({
   blockedAction,
   error,
   running,
+  workingMode = null,
   stopping,
   onStop,
   files = [],
@@ -50,6 +51,8 @@ export function Composer({
   error: string | null;
   // An answer is being written: the button becomes Stop.
   running: boolean;
+  // While running, text is steered into the live turn or queued for the next one.
+  workingMode?: "steer" | "queue" | null;
   // Stop was pressed and the answer has not ended yet.
   stopping: boolean;
   onStop: () => void;
@@ -104,12 +107,12 @@ export function Composer({
   // A changed query or available list starts at the first result, even after Escape.
   const menuContext = JSON.stringify([value, completions.map((s) => s.name)]);
   const activeIndex = menu.context === menuContext ? Math.min(menu.index, Math.max(0, completions.length - 1)) : 0;
-  const slashOpen = focused && !sending && !pickerOpen && !!onToggleSkill && /^\/[a-z0-9-]*$/.test(value)
+  const slashOpen = focused && !sending && !running && !pickerOpen && !!onToggleSkill && /^\/[a-z0-9-]*$/.test(value)
     && !(menu.context === menuContext && menu.dismissed);
   const activeOption = slashOpen && completions.length > 0 ? `${menuId}-${activeIndex}` : undefined;
   const dismissMenu = () => setMenu({ context: menuContext, index: activeIndex, dismissed: true });
   const pick = (name: string) => {
-    if (sending || (!chosenSkills.includes(name) && chosenSkills.length >= MAX_SKILLS_PER_MESSAGE)) return;
+    if (sending || running || (!chosenSkills.includes(name) && chosenSkills.length >= MAX_SKILLS_PER_MESSAGE)) return;
     onToggleSkill?.(name);
     onChange("");
     box.current?.focus();
@@ -270,7 +273,7 @@ export function Composer({
                 }
                 if (!onAddFiles) return;
                 e.preventDefault();
-                onAddFiles(pasted);
+                if (!running) onAddFiles(pasted);
               }}
               onKeyDown={(e) => {
                 if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
@@ -301,7 +304,7 @@ export function Composer({
                 }
               }}
               rows={1}
-              placeholder={blockedReason ?? t("composer.placeholder")}
+              placeholder={blockedReason ?? (workingMode === "steer" ? t("composer.steerPlaceholder") : workingMode === "queue" ? t("composer.queuePlaceholder") : t("composer.placeholder"))}
               aria-label={t("composer.label")}
               className="block w-full max-h-52 min-h-11 resize-none bg-transparent px-2.5 pt-1.5 pb-1 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint focus-visible:outline-none"
             />
@@ -329,7 +332,7 @@ export function Composer({
                     <button
                       type="button"
                       onClick={() => picker.current?.click()}
-                      disabled={sending}
+                      disabled={sending || running}
                       aria-label={t("composer.attachButton")}
                       className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
                     >
@@ -343,7 +346,7 @@ export function Composer({
                   <button
                     type="button"
                     onClick={() => { dismissMenu(); setPickerOpen((open) => !open); }}
-                    disabled={sending}
+                    disabled={sending || running}
                     aria-label={t("composer.pickSkillsButton")}
                     aria-expanded={pickerOpen}
                     className={cn(
@@ -359,17 +362,34 @@ export function Composer({
 
             <div className="flex items-center gap-2">
               {running ? (
-                <Tooltip content={stopping ? t("composer.stopping") : t("composer.stopGenerating")}>
-                  <button
-                    type="button"
-                    onClick={onStop}
-                    disabled={stopping}
-                    aria-label={stopping ? t("composer.stoppingLabel") : t("composer.stopGenerating")}
-                    className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger shadow-xs transition-colors duration-(--dur-fast) hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
-                  >
-                    <Square size={13} aria-hidden="true" />
-                  </button>
-                </Tooltip>
+                <>
+                  {workingMode && (
+                    <Tooltip content={workingMode === "steer" ? t("composer.steerHint") : t("composer.queueHint")}>
+                      <span>
+                        <button
+                          type="button"
+                          onClick={onSend}
+                          disabled={!canSend}
+                          aria-label={workingMode === "steer" ? t("composer.steerHint") : t("composer.queueHint")}
+                          className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-accent-fg shadow-xs transition-all duration-(--dur-fast) hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 touch:size-10"
+                        >
+                          <ArrowUp size={16} aria-hidden="true" />
+                        </button>
+                      </span>
+                    </Tooltip>
+                  )}
+                  <Tooltip content={stopping ? t("composer.stopping") : t("composer.stopGenerating")}>
+                    <button
+                      type="button"
+                      onClick={onStop}
+                      disabled={stopping}
+                      aria-label={stopping ? t("composer.stoppingLabel") : t("composer.stopGenerating")}
+                      className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger shadow-xs transition-colors duration-(--dur-fast) hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50 touch:size-10"
+                    >
+                      <Square size={13} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </>
               ) : (
                 <Tooltip content={sending ? t("composer.sending") : canSend ? t("composer.sendHint") : (blockedReason ?? t("composer.enterMessageHint"))}>
                   <span>

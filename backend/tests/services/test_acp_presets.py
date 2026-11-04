@@ -46,6 +46,12 @@ async def test_cursor_key_skips_auth_and_confirms_parameterized_model(fake):
     assert "CURSOR_API_KEY" in names and "TOKEN_ENCRYPTION_KEYS" not in names
 
 
+def test_cursor_uses_its_native_reviewer_only_for_approve_for_me():
+    adapter = CursorAdapter()
+    assert adapter.mode_args(SimpleNamespace(approval_mode="approve_for_me"), {}) == ["--auto-review", "acp"]
+    assert adapter.mode_args(SimpleNamespace(approval_mode="ask"), {}) == ["acp"]
+
+
 async def test_auth_failure_fails_before_prompt_without_ambient_login(fake, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)

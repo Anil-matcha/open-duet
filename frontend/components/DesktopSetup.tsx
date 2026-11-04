@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type ApplicationSetting, type ApprovalMode, type DesktopSettings, type Engine } from "@/lib/api";
-import { APPROVAL_MODES, modelLabel } from "@/lib/agents";
+import { approvalModesForProvider, modelLabel } from "@/lib/agents";
 import { EngineSettings } from "./EngineSettings";
 import { EngineModelFields } from "./chat/EngineModelFields";
 import { firstReadyEngine } from "@/lib/engines";
@@ -113,7 +113,7 @@ export function DesktopSetup({ settings, onSaved, onFinished }: {
             <details>
               <summary className="cursor-pointer text-sm underline">Advanced: engine and model</summary>
               <div className="mt-3">
-                <EngineModelFields engines={engines} provider={provider} model={model} disabled={busy} onChange={(nextProvider, nextModel) => { setProvider(nextProvider); setModel(nextModel); }} />
+                <EngineModelFields engines={engines} provider={provider} model={model} disabled={busy} onChange={(nextProvider, nextModel) => { setProvider(nextProvider); setModel(nextModel); if (!approvalModesForProvider(nextProvider).some((option) => option.value === mode)) setMode("ask"); }} />
               </div>
             </details>
           )}
@@ -157,7 +157,7 @@ export function DesktopSetup({ settings, onSaved, onFinished }: {
           )}
           <fieldset className="space-y-2" disabled={busy || !createAgent}>
             <legend className="mb-2 text-sm font-medium">Starter agent approval mode</legend>
-            {APPROVAL_MODES.map((option) => (
+            {approvalModesForProvider(provider).map((option) => (
               <label key={option.value} className="flex items-start gap-2 text-sm">
                 <input type="radio" name="setup-approval" value={option.value} checked={mode === option.value} onChange={() => setMode(option.value)} className="mt-0.5 accent-(--accent)" />
                 <span>{option.label}<span className="mt-1 block text-xs text-muted">{option.description}</span></span>
@@ -175,7 +175,7 @@ export function DesktopSetup({ settings, onSaved, onFinished }: {
             <SummaryRow label="Engine" value={`${engine?.label ?? provider} · ${modelLabel(model)}`} />
             <SummaryRow label="Workspace root" value={workspace.trim() || "App default"} />
             <SummaryRow label="Local tools" value={tools ? "on" : "off"} />
-            <SummaryRow label="Agent" value={createAgent ? `Create ${agentName.trim()} with ${APPROVAL_MODES.find((item) => item.value === mode)?.label}.` : "Use your existing agents, or start a plain chat."} />
+            <SummaryRow label="Agent" value={createAgent ? `Create ${agentName.trim()} with ${approvalModesForProvider(provider).find((item) => item.value === mode)?.label}.` : "Use your existing agents, or start a plain chat."} />
           </dl>
         </div>
       )}

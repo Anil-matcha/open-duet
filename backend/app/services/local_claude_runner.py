@@ -158,9 +158,10 @@ class RunControl:
     def _attach(self, proc: subprocess.Popen, timeout_seconds: float, on_timeout) -> None:
         with self._lock:
             self._proc = proc
-            self._timeout_seconds = timeout_seconds
-            self._on_timeout = on_timeout
-            self._start_timer(timeout_seconds)
+            if timeout_seconds > 0:
+                self._timeout_seconds = timeout_seconds
+                self._on_timeout = on_timeout
+                self._start_timer(timeout_seconds)
             killed = self._killed
         if killed:  # kill() was called before the process existed
             _kill_tree(proc)
@@ -216,7 +217,7 @@ class RunControl:
         """Stop the clock (nested calls are counted). Waiting for a person is
         not Claude running too long; the wait has its own limit."""
         with self._lock:
-            if self._finished:
+            if self._finished or self._timer is None:
                 return
             self._pauses += 1
             if self._pauses == 1 and self._timer is not None:
@@ -225,7 +226,7 @@ class RunControl:
 
     def resume_deadline(self) -> None:
         with self._lock:
-            if self._finished or self._pauses == 0:
+            if self._finished or self._timer is None or self._pauses == 0:
                 return
             self._pauses -= 1
             if self._pauses == 0:
@@ -444,7 +445,7 @@ def run_blocking(
             state["truncated"] = True
             _kill_tree(proc)
 
-    timer = None if control is not None else threading.Timer(timeout_seconds, on_timeout)
+    timer = None if control is not None or timeout_seconds <= 0 else threading.Timer(timeout_seconds, on_timeout)
     stdout_reader = (
         threading.Thread(target=drain_lines, args=(proc.stdout,))
         if on_stdout_line is not None
@@ -458,7 +459,7 @@ def run_blocking(
     ]
     if control is not None:
         control._attach(proc, timeout_seconds, on_timeout)
-    else:
+    elif timer is not None:
         timer.start()
     for reader in readers:
         reader.start()
@@ -477,7 +478,7 @@ def run_blocking(
     finally:
         if control is not None:
             control._finish()
-        else:
+        elif timer is not None:
             timer.cancel()
         # A killed child's grandchildren could still hold the pipes open.
         for reader in readers:

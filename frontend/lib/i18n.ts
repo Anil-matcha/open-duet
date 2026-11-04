@@ -154,6 +154,15 @@ export const en = {
   "chat.cancelAudio": "Cancel audio processing",
   "chat.transcriptCaveat": "Machine transcripts may contain uncertain words or names. Review the transcript before requesting later actions.",
   "composer.placeholder": "Message your agent",
+  "composer.steerPlaceholder": "Type to steer the running turn",
+  "composer.queuePlaceholder": "Type a message to send after this turn",
+  "composer.steerHint": "Send this into the running turn",
+  "composer.queueHint": "Queue this for the next turn",
+  "composer.queuedForNext": "Queued for the next turn",
+  "composer.removeQueued": "Remove queued message",
+  "composer.retryQueued": "Retry sending queued message",
+  "composer.queueFull": "The follow-up queue is full. Remove a message before adding another.",
+  "composer.messageTooLong": "Messages can be at most 100,000 characters.",
   "composer.label": "Message",
   "composer.attach": "Attach files or media",
   "composer.attachButton": "Attach files",
@@ -502,6 +511,15 @@ export type MessageKey = Exclude<keyof typeof en,
   | "chat.reaction.replyThumbsUp"
   | "chat.reaction.replyThumbsDown"
   | "chat.reaction.sent"
+  | "composer.steerPlaceholder"
+  | "composer.queuePlaceholder"
+  | "composer.steerHint"
+  | "composer.queueHint"
+  | "composer.queuedForNext"
+  | "composer.removeQueued"
+  | "composer.retryQueued"
+  | "composer.queueFull"
+  | "composer.messageTooLong"
 >;
 type EnglishKey = keyof typeof en;
 export const LOCALES = ["en", "de", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt", "ru", "tr", "zh"] as const;

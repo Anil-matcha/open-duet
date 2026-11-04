@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ScheduleKind = Literal["cron", "weekdays", "interval", "once", "manual"]
-ApprovalMode = Literal["ask", "accept_edits", "plan"]
+ApprovalMode = Literal["ask", "accept_edits", "approve_for_me", "plan"]
 
 
 class ConnectedAppGrant(BaseModel):

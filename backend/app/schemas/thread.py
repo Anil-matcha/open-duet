@@ -120,6 +120,23 @@ class TurnCreateRequest(BaseModel):
         return value
 
 
+class TurnSteerRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
+
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("text must not be blank")
+        return value
+
+
+class TurnSteerResponse(BaseModel):
+    status: Literal["steered"] = "steered"
+    turn_id: int
+
+
 class EventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

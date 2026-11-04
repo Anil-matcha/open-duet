@@ -133,7 +133,8 @@ the engine the way Stop does, and if the adapter still does not return within
 five seconds, stops waiting for it. A turn waiting on an approval is never
 stalled (the approval has its own timeout), and the clock starts after the
 agent's computer is attached. This inactivity limit is separate from the
-30-minute active-time answer limit. An engine process that dies ends its turn
+optional active-time answer limit, which is disabled by default
+(`LOCAL_TASK_TIMEOUT_SECONDS=0`). An engine process that dies ends its turn
 at once, without the watchdog.
 
 ### A broken engine blocks nothing
