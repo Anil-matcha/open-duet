@@ -15,10 +15,10 @@ class ThreadCreateRequest(BaseModel):
     effort: str | None = Field(default=None, max_length=64)
     # Omitted: set from the first prompt.
     title: str | None = Field(default=None, max_length=200)
-    # Start the conversation from a named agent: its provider is used (naming a
-    # different one is a 422), its workspace (or its own folder under the
-    # default root) is pinned, and each message uses its
-    # current instructions, approval mode and, unless `model` is set here, model.
+    # Start the conversation from a named agent: its workspace (or its own
+    # folder under the default root) is pinned, and each message uses its
+    # current instructions and approval mode. The provider defaults to the
+    # agent's engine; an explicit provider overrides it for this conversation.
     agent_id: int | None = None
 
 

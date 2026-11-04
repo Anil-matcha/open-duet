@@ -233,12 +233,15 @@ export function ChatApp() {
   const [remembered, setRemembered] = useState<Record<string, Remembered>>({});
   const [undoneRules, setUndoneRules] = useState<number[]>([]);
   // The agent a new chat will start with (null: a plain chat).
-  const [newAgentId, setNewAgentId] = useState<number | null>(() => parseThreadId(params.get("agent")));
+  const [newAgentId, setNewAgentIdState] = useState<number | null>(() => parseThreadId(params.get("agent")));
+  const newAgentIdRef = useRef(newAgentId);
+  const setNewAgentId = (id: number | null) => { newAgentIdRef.current = id; setNewAgentIdState(id); };
   const [engines, setEngines] = useState<Engine[] | null>(null);
   const cachedPref = readCachedPreference();
   const [newProvider, setNewProvider] = useState(() => params.get("engine") || cachedPref?.provider || "claude");
-  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || cachedPref?.model || null);
-  const [newEffort, setNewEffort] = useState<string | null>(() => params.get("effort") || cachedPref?.effort || null);
+  const [newProviderOverride, setNewProviderOverride] = useState<string | null>(() => params.get("engine"));
+  const [newModel, setNewModel] = useState<string | null>(() => params.get("model") || (newAgentId === null && params.get("engine") === null ? cachedPref?.model ?? null : null));
+  const [newEffort, setNewEffort] = useState<string | null>(() => params.get("effort") || (newAgentId === null && params.get("engine") === null ? cachedPref?.effort ?? null : null));
 
   const [modelDraft, setModelDraft] = useState<{ threadId: number | null; agentId: number | null; provider: string; model: string | null; effort: string | null } | null>(null);
   // A dropdown selection can reach the submit click before the parent render commits.
@@ -272,7 +275,7 @@ export function ChatApp() {
     api.getEnginePreference().then((saved) => {
       if (!live || !saved?.provider) return;
       writeCachedPreference({ provider: saved.provider, model: saved.model, effort: saved.effort });
-      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+      if (!params.get("engine") && threadId === null && startingAgentId === null && newAgentIdRef.current === null) {
         setNewProvider(saved.provider);
         if (!params.get("model")) setNewModel(saved.model);
         if (!params.get("effort")) setNewEffort(saved.effort ?? null);
@@ -288,7 +291,7 @@ export function ChatApp() {
     api.getEngines().then((items) => {
       if (cancelled) return;
       setEngines(items);
-      if (!params.get("engine") && threadId === null && startingAgentId === null) {
+      if (!params.get("engine") && threadId === null && startingAgentId === null && newAgentIdRef.current === null) {
         setNewProvider((current) => {
           const resolved = resolveEngineModel({ provider: current, model: newModel, effort: newEffort }, items);
           if (resolved.model !== newModel && !params.get("model")) {
@@ -477,9 +480,11 @@ export function ChatApp() {
   // The chosen agent may have been archived since: then the chat starts plain.
   const startingAgentId = choosable.some((a) => a.id === newAgentId) ? newAgentId : null;
   const startingAgent = choosable.find((agent) => agent.id === startingAgentId);
-  const selectedProvider = thread?.provider ?? startingAgent?.provider ?? newProvider;
+  const selectedProvider = thread?.provider ?? (startingAgent ? newProviderOverride ?? startingAgent.provider : newProviderOverride ?? newProvider);
   const selectedEngine = engines?.find((engine) => engine.id === selectedProvider);
-  const selectedAgent = threadId === null ? startingAgent : threadAgent?.provider === thread?.provider ? threadAgent : null;
+  const selectedAgent = threadId === null
+    ? (startingAgent?.provider === selectedProvider ? startingAgent : null)
+    : (threadAgent?.provider === thread?.provider ? threadAgent : null);
   const selectedModel = (threadId === null ? newModel : thread?.model) ?? selectedAgent?.model ?? null;
   const selectedEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
   const skillAgent = threadId === null ? startingAgent : threadAgent;
@@ -656,10 +661,10 @@ export function ChatApp() {
     try {
       let id = threadId;
       if (id === null) {
-        id = (await api.createThread(startingAgentId, startingAgentId !== null ? { model: newModel, effort: newEffort } : { provider: newProvider, model: newModel, effort: newEffort })).id;
+        id = (await api.createThread(startingAgentId, { provider: selectedProvider, model: newModel, effort: newEffort })).id;
         if (startingAgentId === null) {
-          writeCachedPreference({ provider: newProvider, model: newModel, effort: newEffort });
-          void api.setEnginePreference({ provider: newProvider, model: newModel, effort: newEffort }).catch(() => {});
+          writeCachedPreference({ provider: selectedProvider, model: newModel, effort: newEffort });
+          void api.setEnginePreference({ provider: selectedProvider, model: newModel, effort: newEffort }).catch(() => {});
         }
         // Open it now: the stream replays from the start, so nothing is missed.
         router.replace(`/chat?thread=${id}`);
@@ -713,11 +718,16 @@ export function ChatApp() {
         setThreads((previous) => previous?.map((item) => item.id === target.threadId ? updated : item) ?? null);
         setOpenedThread((previous) => previous?.id === target.threadId ? updated : previous);
       } else {
-        setNewProvider(target.provider);
         setNewModel(model);
         setNewEffort(effort);
-        writeCachedPreference({ provider: target.provider, model, effort });
-        void api.setEnginePreference({ provider: target.provider, model, effort }).catch(() => {});
+        if (target.agentId !== null) {
+          setNewProviderOverride(target.provider === startingAgent?.provider ? null : target.provider);
+        } else {
+          setNewProvider(target.provider);
+          setNewProviderOverride(null);
+          writeCachedPreference({ provider: target.provider, model, effort });
+          void api.setEnginePreference({ provider: target.provider, model, effort }).catch(() => {});
+        }
       }
       modelDraftRef.current = null;
       setModelDraft((previous) => previous === target ? null : previous);
@@ -872,7 +882,7 @@ export function ChatApp() {
       onOpenSidebar={withSidebar && !sidebarInline ? () => setDrawerOpen(true) : undefined}
       agentChoice={
         roomId === null && agents !== null && threadId === null
-          ? { agents: choosable, value: startingAgentId, onChange: (id) => { setNewAgentId(id); setNewModel(null); setModelDraft(null); } }
+          ? { agents: choosable, value: startingAgentId, onChange: (id) => { setNewAgentId(id); setNewProviderOverride(null); setNewModel(null); setNewEffort(null); modelDraftRef.current = null; setModelDraft(null); } }
           : undefined
       }
       engine={
@@ -1066,7 +1076,8 @@ export function ChatApp() {
                 setModelDraft(next);
               }}
               disabled={modelBusy}
-              lockProvider={threadId !== null || startingAgentId !== null}
+              lockProvider={threadId !== null}
+              hasComputer={startingAgent?.computer != null}
               defaultLabel={selectedAgent ? `Agent default (${modelLabel(selectedAgent.model)})` : undefined}
             />
             {threadId !== null && <p className="text-xs text-muted">The model changes on the next message. This conversation keeps its engine.</p>}

@@ -123,10 +123,6 @@ class AgentArchived(Exception):
     """A new conversation cannot start from an archived agent."""
 
 
-class AgentProviderMismatch(Exception):
-    """The request names a provider other than the agent's."""
-
-
 class SessionNotResettable(Exception):
     """This provider keeps no session of its own, so there is nothing to reset."""
 
@@ -628,10 +624,11 @@ class ThreadRuntime:
         db=None,
     ) -> store.Thread:
         """A new thread for this runtime's owner. With `agent_id` the thread is
-        started from that agent: its provider is used and its workspace is
-        pinned now (later edits to the agent's workspace do not move the
-        thread). Raises UnknownProvider, UnknownAgent, AgentArchived,
-        AgentProviderMismatch, or OSError when the agent's folder is gone."""
+        started from that agent: its workspace is pinned now (later edits
+        to the agent's workspace do not move the thread). If provider is
+        omitted, the agent's engine is used; an explicit provider overrides
+        the engine for this conversation only. Raises UnknownProvider,
+        UnknownAgent, AgentArchived, or OSError when the agent's folder is gone."""
         destination_db = db
         agent = None
         if agent_id is not None:
@@ -641,9 +638,7 @@ class ThreadRuntime:
                 raise UnknownAgent(agent_id)
             if agent.archived_at is not None:
                 raise AgentArchived(agent_id)
-            if provider is not None and provider != agent.provider:
-                raise AgentProviderMismatch(provider)
-            provider = agent.provider
+            provider = provider or agent.provider
         provider = provider or "claude"
         adapter = self.adapters.get(provider)
         if adapter is None:

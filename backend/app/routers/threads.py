@@ -47,7 +47,6 @@ from app.services.thread_runtime import (
     SteerIndeterminate,
     UnknownProvider,
     AgentArchived,
-    AgentProviderMismatch,
     EngineModelInvalid,
     ImagesUnsupported,
     UnknownAgent,
@@ -115,10 +114,6 @@ async def create_thread(payload: ThreadCreateRequest, rt: ThreadRuntime = Depend
         raise _error(422, "agent_not_found", "No such agent.") from None
     except AgentArchived:
         raise _error(409, "agent_archived", "This agent is archived; unarchive it first.") from None
-    except AgentProviderMismatch:
-        raise _error(
-            422, "agent_provider_mismatch", "The provider must match the agent's, or be omitted."
-        ) from None
     except (OSError, ValueError) as exc:
         raise _error(409, "workspace_unavailable", str(exc)) from None
     return (await _with_computers(rt, [thread]))[0]

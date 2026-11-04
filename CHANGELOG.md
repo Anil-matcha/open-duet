@@ -20,6 +20,7 @@
 - Make the phone app pairing QR name the API address instead of the web page when the web UI is a separate dev server (port 3000 against port 8000), and swap `localhost` for the address the page was opened from; when the backend serves the UI, nothing changes.
 - Reopen first-agent setup after the last agent is deleted, carrying forward the saved engine and model.
 - Save the latest model selection from the chat engine/model dialog, even when the dropdown update and submit happen before the next render.
+- Let a new conversation use a different engine from its selected agent while keeping the agent's instructions and workspace.
 - Allow safe Bash approval rules to save commands with long file paths; the credential check no longer treats Unix paths as raw tokens.
 
 ## 0.8.1 - 2026-11-03
