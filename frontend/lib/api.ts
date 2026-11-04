@@ -484,6 +484,7 @@ export type Agent = {
   instructions: string | null;
   provider: string;
   model: string | null;
+  effort?: string | null;
   workspace_path: string | null;
   approval_mode: ApprovalMode;
   pinned?: boolean;
@@ -549,6 +550,7 @@ export type AgentInput = {
   instructions?: string;
   provider?: string;
   model?: string | null;
+  effort?: string | null;
   workspace_path?: string | null;
   approval_mode?: ApprovalMode;
   pinned?: boolean;

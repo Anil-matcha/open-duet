@@ -25,7 +25,7 @@ def test_existing_routines_and_runs_start_without_uninterrupted_access(tmp_path)
 def test_single_alembic_head_and_offline_upgrade_sql(tmp_path):
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["e4c9a7b2d610"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["f7a2c9d4e6b1"]
     result = run_alembic(tmp_path / "offline.db", "upgrade", "d7a4c91e5b26:head", "--sql")
     assert result.returncode == 0, result.stderr
     assert "ALTER TABLE routine ADD COLUMN uninterrupted_access" in result.stdout

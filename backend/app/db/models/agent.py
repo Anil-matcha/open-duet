@@ -48,6 +48,8 @@ class Agent(Base):
     )
     # Null means the provider's default model.
     model: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Null means the selected model's default reasoning effort.
+    effort: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Another engine (and its model, null for its default) a turn moves to when
     # this agent's engine refuses it for a usage or rate limit before starting
     # on it, if that engine can do what the turn needs (docs/ENGINES.md).

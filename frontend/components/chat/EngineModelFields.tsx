@@ -19,6 +19,7 @@ export function EngineModelFields({
   disabled = false,
   lockProvider = false,
   hasComputer = false,
+  showEffort = true,
   defaultLabel,
 }: {
   engines: Engine[];
@@ -29,6 +30,7 @@ export function EngineModelFields({
   disabled?: boolean;
   lockProvider?: boolean;
   hasComputer?: boolean;
+  showEffort?: boolean;
   defaultLabel?: string;
 }) {
   const listId = useId();
@@ -158,7 +160,7 @@ export function EngineModelFields({
         </span>
       </label>
 
-      {supportsEffort && currentModel && currentModel.supported_reasoning_efforts && (
+      {showEffort && supportsEffort && currentModel && currentModel.supported_reasoning_efforts && (
         <div className="pt-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted">Effort</span>

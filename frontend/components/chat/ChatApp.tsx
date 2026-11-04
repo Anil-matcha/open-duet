@@ -430,7 +430,7 @@ export function ChatApp() {
         const target = agents?.find(agent => agent.id === detail.id);
         if (target) { setEditAgent(target); setAgentsCreate(false); setAgentsOpen(true); }
       } else {
-        setNewAgentId(detail.id); setNewModel(null); router.push(`/chat?agent=${detail.id}`); setFocusComposer(true);
+        setNewAgentId(detail.id); setNewModel(null); setNewEffort(null); router.push(`/chat?agent=${detail.id}`); setFocusComposer(true);
       }
     };
     window.addEventListener("open-dots:open-agent", openAgent);
@@ -577,7 +577,9 @@ export function ChatApp() {
     ? (startingAgent?.provider === selectedProvider ? startingAgent : null)
     : (threadAgent?.provider === thread?.provider ? threadAgent : null);
   const selectedModel = (threadId === null ? newModel : thread?.model) ?? selectedAgent?.model ?? null;
-  const selectedEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
+  const selectedEffort = threadId === null
+    ? newEffort ?? (selectedAgent && (newModel === null || newModel === selectedAgent.model) ? selectedAgent.effort ?? null : null)
+    : thread?.effort ?? null;
   const skillAgent = threadId === null ? startingAgent : threadAgent;
   const skillAgentId = skillAgent?.id ?? null;
   const [skillsTick, setSkillsTick] = useState(0);
@@ -923,7 +925,7 @@ export function ChatApp() {
   const openModelDialog = () => {
     setModelError(null);
     const activeModelId = (threadId === null ? newModel : thread?.model) ?? null;
-    const activeEffort = (threadId === null ? newEffort : thread?.effort) ?? null;
+    const activeEffort = (threadId === null ? selectedEffort : thread?.effort) ?? null;
     const draft = {
       threadId,
       agentId: startingAgentId,
@@ -1053,7 +1055,7 @@ export function ChatApp() {
 
   // Start a conversation: with the given agent, or (no argument) with whatever is chosen now.
   const startChat = (agentId?: number) => {
-    if (agentId !== undefined) { setNewAgentId(agentId); setNewModel(null); }
+    if (agentId !== undefined) { setNewAgentId(agentId); setNewModel(null); setNewEffort(null); }
     setModelDraft(null);
     setFocusComposer(true);
     router.push("/chat");
@@ -1233,13 +1235,13 @@ export function ChatApp() {
             setAgentTick(value => value + 1);
             setAgentsOpen(false); setEditAgent(null); setDeleteAgentTarget(null);
             const target = threads?.find(item => item.agent_id === id && !item.archived_at && item.session_state !== "broken");
-            setNewAgentId(id); setNewModel(null); setDraft(t("agentTeam.setupStarter")); setFocusComposer(true);
+            setNewAgentId(id); setNewModel(null); setNewEffort(null); setDraft(t("agentTeam.setupStarter")); setFocusComposer(true);
             router.push(target ? `/chat?thread=${target.id}` : `/chat?agent=${id}`);
           }}
           initialDeleteAgent={deleteAgentTarget}
           onClose={() => { setAgentsOpen(false); setEditAgent(null); setDeleteAgentTarget(null); }}
           onChanged={() => { setAgentTick((n) => n + 1); setDeleteAgentTarget(null); }}
-          onCreated={(agent) => setNewAgentId(agent.id)}
+          onCreated={(agent) => { setNewAgentId(agent.id); setNewEffort(null); }}
         />
       )}
         <main id="conversation" tabIndex={-1} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">

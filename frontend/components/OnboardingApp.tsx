@@ -181,7 +181,7 @@ export function OnboardingApp() {
             <h1 className="text-title font-semibold">{t("onboarding.engine.title")}</h1>
             <p className="text-sm text-muted">{t("onboarding.engine.description")}</p>
             {engines.length > 0 && (
-              <EngineModelFields engines={engines} provider={draft.provider} model={draft.model} disabled={working} onChange={(provider, model) => change({ provider, model, make_lead: false })} />
+              <EngineModelFields engines={engines} provider={draft.provider} model={draft.model} disabled={working} showEffort={false} onChange={(provider, model) => change({ provider, model, make_lead: false })} />
             )}
             <EngineSettings onEnginesChanged={enginesChanged} />
           </>

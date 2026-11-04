@@ -639,6 +639,8 @@ class ThreadRuntime:
             if agent.archived_at is not None:
                 raise AgentArchived(agent_id)
             provider = provider or agent.provider
+            if effort is None and provider == agent.provider and (model is None or model == agent.model):
+                effort = agent.effort
         provider = provider or "claude"
         adapter = self.adapters.get(provider)
         if adapter is None:

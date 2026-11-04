@@ -7,6 +7,7 @@ CREATE TABLE agent (
 	instructions TEXT DEFAULT '' NOT NULL, 
 	provider VARCHAR DEFAULT 'claude' NOT NULL, 
 	model VARCHAR, 
+	effort VARCHAR(64),
 	fallback_provider VARCHAR, 
 	fallback_model VARCHAR, 
 	workspace_path VARCHAR, 

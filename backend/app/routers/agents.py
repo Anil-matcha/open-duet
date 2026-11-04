@@ -373,6 +373,7 @@ async def create_agent(payload: AgentCreateRequest, request: Request, rt: Thread
                 instructions=payload.instructions,
                 provider=payload.provider,
                 model=payload.model,
+                effort=payload.effort,
                 workspace_path=workspace,
                 approval_mode=payload.approval_mode,
                 pinned=payload.pinned,
@@ -428,6 +429,7 @@ async def update_agent(
             "instructions",
             "provider",
             "model",
+            "effort",
             "workspace_path",
             "approval_mode",
             "pinned",
@@ -464,6 +466,8 @@ async def update_agent(
     if "provider" in changes and changes["provider"] != agent.provider:
         if "model" not in changes:
             changes["model"] = None  # the old engine's model means nothing to the new one
+        if "effort" not in changes:
+            changes["effort"] = None  # reasoning effort is specific to the old engine/model
         try:
             caps = rt.engines.capabilities(provider)
         except Exception:  # noqa: BLE001  (an unknown engine is reported just below)
@@ -475,6 +479,8 @@ async def update_agent(
                 "This agent has a computer, and that engine cannot run its tools in one. "
                 "Remove the computer first, or keep an engine that supports computers.",
             )
+    elif "model" in changes and changes["model"] != agent.model and "effort" not in changes:
+        changes["effort"] = None  # a saved effort belongs to the previous model
     from app.team.service import team_for
     async with rt.session() as db:
         current_team = await team_for(db, rt.owner_id)

@@ -113,7 +113,7 @@ export function DesktopSetup({ settings, onSaved, onFinished }: {
             <details>
               <summary className="cursor-pointer text-sm underline">Advanced: engine and model</summary>
               <div className="mt-3">
-                <EngineModelFields engines={engines} provider={provider} model={model} disabled={busy} onChange={(nextProvider, nextModel) => { setProvider(nextProvider); setModel(nextModel); if (!approvalModesForProvider(nextProvider).some((option) => option.value === mode)) setMode("ask"); }} />
+                <EngineModelFields engines={engines} provider={provider} model={model} disabled={busy} showEffort={false} onChange={(nextProvider, nextModel) => { setProvider(nextProvider); setModel(nextModel); if (!approvalModesForProvider(nextProvider).some((option) => option.value === mode)) setMode("ask"); }} />
               </div>
             </details>
           )}

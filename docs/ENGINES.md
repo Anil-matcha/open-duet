@@ -45,6 +45,10 @@ keeps the saved key for the same URL; changing the URL drops it unless you
 enter a key again. **Forget settings** deletes the configuration and credential.
 For OpenRouter, save an API key. The address is fixed to OpenRouter over HTTPS; configure a proxy with the generic OpenAI-compatible engine.
 
+In **Agents → Model and approvals**, choose a reasoning effort for that agent's
+selected model when the model supports it. New conversations from the agent use
+that effort by default; a conversation's engine/model dialog can override it.
+
 ## Messages while an answer is running
 
 The composer stays available during a turn. Engines that advertise live steering

@@ -57,6 +57,7 @@ type Draft = {
   instructions: string;
   provider: string;
   model: string | null;
+  effort: string | null;
   workspace_path: string;
   approval_mode: ApprovalMode;
   memory_enabled: boolean;
@@ -78,6 +79,7 @@ const EMPTY: Draft = {
   instructions: "",
   provider: "claude",
   model: null,
+  effort: null,
   workspace_path: "",
   approval_mode: "ask",
   memory_enabled: true,
@@ -97,6 +99,7 @@ function toDraft(agent: Agent): Draft {
     instructions: agent.instructions ?? "",
     provider: agent.provider,
     model: agent.model,
+    effort: agent.effort ?? null,
     workspace_path: agent.workspace_path ?? "",
     approval_mode: agent.approval_mode === "approve_for_me" && !approvalModesForProvider(agent.provider).some((mode) => mode.value === "approve_for_me") ? "ask" : agent.approval_mode,
     memory_enabled: agent.memory_enabled ?? true,
@@ -116,6 +119,7 @@ function toInput(draft: Draft): AgentInput {
     instructions: draft.instructions.trim(),
     provider: draft.provider,
     model: draft.model?.trim() || null,
+    effort: draft.effort,
     workspace_path: draft.workspace_path.trim() || null,
     approval_mode: draft.approval_mode,
     memory_enabled: draft.memory_enabled,
@@ -816,7 +820,7 @@ export function AgentsPanel({
                   <TabPanel value="model" className="space-y-4">
                     <section className="space-y-2">
                       <h3 className="text-sm font-medium text-ink">Model</h3>
-                      <EngineModelFields engines={engines} provider={draft.provider} model={draft.model} disabled={busy} hasComputer={agents.some((agent) => agent.id === draft.id && agent.computer != null)} onChange={(provider, model) => setDraft({ ...draft, provider, model, approval_mode: approvalModesForProvider(provider).some((mode) => mode.value === draft.approval_mode) ? draft.approval_mode : "ask" })} />
+                      <EngineModelFields engines={engines} provider={draft.provider} model={draft.model} effort={draft.effort} disabled={busy} hasComputer={agents.some((agent) => agent.id === draft.id && agent.computer != null)} onChange={(provider, model, effort) => setDraft({ ...draft, provider, model, effort: effort ?? null, approval_mode: approvalModesForProvider(provider).some((mode) => mode.value === draft.approval_mode) ? draft.approval_mode : "ask" })} />
                       <p className="text-xs text-muted">Engine changes apply to new conversations. Existing conversations keep their engine.</p>
                     </section>
 
