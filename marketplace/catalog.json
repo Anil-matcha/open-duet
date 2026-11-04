@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
   "community": [
-    "plugins/community/muapi.json"
+    "plugins/community/muapi.json",
+    "plugins/community/youcom.json"
   ],
   "tested": []
 }
