@@ -20,7 +20,11 @@ const defaultPrefs: NotificationPreferences = {
   notify_needs_you: true,
   notify_failures: true,
   notify_task_due: true,
+  notify_turn_completed: true,
   sound_enabled: false,
+  quiet_hours_enabled: false,
+  quiet_hours_start: "22:00",
+  quiet_hours_end: "08:00",
 };
 
 function getNotificationPermissionSnapshot(): NotificationPermission {
@@ -54,7 +58,7 @@ export function NotificationsSettings() {
     return () => { alive = false; };
   }, []);
 
-  const saveOption = (key: keyof NotificationPreferences, value: boolean) => {
+  const saveOption = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
     const updated = { ...prefs, [key]: value };
     setPrefs(updated);
     confirmation.showSaved(key);
@@ -151,13 +155,22 @@ export function NotificationsSettings() {
               onChange={(e) => saveOption("notify_task_due", e.target.checked)}
             />
 
+            <Switch
+              label="Agent responses & completions"
+              description="Notify when an agent completes a reply while Open Duet is in the background or minimized."
+              disabled={!prefs.desktop_enabled}
+              checked={prefs.notify_turn_completed ?? true}
+              onChange={(e) => saveOption("notify_turn_completed", e.target.checked)}
+            />
+
             <div className="flex items-center gap-3 pt-1">
               <Applies when="now" />
               <SavedConfirmation
                 visible={
                   confirmation.saved.has("notify_needs_you") ||
                   confirmation.saved.has("notify_failures") ||
-                  confirmation.saved.has("notify_task_due")
+                  confirmation.saved.has("notify_task_due") ||
+                  confirmation.saved.has("notify_turn_completed")
                 }
               />
             </div>
@@ -182,6 +195,59 @@ export function NotificationsSettings() {
             <div className="flex items-center gap-3 pt-1">
               <Applies when="now" />
               <SavedConfirmation visible={confirmation.saved.has("sound_enabled")} />
+            </div>
+          </div>
+        </SettingsCard>
+      </div>
+
+      <div id="setting-notifications-quiet" data-setting-id="setting-notifications-quiet" data-setting-container tabIndex={-1}>
+        <SettingsCard
+          title="Quiet hours"
+          description="Automatically silence desktop alerts and chime sounds during your chosen resting hours."
+        >
+          <div className="space-y-4">
+            <Switch
+              label="Enable quiet hours"
+              description="Do not disturb during scheduled hours."
+              disabled={!prefs.desktop_enabled}
+              checked={prefs.quiet_hours_enabled ?? false}
+              onChange={(e) => saveOption("quiet_hours_enabled", e.target.checked)}
+            />
+
+            {(prefs.quiet_hours_enabled ?? false) && (
+              <div className="flex flex-wrap items-center gap-4 pt-1 text-xs">
+                <label className="flex items-center gap-2">
+                  <span className="text-muted">From:</span>
+                  <input
+                    type="time"
+                    disabled={!prefs.desktop_enabled}
+                    value={prefs.quiet_hours_start ?? "22:00"}
+                    onChange={(e) => saveOption("quiet_hours_start", e.target.value)}
+                    className="rounded-field border border-line bg-surface px-2.5 py-1 text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </label>
+                <label className="flex items-center gap-2">
+                  <span className="text-muted">To:</span>
+                  <input
+                    type="time"
+                    disabled={!prefs.desktop_enabled}
+                    value={prefs.quiet_hours_end ?? "08:00"}
+                    onChange={(e) => saveOption("quiet_hours_end", e.target.value)}
+                    className="rounded-field border border-line bg-surface px-2.5 py-1 text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 pt-1">
+              <Applies when="now" />
+              <SavedConfirmation
+                visible={
+                  confirmation.saved.has("quiet_hours_enabled") ||
+                  confirmation.saved.has("quiet_hours_start") ||
+                  confirmation.saved.has("quiet_hours_end")
+                }
+              />
             </div>
           </div>
         </SettingsCard>

@@ -22,9 +22,13 @@ class NotificationPreferences:
     notify_needs_you: bool = True
     notify_failures: bool = True
     notify_task_due: bool = True
+    notify_turn_completed: bool = True
     sound_enabled: bool = False
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: str = "22:00"
+    quiet_hours_end: str = "08:00"
 
-    def to_dict(self) -> dict[str, bool]:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
@@ -48,7 +52,11 @@ def read_preferences() -> NotificationPreferences:
                 notify_needs_you=bool(data.get("notify_needs_you", True)),
                 notify_failures=bool(data.get("notify_failures", True)),
                 notify_task_due=bool(data.get("notify_task_due", True)),
+                notify_turn_completed=bool(data.get("notify_turn_completed", True)),
                 sound_enabled=bool(data.get("sound_enabled", False)),
+                quiet_hours_enabled=bool(data.get("quiet_hours_enabled", False)),
+                quiet_hours_start=str(data.get("quiet_hours_start", "22:00")),
+                quiet_hours_end=str(data.get("quiet_hours_end", "08:00")),
             )
     except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
         pass
@@ -62,4 +70,3 @@ def write_preferences(prefs: NotificationPreferences) -> NotificationPreferences
     tmp_path.write_text(json.dumps(prefs.to_dict(), indent=2), encoding="utf-8")
     tmp_path.replace(path)
     return prefs
-

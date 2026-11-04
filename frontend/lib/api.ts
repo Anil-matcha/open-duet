@@ -966,7 +966,11 @@ export type NotificationPreferences = {
   notify_needs_you: boolean;
   notify_failures: boolean;
   notify_task_due: boolean;
+  notify_turn_completed?: boolean;
   sound_enabled: boolean;
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
 };
 
 export const api = {

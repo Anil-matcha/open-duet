@@ -392,7 +392,11 @@ class NotificationPreferencesModel(BaseModel):
     notify_needs_you: bool = True
     notify_failures: bool = True
     notify_task_due: bool = True
+    notify_turn_completed: bool = True
     sound_enabled: bool = False
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: str = "22:00"
+    quiet_hours_end: str = "08:00"
 
 
 @router.get("/notifications/preferences", response_model=NotificationPreferencesModel)
@@ -407,6 +411,10 @@ async def update_notification_preferences(payload: NotificationPreferencesModel)
         notify_needs_you=payload.notify_needs_you,
         notify_failures=payload.notify_failures,
         notify_task_due=payload.notify_task_due,
+        notify_turn_completed=payload.notify_turn_completed,
         sound_enabled=payload.sound_enabled,
+        quiet_hours_enabled=payload.quiet_hours_enabled,
+        quiet_hours_start=payload.quiet_hours_start,
+        quiet_hours_end=payload.quiet_hours_end,
     )
     return notification_preference.write_preferences(prefs).to_dict()

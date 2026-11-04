@@ -134,6 +134,10 @@ async function main() {
   app.setName(mode === "dev" ? "Open Dots (dev)" : "Open Dots");
   app.setPath("userData", userData);
 
+  if (process.platform === "win32") {
+    app.setAppUserModelId(app.isPackaged ? "app.opendots.desktop" : process.execPath);
+  }
+
   if (!app.requestSingleInstanceLock()) {
     app.exit(0);
     return;
@@ -182,15 +186,25 @@ async function main() {
         title: payload.title,
         body: typeof payload.body === "string" ? payload.body : "",
         silent: payload.silent === true,
+        icon: hasIcon ? iconPath : undefined,
       });
       notif.on("click", () => {
         if (window && !window.isDestroyed()) {
           if (window.isMinimized()) window.restore();
+          window.show();
           window.focus();
+          if (payload.thread_id != null) {
+            window.webContents.send("open-dots:notification-clicked", { thread_id: payload.thread_id });
+          }
         }
       });
-      notif.show();
-      return true;
+      try {
+        notif.show();
+        return true;
+      } catch (err) {
+        console.error("desktop notification show failed:", err);
+        return false;
+      }
     }
     return false;
   });

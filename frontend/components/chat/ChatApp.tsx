@@ -4,7 +4,8 @@ import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
+import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type NotificationPreferences, type Thread } from "@/lib/api";
+import { notifyApprovalNeeded, notifyTurnCompletion } from "@/lib/desktop-notifications";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
 import { attachmentProblem, conversationUsage, formatCost, formatTokens, MAX_ATTACHMENTS } from "@/lib/everyday";
@@ -458,6 +459,86 @@ export function ChatApp() {
     };
   }, [ready, threadAgent?.id, threadComputer?.id]);
 
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences | null>(null);
+  const liveTurnStarted = useRef(false);
+  const lastRunningTurnId = useRef<number | null>(null);
+  const alertedApprovalIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    let alive = true;
+    api.getNotificationPreferences().then((loaded) => {
+      if (alive) setNotificationPrefs(loaded);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (stream.connection === "live" && transcript.runningTurnId !== null && lastRunningTurnId.current === null) {
+      liveTurnStarted.current = true;
+    }
+  }, [stream.connection, transcript.runningTurnId]);
+
+  useEffect(() => {
+    if (transcript.runningTurnId !== null) {
+      lastRunningTurnId.current = transcript.runningTurnId;
+    }
+  }, [transcript.runningTurnId]);
+
+  useEffect(() => {
+    const finishedTurnId = lastRunningTurnId.current;
+    if (transcript.runningTurnId === null && finishedTurnId !== null && liveTurnStarted.current) {
+      liveTurnStarted.current = false;
+      lastRunningTurnId.current = null;
+
+      if (notificationPrefs && notificationPrefs.desktop_enabled) {
+        const turnEndItem = transcript.items.find(
+          (item) => item.kind === "turn_end" && item.turnId === finishedTurnId
+        );
+        const status = (turnEndItem as { status?: string })?.status ?? "completed";
+        const error = (turnEndItem as { error?: string })?.error ?? null;
+
+        const assistantItem = [...transcript.items]
+          .reverse()
+          .find((item) => item.kind === "assistant" && item.turnId === finishedTurnId);
+        const textContent = (assistantItem as { text?: string })?.text ?? null;
+
+        const agentName = threadAgent?.name || "Open Duet";
+
+        notifyTurnCompletion({
+          agentName,
+          text: textContent,
+          status,
+          error,
+          threadId,
+          prefs: notificationPrefs,
+          onOpenThread: (tid) => router.push(`/chat?thread=${tid}`),
+        });
+      }
+    }
+  }, [transcript.runningTurnId, transcript.items, notificationPrefs, threadAgent, threadId, router]);
+
+  useEffect(() => {
+    if (!liveTurnStarted.current || !notificationPrefs || !notificationPrefs.desktop_enabled) return;
+
+    for (const item of transcript.items) {
+      if (item.kind === "approval" && item.status === "pending") {
+        if (!alertedApprovalIds.current.has(item.approvalId)) {
+          alertedApprovalIds.current.add(item.approvalId);
+          const agentName = threadAgent?.name || "Open Duet";
+          notifyApprovalNeeded({
+            agentName,
+            summary: item.summary,
+            tool: item.tool,
+            threadId,
+            approvalId: item.approvalId,
+            prefs: notificationPrefs,
+            onOpenThread: (tid) => router.push(`/chat?thread=${tid}`),
+          });
+        }
+      }
+    }
+  }, [transcript.items, notificationPrefs, threadAgent, threadId, router]);
+
   const choosable = activeAgents(agents);
   // The chosen agent may have been archived since: then the chat starts plain.
   const startingAgentId = choosable.some((a) => a.id === newAgentId) ? newAgentId : null;
@@ -513,6 +594,7 @@ export function ChatApp() {
     ) return;
     queuedDrainRef.current = true;
     setQueuedSending(true);
+    liveTurnStarted.current = true;
     void api.sendTurn(threadId, first.text).then((turn) => {
       const current = loadQueuedFollowUps(threadId);
       if (current[0]?.id === first.id) writeQueuedFollowUps(threadId, current.slice(1));
@@ -653,6 +735,7 @@ export function ChatApp() {
       for (const file of attached) ids.push((await api.uploadAttachment(id, file, audioConsent ? "openai" : undefined, processing.signal)).id);
       if (audioUrl.trim()) ids.push((await api.importAudioUrl(id, audioUrl.trim(), audioConsent ? "openai" : "", processing.signal)).id);
       processing.signal.throwIfAborted();
+      liveTurnStarted.current = true;
       await api.sendTurn(id, message, ids, usedSkills);
       setDraft("");
       setChosenSkills(() => []);
@@ -675,6 +758,7 @@ export function ChatApp() {
     setSendError(null);
     setSending(true);
     try {
+      liveTurnStarted.current = true;
       await api.sendTurn(threadId!, message);
       return true;
     } catch (err) {

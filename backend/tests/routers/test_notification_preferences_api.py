@@ -36,7 +36,11 @@ async def test_read_default_notification_preferences(api):
     assert data["notify_needs_you"] is True
     assert data["notify_failures"] is True
     assert data["notify_task_due"] is True
+    assert data["notify_turn_completed"] is True
     assert data["sound_enabled"] is False
+    assert data["quiet_hours_enabled"] is False
+    assert data["quiet_hours_start"] == "22:00"
+    assert data["quiet_hours_end"] == "08:00"
 
 
 @pytest.mark.asyncio
@@ -46,16 +50,23 @@ async def test_update_notification_preferences(api):
         "notify_needs_you": True,
         "notify_failures": False,
         "notify_task_due": True,
+        "notify_turn_completed": False,
         "sound_enabled": True,
+        "quiet_hours_enabled": True,
+        "quiet_hours_start": "23:30",
+        "quiet_hours_end": "07:30",
     })
     assert res.status_code == 200
     data = res.json()
     assert data["desktop_enabled"] is False
     assert data["notify_failures"] is False
+    assert data["notify_turn_completed"] is False
     assert data["sound_enabled"] is True
+    assert data["quiet_hours_enabled"] is True
+    assert data["quiet_hours_start"] == "23:30"
+    assert data["quiet_hours_end"] == "07:30"
 
     # Read back to ensure disk persistence
     res2 = await api.get("/api/v1/notifications/preferences")
     assert res2.status_code == 200
     assert res2.json() == data
-
