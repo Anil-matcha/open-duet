@@ -536,3 +536,15 @@ def test_create_pull_request_only_from_campaign_branches():
             tools.clean_arguments(pr, bad)
     assert {"github_fork_repository", "github_create_pull_request"} <= set(tools.ROUTINE_WRITE_TOOLS)
     assert "github_merge_pull_request" not in tools.ROUTINE_WRITE_TOOLS
+
+
+def test_review_reads_are_read_only_and_bound_to_one_pull_request():
+    for name in ("github_list_pull_request_reviews", "github_list_pull_request_review_comments"):
+        t = tool(name)
+        assert t.kind == "read" and t.required == ("owner", "repo", "pull_number")
+        ok = {"owner": O, "repo": R, "pull_number": 7}
+        assert tools.clean_arguments(t, ok)[0]["pull_number"] == 7
+        with pytest.raises(Exception):
+            tools.clean_arguments(t, {**ok, "body": "x"})
+        with pytest.raises(Exception):
+            tools.clean_arguments(t, {"owner": O, "repo": R})

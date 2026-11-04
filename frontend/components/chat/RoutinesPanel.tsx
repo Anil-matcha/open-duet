@@ -87,6 +87,7 @@ const ROUTINE_READ_TOOLS = [
     ["github_list_issues", "List repository issues"], ["github_get_issue", "Read an issue"],
     ["github_list_issue_comments", "Read issue comments"], ["github_list_pull_requests", "List pull requests"],
     ["github_get_pull_request", "Read a pull request"], ["github_list_pull_request_files", "List pull request files"],
+    ["github_list_pull_request_reviews", "Read pull request reviews"], ["github_list_pull_request_review_comments", "Read inline review comments"],
     ["github_list_commits", "List commits"], ["github_list_branches", "List branches"],
     ["github_get_file", "Read repository files"], ["github_search_issues", "Search issues and pull requests"],
     ["github_list_workflow_runs", "List workflow runs"],
