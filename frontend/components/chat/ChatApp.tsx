@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
+import { useVersionUpdate } from "@/lib/use-version-update";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type NotificationPreferences, type Thread } from "@/lib/api";
@@ -538,6 +539,8 @@ export function ChatApp() {
       }
     }
   }, [transcript.items, notificationPrefs, threadAgent, threadId, router]);
+
+  const { updateAvailable, latestVersion, dismissed: updateDismissed, dismiss: dismissUpdateNotice } = useVersionUpdate();
 
   const choosable = activeAgents(agents);
   // The chosen agent may have been archived since: then the chat starts plain.
@@ -1116,6 +1119,31 @@ export function ChatApp() {
       )}
       <div className="relative flex min-w-0 flex-1 flex-col">
       {buildHeader(true)}
+      {updateAvailable && !updateDismissed && (
+        <aside aria-label="Update available" className="flex justify-center px-4 py-2.5">
+          <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2.5 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-xs text-ink shadow-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-accent">Update available:</span>
+              <span>Open Duet {latestVersion} is available.</span>
+            </div>
+            <span className="hidden text-muted/60 sm:inline" aria-hidden="true">•</span>
+            <Link
+              href="/settings/#setting-general-updates"
+              className="font-medium text-accent hover:underline"
+            >
+              View in Settings
+            </Link>
+            <button
+              type="button"
+              onClick={dismissUpdateNotice}
+              className="ml-0.5 rounded p-0.5 text-muted transition-colors hover:text-ink cursor-pointer"
+              aria-label="Dismiss update notice"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </aside>
+      )}
       {modelDraft && modelDraft.threadId === threadId && (threadId !== null || modelDraft.agentId === startingAgentId) && engines && (
         <Dialog open onOpenChange={(open) => { if (!open) setModelDraft(null); }} title="Engine and model" size="sm">
           <form onSubmit={(event) => { event.preventDefault(); void saveModel(); }} className="space-y-4">

@@ -33,17 +33,31 @@ function summary(state: UpdateState) {
 
 function DesktopAppUpdates({ bridge }: { bridge: UpdatesBridge }) {
   const [state, setState] = useState<UpdateState | null>(null);
+  const [info, setInfo] = useState<VersionInfo | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let alive = true;
     void bridge.run("state").then((value) => { if (alive) setState(value); }).catch(() => {});
     const stop = bridge.onState((value) => { if (alive) setState(value); });
+    api.getVersionInfo().then((data) => { if (alive) setInfo(data); }).catch(() => {});
     return () => { alive = false; stop(); };
   }, [bridge]);
 
   if (!state) return null;
   const act = (action: Parameters<UpdatesBridge["run"]>[0]) => void bridge.run(action).then(setState).catch((error) => setState({ ...state, status: "error", message: String(error?.message ?? error) }));
   const working = state.status === "checking" || state.status === "downloading";
+
+  const copyCommand = async () => {
+    if (!info?.update_command) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(info.update_command);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch {}
+  };
 
   return (
     <section aria-labelledby="app-updates" className="space-y-3 rounded-card border border-line bg-raised p-5">
@@ -52,6 +66,17 @@ function DesktopAppUpdates({ bridge }: { bridge: UpdatesBridge }) {
         <p className="mt-1 text-xs text-muted">You have version {state.current}. Updates come from the project&apos;s GitHub releases; nothing installs without your click.</p>
       </div>
       <p role={state.status === "error" ? "alert" : "status"} className={`text-sm ${state.status === "error" ? "text-danger" : ""}`}>{summary(state)}</p>
+      {state.status === "available" && info?.update_command && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-xs text-muted">Run this command to update:</p>
+          <div className="flex items-center justify-between gap-3 rounded-field border border-line bg-surface p-2.5 font-mono text-xs">
+            <span className="overflow-x-auto whitespace-pre">{info.update_command}</span>
+            <Button size="sm" variant="secondary" onClick={copyCommand}>
+              {copied ? "Copied!" : "Copy"}
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {state.status === "available" && state.canDownload && <Button onClick={() => act("download")}>Download version {state.version}</Button>}
         {state.status === "downloaded" && <Button onClick={() => act("install")}>Open installer</Button>}

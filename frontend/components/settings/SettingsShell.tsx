@@ -9,6 +9,7 @@ import { SETTINGS_REGISTRY, settingsControlMatches, shouldExpandBeforeSettingsFo
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { SettingsSearch } from "./SettingsSearch";
+import { useVersionUpdate } from "@/lib/use-version-update";
 
 function matchingControl(scope: HTMLElement, hint: string): HTMLElement | null {
   const needle = hint.toLocaleLowerCase().trim();
@@ -77,6 +78,7 @@ class SettingsErrorBoundary extends Component<
 export function SettingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "";
   const active = activeSettingsPage(pathname);
+  const { updateAvailable } = useVersionUpdate();
   const pendingFocus = useRef<(() => void) | null>(null);
   const focusAnchor = useCallback((anchorId: string) => {
     pendingFocus.current?.();
@@ -174,11 +176,16 @@ export function SettingsShell({ children }: { children: ReactNode }) {
                       href={item.href}
                       aria-current={item.pageId === active.id ? "page" : undefined}
                       className={cn(
-                        "block rounded-field px-3 py-2 text-sm hover:bg-hover touch:py-3",
+                        "flex items-center justify-between rounded-field px-3 py-2 text-sm hover:bg-hover touch:py-3",
                         item.pageId === active.id ? "bg-hover font-medium text-ink" : "text-muted"
                       )}
                     >
-                      {item.label}
+                      <span>{item.label}</span>
+                      {item.pageId === "general" && updateAvailable && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                          Update
+                        </span>
+                      )}
                     </Link>
                   </li>
                 ))}
