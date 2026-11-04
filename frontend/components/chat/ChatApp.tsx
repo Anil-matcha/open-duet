@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, ApiError, isLaunchTokenMissing, type Agent, type Engine, type LocalStatus, type Thread } from "@/lib/api";
 import { activeAgents, approvalModeLabel, modelLabel } from "@/lib/agents";
 import { pendingApprovals, type NeedsYouItem } from "@/lib/transcript";
@@ -233,9 +233,9 @@ export function ChatApp() {
   const [remembered, setRemembered] = useState<Record<string, Remembered>>({});
   const [undoneRules, setUndoneRules] = useState<number[]>([]);
   // The agent a new chat will start with (null: a plain chat).
-  const [newAgentId, setNewAgentIdState] = useState<number | null>(() => parseThreadId(params.get("agent")));
+  const [newAgentId, setNewAgentId] = useState<number | null>(() => parseThreadId(params.get("agent")));
   const newAgentIdRef = useRef(newAgentId);
-  const setNewAgentId = (id: number | null) => { newAgentIdRef.current = id; setNewAgentIdState(id); };
+  useLayoutEffect(() => { newAgentIdRef.current = newAgentId; }, [newAgentId]);
   const [engines, setEngines] = useState<Engine[] | null>(null);
   const cachedPref = readCachedPreference();
   const [newProvider, setNewProvider] = useState(() => params.get("engine") || cachedPref?.provider || "claude");
@@ -275,7 +275,7 @@ export function ChatApp() {
     api.getEnginePreference().then((saved) => {
       if (!live || !saved?.provider) return;
       writeCachedPreference({ provider: saved.provider, model: saved.model, effort: saved.effort });
-      if (!params.get("engine") && threadId === null && startingAgentId === null && newAgentIdRef.current === null) {
+      if (!params.get("engine") && threadId === null && newAgentIdRef.current === null) {
         setNewProvider(saved.provider);
         if (!params.get("model")) setNewModel(saved.model);
         if (!params.get("effort")) setNewEffort(saved.effort ?? null);
@@ -291,7 +291,7 @@ export function ChatApp() {
     api.getEngines().then((items) => {
       if (cancelled) return;
       setEngines(items);
-      if (!params.get("engine") && threadId === null && startingAgentId === null && newAgentIdRef.current === null) {
+      if (!params.get("engine") && threadId === null && newAgentIdRef.current === null) {
         setNewProvider((current) => {
           const resolved = resolveEngineModel({ provider: current, model: newModel, effort: newEffort }, items);
           if (resolved.model !== newModel && !params.get("model")) {
@@ -882,7 +882,7 @@ export function ChatApp() {
       onOpenSidebar={withSidebar && !sidebarInline ? () => setDrawerOpen(true) : undefined}
       agentChoice={
         roomId === null && agents !== null && threadId === null
-          ? { agents: choosable, value: startingAgentId, onChange: (id) => { setNewAgentId(id); setNewProviderOverride(null); setNewModel(null); setNewEffort(null); modelDraftRef.current = null; setModelDraft(null); } }
+          ? { agents: choosable, value: startingAgentId, onChange: (id) => { setNewAgentId(id); setNewProviderOverride(null); setNewModel(null); setNewEffort(null); setModelDraft(null); } }
           : undefined
       }
       engine={
