@@ -111,6 +111,22 @@ def test_policy_mapping():
     assert codex_policy("ask", False).sandbox == "read-only"
 
 
+def _turn(mode, **launches):
+    fields = dict(approval_mode=mode, computer=None, team_launch=None, composio_launch=None, browser=None,
+                  community_launch=None, workspace=None)
+    ctx = SimpleNamespace(**{**fields, **launches})
+    return codex_adapter._CodexTurn(ctx=ctx, sink=None, gate=None, exe=None, codex_thread=None)
+
+
+def test_approve_for_me_keeps_attached_apps_on_the_app_gate():
+    # Codex's own reviewer would approve these calls itself and the app gate would refuse them (not_approved).
+    plain = _turn("approve_for_me")
+    assert plain.mode == "approve_for_me"
+    for launch in ("composio_launch", "team_launch", "browser", "community_launch"):
+        turn = _turn("approve_for_me", **{launch: SimpleNamespace()})
+        assert turn.mode == "ask" and turn.policy.reviewer == "user", launch
+
+
 async def test_codex_waits_for_the_exact_routine_connected_app_server(crt, sessions, codex, monkeypatch):
     thread = await crt.create_thread(provider="codex")
     adapter = crt.adapters["codex"]

@@ -423,9 +423,14 @@ class _CodexTurn:
         # A computer is the agent's sandbox: its turns always have tools, and they are the computer's.
         self.tools = bool(app_settings.get("LOCAL_TOOLS_ENABLED")) or self.computer is not None
         self.mode = self.ctx.approval_mode or "ask"
-        self.policy = codex_policy(self.mode, self.tools, self.computer is not None)
         has_gated_mcp = (self.ctx.team_launch is not None or self.ctx.composio_launch is not None
                          or self.ctx.browser is not None or self.ctx.community_launch is not None)
+        if self.mode == "approve_for_me" and has_gated_mcp:
+            # Codex's own reviewer would approve these MCP calls itself and never ask this app, so the
+            # app's approval gate would find no record and refuse them (not_approved). Attached tools
+            # keep reaching their own gates, as in the Claude adapter.
+            self.mode = "ask"
+        self.policy = codex_policy(self.mode, self.tools, self.computer is not None)
         if has_gated_mcp and (not self.tools or self.mode == 'plan'):
             # Codex 0.164 refuses MCP elicitation with approvalPolicy=never. The
             # app still gates every attached MCP call; native tools stay read-only/denied.
