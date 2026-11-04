@@ -4,10 +4,11 @@ import { Bell } from "lucide-react";
 import { EmptyPanel, LoadingState } from "./PanelState";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type AppNotification } from "@/lib/api";
+import { api, type AppNotification, type NotificationPreferences } from "@/lib/api";
 import { badgeText, formatWhen } from "@/lib/routines";
 import { useT } from "@/lib/use-i18n";
 import { IconButton } from "@/components/ui/IconButton";
+import { dispatchNotification, getNewUnreadNotifications } from "@/lib/desktop-notifications";
 
 const POLL_MS = 15_000;
 
@@ -26,11 +27,38 @@ export function NotificationBell({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const seenNotificationIds = useRef<Set<number> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.getNotificationPreferences().then((prefs) => {
+      if (alive) setPreferences(prefs);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const refresh = useCallback(() => {
-    api.unreadNotifications().then((r) => { setUnread(r.unread); setFailed(false); }).catch(() => setFailed(true));
-  }, []);
+    api.unreadNotifications()
+      .then((r) => {
+        setUnread(r.unread);
+        setFailed(false);
+        // Compare IDs so a read item being replaced by a new one cannot hide the alert.
+        // The first successful list establishes a baseline without alerting old unread items.
+        void api.listNotifications(200).then((latest) => {
+          const seenIds = seenNotificationIds.current;
+          seenNotificationIds.current = new Set(latest.map((item) => item.id));
+          if (!seenIds || !preferences?.desktop_enabled) return;
+          for (const item of getNewUnreadNotifications(latest, seenIds)) {
+            dispatchNotification(item, preferences, (threadId) => {
+              router.push(`/chat?thread=${threadId}`);
+            });
+          }
+        }).catch(() => {});
+      })
+      .catch(() => setFailed(true));
+  }, [preferences, router]);
 
   useEffect(() => {
     refresh();

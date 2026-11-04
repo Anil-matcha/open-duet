@@ -16,6 +16,7 @@ import { readCachedPreference, resolveEngineModel, writeCachedPreference } from 
 import { Applies } from "@/components/settings/Applies";
 import { SaveBar } from "@/components/settings/SaveBar";
 import { SavedConfirmation, useSavedConfirmation } from "@/components/settings/SavedConfirmation";
+import { cn } from "@/lib/cn";
 
 function initialExpandedEngines(engines: Engine[], preferredId: string | null): Set<string> {
   const activeId = resolveEngineModel({ provider: preferredId, model: null }, engines).provider;
@@ -69,6 +70,17 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
       if (!cancelled && preference?.provider) {
         preferredEngine.current = preference.provider;
         writeCachedPreference({ provider: preference.provider, model: preference.model, effort: preference.effort });
+        const eff = preference.effort;
+        if (typeof eff === "string" && eff) {
+          const prov = preference.provider;
+          setDrafts((prev) => ({
+            ...prev,
+            [prov]: {
+              ...(prev[prov] ?? {}),
+              effort: eff,
+            },
+          }));
+        }
         if (engineList.current && !userChangedExpansion.current) {
           setExpandedEngines(initialExpandedEngines(engineList.current, preference.provider));
         }
@@ -101,8 +113,9 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
       toast(`${engine.label} settings saved. ${saved.available ? "Ready to use." : saved.reason ?? "The engine is not ready yet."}`);
       if (saved.available) {
         const prefModel = preferenceModel?.trim() || saved.default_model || null;
-        writeCachedPreference({ provider: saved.id, model: prefModel });
-        void api.setEnginePreference({ provider: saved.id, model: prefModel }).catch(() => {});
+        const prefEffort = instantField?.name === "effort" ? instantField.value : (drafts[saved.id]?.effort ?? null);
+        writeCachedPreference({ provider: saved.id, model: prefModel, effort: prefEffort });
+        void api.setEnginePreference({ provider: saved.id, model: prefModel, effort: prefEffort }).catch(() => {});
       }
     } catch (err) { setEngineErrors((previous) => ({ ...previous, [engine.id]: err instanceof ApiError ? `Could not save engine settings. ${err.message}` : "Could not save engine settings." })); }
     finally { setBusy(null); }
@@ -114,7 +127,7 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
   };
 
   const saveEngineField = async (engine: Engine, name: string, value: string) => {
-    const next = { ...engineDraft(engine), [name]: value };
+    const next = { ...engineDraft(engine), ...drafts[engine.id], [name]: value };
     setDrafts((previous) => ({ ...previous, [engine.id]: { ...previous[engine.id], [name]: value } }));
     confirmation.clearSaved(engine.id);
     await persistEngineConfig(engine, engineConfig(engine, next), next.model, { name, value });
@@ -143,16 +156,54 @@ export function EngineSettings({ onEnginesChanged }: { onEnginesChanged?: (engin
       confirmation.clearSaved(engine.id);
     };
     const settingId = descriptor.kind === "secret" ? "setting-engine-api-key" : descriptor.name === "model" ? "setting-engine-endpoint" : undefined;
-    return <label key={descriptor.name} data-setting-id={settingId} className="block min-w-0 text-xs text-muted">{descriptor.label}{hasSecret ? " (saved; leave empty to keep)" : descriptor.required ? "" : " (optional)"}
-      {engine.id === "antigravity" && descriptor.name === "model" ? <Select className="mt-1" value={drafts[engine.id]?.model ?? ""}
- onChange={(event) => void saveEngineField(engine, "model", event.target.value)}>
-        <option value="">Account default</option>{engine.models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-      </Select> : <Input className="mt-1" type={descriptor.kind === "secret" ? "password" : descriptor.kind === "url" ? "url" : "text"}
- required={descriptor.required && !hasSecret} value={drafts[engine.id]?.[descriptor.name] ?? ""}
- placeholder={descriptor.placeholder ?? undefined} autoComplete={descriptor.kind === "secret" ? "new-password" : "off"}
- onChange={(event) => updateDraft(descriptor.name, event.target.value)} />}
-      {descriptor.help && <span className="mt-1 block">{descriptor.help}</span>}
-    </label>;
+    const activeModelId = drafts[engine.id]?.model || engine.default_model || engine.models[0]?.id;
+    const currentModelObj = engine.models.find((m) => m.id === activeModelId);
+    const supportsEffort = Boolean(
+      descriptor.name === "model" &&
+      currentModelObj?.supported_reasoning_efforts &&
+      currentModelObj.supported_reasoning_efforts.length > 1 &&
+      currentModelObj.reasoning_effort_configurable !== false
+    );
+
+    return <div key={descriptor.name} data-setting-id={settingId} className="block min-w-0 text-xs text-muted">
+      <label className="block">{descriptor.label}{hasSecret ? " (saved; leave empty to keep)" : descriptor.required ? "" : " (optional)"}
+        {descriptor.name === "model" && engine.models.length > 0 ? <Select className="mt-1" value={drafts[engine.id]?.model ?? ""}
+   onChange={(event) => void saveEngineField(engine, "model", event.target.value)}>
+          <option value="">{engine.id === "antigravity" ? "Account default" : "Engine default"}</option>{engine.models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+        </Select> : <Input className="mt-1" type={descriptor.kind === "secret" ? "password" : descriptor.kind === "url" ? "url" : "text"}
+   required={descriptor.required && !hasSecret} value={drafts[engine.id]?.[descriptor.name] ?? ""}
+   placeholder={descriptor.placeholder ?? undefined} autoComplete={descriptor.kind === "secret" ? "new-password" : "off"}
+   onChange={(event) => updateDraft(descriptor.name, event.target.value)} />}
+        {descriptor.help && <span className="mt-1 block">{descriptor.help}</span>}
+      </label>
+      {supportsEffort && currentModelObj?.supported_reasoning_efforts && (
+        <div className="pt-2">
+          <span className="block text-xs font-medium text-muted mb-1">Reasoning effort</span>
+          <div className="inline-flex rounded-lg bg-inset p-1 border border-line gap-1">
+            {currentModelObj.supported_reasoning_efforts.map((eff) => {
+              const currentEffort = drafts[engine.id]?.effort ?? currentModelObj.default_reasoning_effort;
+              const isSelected = currentEffort?.toLowerCase() === eff.toLowerCase();
+              return (
+                <button
+                  key={eff}
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void saveEngineField(engine, "effort", eff)}
+                  className={cn(
+                    "px-3 py-1 text-xs rounded-md font-medium capitalize transition-all duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
+                    isSelected
+                      ? "bg-raised text-ink shadow-sm ring-1 ring-line/50 font-semibold"
+                      : "text-muted hover:text-ink hover:bg-hover/50"
+                  )}
+                >
+                  {eff}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>;
   };
 
   return <section className="space-y-4 rounded-lg border border-line p-5">

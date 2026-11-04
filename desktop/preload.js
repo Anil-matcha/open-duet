@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("openDots", {
   openComposioLink: (url) => ipcRenderer.invoke("open-dots:open-composio-link", url),
   nativeControl: (request) => ipcRenderer.invoke("open-dots:native-control", request),
   copyText: (text) => ipcRenderer.invoke("open-dots:copy-text", text),
+  showNotification: (payload) => ipcRenderer.invoke("open-dots:show-notification", payload),
   onSettingsRequested: (listener) => {
     if (typeof listener !== "function") throw new TypeError("A settings navigation listener is required.");
     settingsListeners.add(listener);

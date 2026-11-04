@@ -11,7 +11,7 @@ from pathlib import Path
 
 from app.core import app_settings
 from app.services import cli_probe, local_claude_runner
-from app.services.acp_adapter import AcpAdapter, InvalidConfig, resolve_command, split_command
+from app.services.acp_adapter import AcpAdapter, InvalidConfig, normalize_effort, resolve_command, split_command
 from app.services.engine_registry import check_model_id
 from app.services.provider_adapter import EngineProbe, ModelOption
 
@@ -128,6 +128,15 @@ class GeminiAdapter(PresetAdapter):
         reported = session.get("models", {}).get("currentModelId") if isinstance(session.get("models"), dict) else None
         if model and reported and model != reported:
             raise InvalidConfig("The CLI selected a different model.")
+        if effort:
+            effort_opt = next((o for o in session.get("configOptions", []) if isinstance(o, dict) and o.get("id") in ("thought_level", "effort")), None)
+            if effort_opt and effort_opt.get("type") == "select":
+                current_effort = effort_opt.get("currentValue")
+                options = effort_opt.get("options", [])
+                wire_map = {normalize_effort(o.get("value", "")): o.get("value") for o in options if isinstance(o, dict)}
+                target_wire = wire_map.get(effort)
+                if target_wire and target_wire != current_effort:
+                    await call("session/set_config_option", {"sessionId": session_id, "configId": effort_opt.get("id"), "value": target_wire}, handle_incoming=True)
         return model or reported
 
 
@@ -267,4 +276,13 @@ class OpenCodeAdapter(PresetAdapter):
         confirmed = next((o.get("currentValue") for o in (result or {}).get("configOptions", []) if isinstance(o, dict) and o.get("id") == "model"), None)
         if confirmed != model:
             raise InvalidConfig("The engine did not confirm this model.")
+        if effort:
+            effort_opt = next((o for o in (result or session).get("configOptions", []) if isinstance(o, dict) and o.get("id") in ("thought_level", "effort")), None)
+            if effort_opt and effort_opt.get("type") == "select":
+                current_effort = effort_opt.get("currentValue")
+                options = effort_opt.get("options", [])
+                wire_map = {normalize_effort(o.get("value", "")): o.get("value") for o in options if isinstance(o, dict)}
+                target_wire = wire_map.get(effort)
+                if target_wire and target_wire != current_effort:
+                    await call("session/set_config_option", {"sessionId": session_id, "configId": effort_opt.get("id"), "value": target_wire}, handle_incoming=True)
         return confirmed

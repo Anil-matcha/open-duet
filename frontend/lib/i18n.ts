@@ -106,6 +106,11 @@ export const en = {
   "chat.working.tool": "Using {name}",
   "chat.working.waiting": "Waiting for you",
   "chat.loading": "Loading conversation",
+  "chat.reaction.thumbsUp": "Thumbs up",
+  "chat.reaction.thumbsDown": "Thumbs down",
+  "chat.reaction.replyThumbsUp": "Reply: Looks good, proceed",
+  "chat.reaction.replyThumbsDown": "Reply: No, please revise",
+  "chat.reaction.sent": "Reaction sent",
   "chat.approval.show": "Show details",
   "chat.approval.hide": "Hide details",
   "composer.pasted": "Pasted text · {count} characters",
@@ -491,6 +496,11 @@ export type MessageKey = Exclude<keyof typeof en,
   | "channels.codeExpired"
   | "channels.boatTasksCompactDescription"
   | "channels.openBoatTasks"
+  | "chat.reaction.thumbsUp"
+  | "chat.reaction.thumbsDown"
+  | "chat.reaction.replyThumbsUp"
+  | "chat.reaction.replyThumbsDown"
+  | "chat.reaction.sent"
 >;
 type EnglishKey = keyof typeof en;
 export const LOCALES = ["en", "de", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt", "ru", "tr", "zh"] as const;
@@ -530,7 +540,7 @@ export const LANGUAGE_TAGS: Record<Locale, string> = {
   zh: "zh-CN",
 };
 
-export const es: Partial<Record<MessageKey, string>> = {
+export const es: Partial<Record<EnglishKey, string>> = {
   "onboarding.step.welcome": "Bienvenida",
   "onboarding.step.engine": "Conectar una IA",
   "onboarding.step.agent": "Tu primer agente",
@@ -688,6 +698,11 @@ export const es: Partial<Record<MessageKey, string>> = {
   "chat.working.tool": "Usando {name}",
   "chat.working.waiting": "Esperando tu respuesta",
   "chat.loading": "Cargando conversación",
+  "chat.reaction.thumbsUp": "Me gusta",
+  "chat.reaction.thumbsDown": "No me gusta",
+  "chat.reaction.replyThumbsUp": "Responder: Adelante",
+  "chat.reaction.replyThumbsDown": "Responder: Por favor, revisa",
+  "chat.reaction.sent": "Reacción enviada",
   "chat.approval.show": "Mostrar detalles",
   "chat.approval.hide": "Ocultar detalles",
   "composer.pasted": "Texto pegado · {count} caracteres",

@@ -5,14 +5,18 @@
 ### Added
 
 - Add a review-first agent migration flow for pasted Grok Bot and Hermes Agent exports, common single-agent JSON, and supported OpenBot databases. Preview the name, title and instructions before import; the new agent uses the normal safe defaults. Connected accounts, credentials, skills, routines, files and chat history are not transferred.
-
 - Let the phone app create and edit agents. A new **Chat, files and agents** pairing choice gives a phone the `manage` scope (chat and files, plus agents and rooms): create, edit, duplicate, pin and archive agents with the web editor's fields, and create, edit, hold members of and delete rooms. The server refuses the workspace folder, Accept edits, connected apps and the lead role from any device without full access, and a copy made by such a device is never looser than the original.
 
 ### Changed
 
 - Let the phone app connect over plain `http://` to an address on your own network (`localhost`, `10.x`, `172.16`-`172.31.x`, `192.168.x`, `169.254.x`, `::1`, `fc00::/7`, `.local`); every other address still needs HTTPS. Pairing and Settings say the connection is not encrypted.
+- Raise the default agent answer limit to 30 minutes so longer coding runs can finish without changing settings.
 - Keep active rooms inside the chat workspace so conversation navigation stays visible. Center and widen the docked composer with the transcript; keep member controls, instructions and export/delete actions in a responsive details panel, with the ordered reply queue and routing reason alongside room work. Add keyboard-accessible `@` suggestions and distinguish duplicate agent names in the member list, queue and speaker labels.
 - Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
+
+### Fixed
+
+- Allow safe Bash approval rules to save commands with long file paths; the credential check no longer treats Unix paths as raw tokens.
 
 ## 0.8.1 - 2026-11-03
 

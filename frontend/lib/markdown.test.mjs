@@ -11,6 +11,12 @@ test('paragraphs, headings and rules', () => {
   assert.equal(blocks[3].level, 3);
 });
 
+test('a heading drops only a closing # run that follows a space', () => {
+  const text = (source) => parseMarkdown(source)[0].children[0].text;
+  assert.equal(text('## Using C#'), 'Using C#');
+  assert.equal(text('# Title ##'), 'Title');
+});
+
 test('a fenced code block keeps its text and language, and may be unclosed while streaming', () => {
   const closed = parseMarkdown('```js\nconst a = 1;\n# not a heading\n```\nafter');
   assert.deepEqual(kinds(closed), ['code', 'paragraph']);
@@ -65,6 +71,9 @@ test('links: only http, https and mailto become clickable', () => {
   assert.equal(safeHref('data:text/html,hi'), null);
   assert.equal(safeHref('/relative'), null);
   assert.equal(safeHref('mailto:a@b.co'), 'mailto:a@b.co');
+  const wiki = parseInline('[Foo](https://en.wikipedia.org/wiki/Foo_(bar)) after');
+  assert.equal(wiki[0].href, 'https://en.wikipedia.org/wiki/Foo_(bar)');
+  assert.deepEqual(wiki[1], { type: 'text', text: ' after' });
   const bare = parseInline('see https://example.com/x.');
   assert.equal(bare[1].href, 'https://example.com/x');
 });

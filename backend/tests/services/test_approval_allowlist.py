@@ -41,6 +41,22 @@ def test_unbalanced_quotes_never_match_a_prefix():
     assert not command_matches(PREFIX, "echo", "echo 'unterminated")
 
 
+def test_a_prefix_rule_matches_when_operators_are_only_quoted_text():
+    assert command_matches(PREFIX, "git commit", 'git commit -m "fix > docs"')
+    assert command_matches(PREFIX, "git commit", 'git commit -m "a; b"')
+    assert command_matches(PREFIX, "git commit", "git commit -m 'cost $(id)'")
+    assert command_matches(PREFIX, "git commit", 'git commit -m "a & b"')
+
+
+def test_a_prefix_rule_still_rejects_a_command_chained_after_quoted_text():
+    assert not command_matches(PREFIX, "git commit", 'git commit -m "a > b" && rm -rf ~')
+    assert not command_matches(PREFIX, "git commit", 'git commit -m "cost $(id)"')
+    assert not command_matches(PREFIX, "git commit", 'git commit -m "ok"\nrm -rf ~')
+    assert not command_matches(PREFIX, "git commit", 'git commit -m "ok"&&rm -rf ~')
+    assert not command_matches(PREFIX, "git status", "git status > out")
+    assert not command_matches(PREFIX, "git commit", "git commit -m 'unterminated")
+
+
 def test_rules_are_validated():
     assert allow.validate_rule(EXACT, "  ls -la ") == "ls -la"
     assert allow.validate_rule(PREFIX, "git log") == "git log"
@@ -95,6 +111,20 @@ async def test_rules_belong_to_one_owner_and_are_not_the_sandbox_rules(db_sessio
 def test_credentials_control_characters_and_floor_commands_cannot_be_saved(kind, command):
     with pytest.raises(InvalidRule):
         allow.validate_rule(kind, command)
+
+
+def test_long_file_paths_are_not_mistaken_for_credentials_in_saved_rules():
+    commands = [
+        "sed -n '1440,1515p' '/Users/alex/Downloads/mu_workflow/muapiapp/server/app/services/api_service.py'",
+        "sed -n '1300p' /tmp/candidate-garden-skills/skills/gpt-image-2/scripts/shared.js",
+    ]
+    for command in commands:
+        assert allow.validate_rule(EXACT, command, "/workspace") == command
+
+
+def test_an_unlabelled_long_token_cannot_be_saved():
+    with pytest.raises(InvalidRule, match="credentials"):
+        allow.validate_rule(EXACT, "echo 0123456789abcdef0123456789abcdef01234567", "/workspace")
 
 
 @pytest.mark.parametrize("workspace", ["relative/dir", "/a/../b", "", "/x\x00y", "/" + "a" * 5000])

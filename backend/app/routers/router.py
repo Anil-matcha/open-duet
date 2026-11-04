@@ -78,6 +78,9 @@ router.include_router(rooms_router)
 from app.routers.needs_you import router as needs_you_router
 router.include_router(needs_you_router)
 
+from app.routers.version import router as version_router
+router.include_router(version_router)
+
 from app.routers.integrations import router as integrations_router
 router.include_router(integrations_router)
 

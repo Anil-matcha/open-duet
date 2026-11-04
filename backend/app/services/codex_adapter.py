@@ -305,7 +305,25 @@ class CodexAdapter:
             if not isinstance(item, dict) or item.get("hidden") or not isinstance(item.get("id"), str):
                 continue
             label = item.get("displayName") if isinstance(item.get("displayName"), str) else item["id"]
-            options.append(ModelOption(item["id"], label, default=bool(item.get("isDefault"))))
+            default_effort = item.get("defaultReasoningEffort") or item.get("default_reasoning_effort")
+            efforts = item.get("supportedReasoningEfforts") or item.get("supported_reasoning_efforts") or ()
+            if isinstance(efforts, list):
+                efforts = tuple(efforts)
+            model_id = item["id"].lower()
+            if not efforts and any(p in model_id for p in ("o1", "o3-mini", "o3", "o4")):
+                efforts = ("low", "medium", "high")
+                default_effort = default_effort or "medium"
+            configurable = bool(item.get("reasoningEffortConfigurable", item.get("reasoning_effort_configurable", len(efforts) > 1)))
+            options.append(
+                ModelOption(
+                    item["id"],
+                    label,
+                    default=bool(item.get("isDefault")),
+                    default_reasoning_effort=default_effort,
+                    supported_reasoning_efforts=efforts,
+                    reasoning_effort_configurable=configurable,
+                )
+            )
         if options:
             self._models = (loop.time(), options)
         return options or None
@@ -593,6 +611,8 @@ class _CodexTurn:
         }
         if self.ctx.model:
             turn_params["model"] = self.ctx.model
+        if self.ctx.effort:
+            turn_params["effort"] = self.ctx.effort
         if self.computer is not None:
             turn_params["environments"] = []
         try:
