@@ -94,7 +94,7 @@ test('notes, duplicate, export and import use their routes', async () => {
   calls = respondJson(201, { id: 9 });
   await api.importAgent({ format: 'x' }, false);
   assert.match(calls[0].url, /\/agents\/import$/);
-  assert.deepEqual(JSON.parse(calls[0].options.body), { document: { format: 'x' }, include_notes: false });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { document: { format: 'x' }, include_notes: false, include_skills: false });
 });
 
 test('a notes conflict surfaces as memory_changed', async () => {
