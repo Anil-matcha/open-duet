@@ -20,6 +20,7 @@ from app.db.models.needs_you import NeedsYouState
 from app.db.models.auth import AuthSession, OwnerAccount, PairingCode
 from app.db.models.work_item import WorkBoard, WorkColumn, WorkItem, WorkItemRun, WorkItemEvent
 from app.db.models.community_mcp import CommunityMcpConnection, CommunityMcpToolGrant
+from app.db.models.workflow import Workflow, WorkflowRun
 
 __all__ = [
     "WorkBoard", "WorkColumn", "WorkItem", "WorkItemRun", "WorkItemEvent",
@@ -50,4 +51,6 @@ __all__ = [
     "NeedsYouState",
     "TeamNotice",
     "Notification",
+    "Workflow",
+    "WorkflowRun",
 ]

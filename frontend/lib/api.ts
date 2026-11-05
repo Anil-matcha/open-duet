@@ -968,6 +968,94 @@ export type RoutineInput = {
 export type SchedulePreview = { summary: string; next_dates: string[] };
 export type WebhookSecret = { routine: Routine; secret: string; path: string };
 
+
+export type WorkflowStep = {
+  id: string;
+  name: string;
+  type: "action" | "llm" | "agent" | "condition" | "approval" | "end" | "note" | "trigger";
+  trigger_type?: "manual" | "schedule" | "webhook" | "message";
+  schedule_kind?: "daily" | "hourly" | "weekly" | "monthly" | "cron";
+  schedule_days?: string;
+  schedule_time?: string;
+  schedule_hours?: number;
+  schedule_cron?: string;
+  webhook_url?: string;
+  webhook_secret?: string;
+  message_keyword?: string;
+  agent_id?: number;
+  prompt?: string;
+  model?: string;
+  effort?: string | null;
+  system_prompt?: string | null;
+  approval_mode?: ApprovalMode;
+  next_step_id?: string | null;
+  target?: string;
+  operator?: "contains" | "not_contains" | "equals" | "not_equals" | "matches_regex" | "is_empty" | "is_not_empty";
+  value?: string;
+  if_true?: string;
+  if_false?: string;
+  timeout_minutes?: number;
+  on_approve?: string;
+  on_reject?: string | null;
+  status?: "completed" | "failed";
+  message?: string;
+  color?: string;
+  x?: number;
+  y?: number;
+};
+
+export type Workflow = {
+  id: number;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  trigger_type: "manual" | "schedule" | "webhook";
+  trigger_spec: Record<string, unknown>;
+  steps: WorkflowStep[];
+  paused: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowRun = {
+  id: number;
+  workflow_id: number;
+  owner_id: string;
+  trigger: string;
+  status: "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+  current_step_id: string | null;
+  context: Record<string, unknown>;
+  step_states: Record<string, {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    output?: string;
+    result?: boolean;
+    branch_taken?: string;
+    decision?: string;
+    notes?: string;
+    prompt?: string;
+    message?: string;
+    started_at?: string;
+    finished_at?: string;
+  }>;
+  pending_approval: {
+    step_id: string;
+    name: string;
+    prompt: string;
+    timeout_minutes: number;
+    on_approve?: string;
+    on_reject?: string | null;
+    requested_at: string;
+  } | null;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AppNotification = {
   id: number;
   kind: string;
@@ -1513,6 +1601,42 @@ export const api = {
     }),
   enableRoutineWebhook: (id: number) => request<WebhookSecret>(`/routines/${id}/webhook`, { method: "POST" }),
   disableRoutineWebhook: (id: number) => request<Routine>(`/routines/${id}/webhook`, { method: "DELETE" }),
+  // --- Multi-step Workflows ---
+  listWorkflows: () => request<Workflow[]>("/workflows"),
+  getWorkflow: (id: number) => request<Workflow>(`/workflows/${id}`),
+  createWorkflow: (data: Partial<Workflow>) =>
+    request<Workflow>("/workflows", { method: "POST", body: JSON.stringify(data) }),
+  updateWorkflow: (id: number, data: Partial<Workflow>) =>
+    request<Workflow>(`/workflows/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteWorkflow: (id: number) => request<void>(`/workflows/${id}`, { method: "DELETE" }),
+  startWorkflowRun: (id: number, input: Record<string, unknown> = {}, background = false) =>
+    request<WorkflowRun>(`/workflows/${id}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ input, background }),
+    }),
+  listWorkflowRuns: (id: number, limit = 50) =>
+    request<WorkflowRun[]>(`/workflows/${id}/runs?limit=${limit}`),
+  listAllWorkflowRuns: (limit = 50) =>
+    request<WorkflowRun[]>(`/workflows/runs/all?limit=${limit}`),
+  getWorkflowRun: (runId: number) => request<WorkflowRun>(`/workflows/runs/${runId}`),
+  approveWorkflowRun: (runId: number, decision: "approve" | "reject", notes?: string) =>
+    request<WorkflowRun>(`/workflows/runs/${runId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ decision, notes }),
+    }),
+  cancelWorkflowRun: (runId: number) =>
+    request<WorkflowRun>(`/workflows/runs/${runId}/cancel`, { method: "POST" }),
+  runWorkflowStep: (workflowId: number, stepId: string, input: Record<string, unknown> = {}) =>
+    request<{ step_id: string; status: string; output: string }>(
+      `/workflows/${workflowId}/steps/${stepId}/run`,
+      { method: "POST", body: JSON.stringify({ input }) }
+    ),
+  triggerWorkflowWebhook: (id: number, payload: Record<string, unknown> = {}) =>
+    request<WorkflowRun>(`/workflows/${id}/trigger`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   listNotifications: (limit = 30) => request<AppNotification[]>(`/notifications?limit=${limit}`),
   unreadNotifications: () => request<{ unread: number }>("/notifications/unread-count"),
   readNotification: (id: number) => request<void>(`/notifications/${id}/read`, { method: "POST" }),
