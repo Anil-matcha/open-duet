@@ -266,6 +266,7 @@ class WorkflowService:
             if step_type in ("action", "llm", "agent"):
                 prompt = render_template(step.get("prompt", ""), context)
                 output_text = ""
+                action_error: str | None = None
                 if rt is not None:
                     run.context = context
                     run.step_states = step_states
@@ -298,22 +299,45 @@ class WorkflowService:
                         while waited < max_wait:
                             await asyncio.sleep(poll_interval)
                             waited += poll_interval
-                            db.expire_all()
-                            turn_row = await db.scalar(select(Turn).where(Turn.id == turn.id))
+                            turn_row = await db.scalar(
+                                select(Turn)
+                                .where(Turn.id == turn.id)
+                                .execution_options(populate_existing=True)
+                            )
                             if turn_row and turn_row.status != "running":
                                 if turn_row.status == "succeeded":
                                     output_text = turn_row.result or "Step completed."
-                                elif turn_row.status == "failed":
-                                    output_text = turn_row.error or turn_row.result or "Step failed."
                                 else:
-                                    output_text = turn_row.result or f"Turn status: {turn_row.status}"
+                                    action_error = (
+                                        turn_row.error
+                                        or turn_row.result
+                                        or f"Assistant turn ended with status '{turn_row.status}'."
+                                    )
                                 break
                         else:
-                            output_text = f"Turn {turn.id} timed out waiting for assistant reply."
-                    except BaseException as e:
-                        output_text = f"Action executed with note: {e}"
+                            action_error = f"Turn {turn.id} timed out waiting for assistant reply."
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        action_error = f"Assistant action failed: {e}"
                 else:
                     output_text = f"Simulated output for {step_type} '{step_name}': {prompt[:100]}"
+
+                if action_error is not None:
+                    step_states[step_id].update({
+                        "status": "failed",
+                        "error": action_error,
+                        "finished_at": utcnow().isoformat(),
+                    })
+                    context.setdefault("steps", {})[step_id] = {
+                        "output": action_error,
+                        "status": "failed",
+                    }
+                    run.status = "failed"
+                    run.error = f"Step '{step_name}' failed: {action_error}"
+                    run.current_step_id = None
+                    run.finished_at = utcnow()
+                    break
 
                 context.setdefault("steps", {})[step_id] = {
                     "output": output_text,

@@ -7,6 +7,28 @@ from app.services.workflow_service import (
 )
 
 
+class FailedTurnRuntime:
+    def __init__(self, db, owner_id):
+        self.db = db
+        self.owner_id = owner_id
+
+    async def create_thread(self, **kwargs):
+        from app.db.models.thread import Thread
+
+        thread = Thread(owner_id=self.owner_id, provider="test")
+        self.db.add(thread)
+        await self.db.flush()
+        return thread
+
+    async def send_turn(self, thread_id, prompt, **kwargs):
+        from app.db.models.turn import Turn
+
+        turn = Turn(thread_id=thread_id, seq=1, prompt_text=prompt, status="failed", error="engine failed")
+        self.db.add(turn)
+        await self.db.flush()
+        return turn
+
+
 def test_render_template():
     context = {
         "input": {"customer": "Alice", "priority": "urgent"},
@@ -177,3 +199,25 @@ async def test_workflow_crud_and_branching(db_session, user_id):
     deleted = await WorkflowService.delete_workflow(db, owner, wf.id)
     assert deleted is True
     assert await WorkflowService.get_workflow(db, owner, wf.id) is None
+
+
+@pytest.mark.asyncio
+async def test_failed_action_marks_run_failed_and_skips_later_steps(db_session, user_id):
+    db = db_session
+    workflow = await WorkflowService.create_workflow(db, user_id, {
+        "name": "Failure handling",
+        "steps": [
+            {"id": "first", "type": "action", "name": "First", "prompt": "Do work", "next_step_id": "second"},
+            {"id": "second", "type": "action", "name": "Second", "prompt": "Continue"},
+        ],
+    })
+
+    run = await WorkflowService.start_run(
+        db, user_id, workflow.id, rt=FailedTurnRuntime(db, user_id)
+    )
+
+    assert run.status == "failed"
+    assert "engine failed" in run.error
+    assert run.step_states["first"]["status"] == "failed"
+    assert run.context["steps"]["first"]["status"] == "failed"
+    assert "second" not in run.step_states

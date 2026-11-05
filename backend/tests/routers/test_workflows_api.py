@@ -1,11 +1,15 @@
+from contextlib import asynccontextmanager
+
 import httpx
 import pytest
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.db.models.thread import Thread
+from app.db.models.turn import Turn
 from app.routers.threads import get_runtime
 from app.routers.workflows import router as workflows_router
-from tests.services.thread_harness import cleanup, cli, owner, rt, sessions  # noqa: F401
+from tests.services.thread_harness import cleanup, owner, sessions  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -15,13 +19,48 @@ def local_enabled(monkeypatch):
 
 
 @pytest.fixture
-async def api(rt):
+async def api(sessions, owner):
     app = FastAPI()
     app.include_router(workflows_router, prefix="/api/v1")
-    app.dependency_overrides[get_runtime] = lambda: rt
+    app.dependency_overrides[get_runtime] = lambda: WorkflowTestRuntime(sessions, owner)
     transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 50000))
     async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         yield client
+
+
+class WorkflowTestRuntime:
+    """Return deterministic successful turns without launching an engine process."""
+
+    def __init__(self, sessions, owner_id):
+        self.sessions = sessions
+        self.owner_id = owner_id
+
+    @asynccontextmanager
+    async def session(self):
+        async with self.sessions() as db:
+            yield db
+
+    async def create_thread(self, *, title=None, agent_id=None, **kwargs):
+        async with self.sessions() as db:
+            thread = Thread(owner_id=self.owner_id, provider="test", title=title, agent_id=agent_id)
+            db.add(thread)
+            await db.commit()
+            await db.refresh(thread)
+            return thread
+
+    async def send_turn(self, thread_id, prompt, **kwargs):
+        async with self.sessions() as db:
+            turn = Turn(
+                thread_id=thread_id,
+                seq=1,
+                prompt_text=prompt,
+                status="succeeded",
+                result="Test assistant response",
+            )
+            db.add(turn)
+            await db.commit()
+            await db.refresh(turn)
+            return turn
 
 
 @pytest.mark.asyncio
