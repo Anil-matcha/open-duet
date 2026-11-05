@@ -18,6 +18,7 @@
 - Replace the compact Team coordination dialog with a full-screen workspace for agents, delegated work and rooms. Group jobs by attention, running, waiting and finished; show who requested and owns each job, its delegation parent and timing, with existing approval, open and stop controls. Let Work filters wrap on narrow screens so every filter stays visible.
 
 ### Fixed
+- Make Markdown links to files inside the conversation's pinned workspace downloadable from the assistant reply. Other local paths stay plain text.
 - Handle missing profile titles in migration previews so the local app UI builds successfully.
 - Include the local Whisper and media packages in the backend lockfile so frozen setup succeeds.
 

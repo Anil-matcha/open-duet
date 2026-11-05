@@ -131,6 +131,8 @@ export function AssistantMessage({
   reaction = null,
   onReact,
   disabled = false,
+  threadId = null,
+  workspacePath = null,
 }: {
   text: string;
   incomplete?: boolean;
@@ -139,12 +141,14 @@ export function AssistantMessage({
   reaction?: ReactionKind | null;
   onReact?: (reaction: ReactionKind) => void;
   disabled?: boolean;
+  threadId?: number | null;
+  workspacePath?: string | null;
 }) {
   const t = useT();
   const timeStr = formatMessageTime(ts, t);
   return (
     <div className="group/msg max-w-full text-[15px] leading-relaxed">
-      <Markdown text={text} />
+      <Markdown text={text} threadId={live ? null : threadId} workspacePath={live ? null : workspacePath} />
       {live && <span aria-hidden="true" className="animate-pulse text-muted motion-reduce:animate-none">▍</span>}
       {!live && text && (
         <div className="-ml-1 mt-1 flex flex-wrap items-center gap-1.5">

@@ -122,6 +122,13 @@ Confinement, checked on every request:
 UI: a Files panel for the open conversation: folders, sizes, a text or image
 preview, a download link, and **Download zip** for the folder being shown.
 
+An assistant Markdown link to an absolute file path becomes a **Download**
+action only when the path is inside that conversation's pinned workspace. The
+app sends the relative path through the existing workspace download route, so
+its permission, containment, symlink, secret-file and size checks still apply.
+Paths outside the pinned workspace remain plain text; the app never opens a
+`file://` URL from a message.
+
 ## Usage and cost
 
 Engines report tokens and cost at the end of a turn when they know them

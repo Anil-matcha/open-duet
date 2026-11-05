@@ -85,6 +85,7 @@ export function Conversation({
   undoneRules = [],
   onUndo,
   threadId = null,
+  workspacePath = null,
   emptyHint,
   emptyAction,
   agent = null,
@@ -92,6 +93,8 @@ export function Conversation({
 }: {
   // The conversation the transcript belongs to: attachments are fetched from it.
   threadId?: number | null;
+  // The pinned workspace also scopes download links in assistant replies.
+  workspacePath?: string | null;
   // What to say when there is nothing yet (depends on whether an engine is ready).
   emptyHint?: string;
   // Shown under the hint, e.g. a button that opens the engine sign-in.
@@ -226,6 +229,8 @@ export function Conversation({
                     <AssistantMessage
                       key={item.key}
                       text={item.text}
+                      threadId={threadId}
+                      workspacePath={workspacePath}
                       incomplete={item.incomplete}
                       ts={item.ts}
                       reaction={reactions[item.key] ?? null}

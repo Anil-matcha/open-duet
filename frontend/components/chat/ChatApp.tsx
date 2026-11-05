@@ -1262,6 +1262,7 @@ export function ChatApp() {
           ) : (
             <Conversation
               threadId={threadId}
+              workspacePath={thread?.workspace_path ?? null}
               loading={threadId !== null && thread === null}
               agent={threadAgent ? { id: threadAgent.id, name: threadAgent.name } : startingAgent ? { id: startingAgent.id, name: startingAgent.name } : null}
               emptyAction={signInAction}

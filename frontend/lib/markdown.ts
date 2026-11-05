@@ -10,7 +10,8 @@ export type Inline =
   | { type: "strong"; children: Inline[] }
   | { type: "em"; children: Inline[] }
   | { type: "del"; children: Inline[] }
-  | { type: "link"; href: string; children: Inline[] };
+  | { type: "link"; href: string; children: Inline[] }
+  | { type: "workspace-file"; path: string; children: Inline[] };
 
 export type Block =
   | { type: "paragraph"; children: Inline[] }
@@ -24,8 +25,8 @@ export type Block =
 
 const SAFE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
-// Only these links become clickable; anything else (javascript:, data:, ...) is
-// shown as the text it was written with.
+// Only these URL protocols become links. Local file paths are parsed separately
+// and can become a workspace-scoped download action in a conversation.
 export function safeHref(raw: string): string | null {
   const href = raw.trim();
   if (!href) return null;
@@ -63,6 +64,42 @@ function closingParen(text: string, from: number): number {
     }
   }
   return -1;
+}
+
+function linkDestination(text: string, from: number): { target: string; end: number } | null {
+  // Angle brackets allow paths with spaces, as in [video](</workspace/output/sample video.mp4>).
+  if (text[from] === "<") {
+    const angle = text.indexOf(">", from + 1);
+    if (angle !== -1 && text[angle + 1] === ")") {
+      return { target: text.slice(from + 1, angle), end: angle + 1 };
+    }
+  }
+  const end = closingParen(text, from);
+  if (end === -1) return null;
+  const target = text.slice(from, end).trim().split(/\s+/)[0] ?? "";
+  return { target, end };
+}
+
+function absoluteWorkspaceFilePath(target: string): boolean {
+  return target.startsWith("/") || /^[A-Za-z]:[\\/]/.test(target);
+}
+
+// Map an absolute path from an assistant answer to the workspace-relative path
+// accepted by the download API. Keep this check in the client as an additional
+// guard; the server still performs canonical containment and file safety checks.
+export function workspaceRelativePath(path: string, workspacePath: string | null): string | null {
+  if (!workspacePath) return null;
+  const normalize = (value: string) => value.replaceAll("\\", "/");
+  let root = normalize(workspacePath);
+  if (root.length > 1) root = root.replace(/\/+$/, "");
+  const target = normalize(path);
+  const windows = /^[A-Za-z]:/i.test(root);
+  const compare = (value: string) => windows ? value.toLowerCase() : value;
+  const prefix = root.endsWith("/") ? root : `${root}/`;
+  if (!compare(target).startsWith(compare(prefix))) return null;
+  const relative = target.slice(prefix.length);
+  if (!relative || relative.split("/").some((part) => !part || part === "." || part === "..")) return null;
+  return relative;
 }
 
 const ESCAPABLE = "\\`*_{}[]()#+-.!|~>";
@@ -139,15 +176,16 @@ export function parseInline(text: string): Inline[] {
     if (ch === "[") {
       const close = indexOfUnescaped(text, "]", i + 1);
       if (close !== -1 && text[close + 1] === "(") {
-        const paren = closingParen(text, close + 2);
-        if (paren !== -1) {
+        const destination = linkDestination(text, close + 2);
+        if (destination) {
           const label = text.slice(i + 1, close);
-          const target = text.slice(close + 2, paren).trim().split(/\s+/)[0] ?? "";
-          const href = safeHref(target);
+          const href = safeHref(destination.target);
           flush();
           if (href) out.push({ type: "link", href, children: parseInline(label) });
-          else out.push(...parseInline(label));
-          i = paren + 1;
+          else if (absoluteWorkspaceFilePath(destination.target)) {
+            out.push({ type: "workspace-file", path: destination.target, children: parseInline(label) });
+          } else out.push(...parseInline(label));
+          i = destination.end + 1;
           continue;
         }
       }

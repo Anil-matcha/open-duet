@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseInline, parseMarkdown, safeHref } from './markdown.ts';
+import { parseInline, parseMarkdown, safeHref, workspaceRelativePath } from './markdown.ts';
 
 const kinds = (blocks) => blocks.map((b) => b.type);
 
@@ -76,6 +76,22 @@ test('links: only http, https and mailto become clickable', () => {
   assert.deepEqual(wiki[1], { type: 'text', text: ' after' });
   const bare = parseInline('see https://example.com/x.');
   assert.equal(bare[1].href, 'https://example.com/x');
+});
+
+test('absolute workspace file links preserve labels and paths with spaces', () => {
+  const [node] = parseInline('[Download your sample video (MP4)](</Users/ankur/My Workspace/output/sample-social-video.mp4>)');
+  assert.equal(node.type, 'workspace-file');
+  assert.equal(node.path, '/Users/ankur/My Workspace/output/sample-social-video.mp4');
+  assert.deepEqual(node.children, [{ type: 'text', text: 'Download your sample video (MP4)' }]);
+  assert.deepEqual(parseInline('[outside](relative/file.mp4)'), [{ type: 'text', text: 'outside' }]);
+});
+
+test('workspace file paths resolve only inside the pinned workspace', () => {
+  assert.equal(workspaceRelativePath('/Users/ankur/Workspace/output/a video.mp4', '/Users/ankur/Workspace'), 'output/a video.mp4');
+  assert.equal(workspaceRelativePath('/Users/ankur/Workspace-old/output/a.mp4', '/Users/ankur/Workspace'), null);
+  assert.equal(workspaceRelativePath('/Users/ankur/Workspace/../secret.txt', '/Users/ankur/Workspace'), null);
+  assert.equal(workspaceRelativePath('c:\\Users\\Ankur\\Workspace\\out\\clip.mp4', 'C:\\Users\\ankur\\Workspace\\'), 'out/clip.mp4');
+  assert.equal(workspaceRelativePath('/tmp/outside.mp4', null), null);
 });
 
 test('HTML in an answer stays plain text', () => {

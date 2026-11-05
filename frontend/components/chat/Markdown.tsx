@@ -1,8 +1,56 @@
 "use client";
 
-import { Fragment, memo, useState, type ReactNode } from "react";
+import { createContext, Fragment, memo, useContext, useState, type ReactNode } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
-import { parseMarkdown, type Block, type Inline } from "@/lib/markdown";
+import { api, ApiError } from "@/lib/api";
+import { parseMarkdown, workspaceRelativePath, type Block, type Inline } from "@/lib/markdown";
+
+const WorkspaceDownloadContext = createContext<{ threadId: number | null; workspacePath: string | null }>({
+  threadId: null,
+  workspacePath: null,
+});
+
+function WorkspaceFileDownload({ path, children }: { path: string; children: ReactNode }) {
+  const { threadId, workspacePath } = useContext(WorkspaceDownloadContext);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const relative = workspaceRelativePath(path, workspacePath);
+
+  if (threadId === null || relative === null) return <Fragment>{children}</Fragment>;
+
+  const download = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const url = await api.workspaceDownloadUrl(threadId, relative);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = relative.split("/").at(-1) || "download";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not download this file.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void download()}
+        disabled={downloading}
+        aria-busy={downloading}
+        className="cursor-pointer text-accent underline underline-offset-2 hover:opacity-80 disabled:cursor-wait disabled:opacity-70"
+      >
+        {children}
+        {downloading && <span className="ml-1 text-xs no-underline">Downloading…</span>}
+      </button>
+      {error && <span role="alert" className="ml-1 text-xs text-danger">{error}</span>}
+    </>
+  );
+}
 
 function renderInline(nodes: Inline[]): ReactNode {
   return nodes.map((node, i) => {
@@ -32,6 +80,12 @@ function renderInline(nodes: Inline[]): ReactNode {
           >
             {renderInline(node.children)}
           </a>
+        );
+      case "workspace-file":
+        return (
+          <WorkspaceFileDownload key={i} path={node.path}>
+            {renderInline(node.children)}
+          </WorkspaceFileDownload>
         );
     }
   });
@@ -151,6 +205,18 @@ function renderBlock(block: Block, key: number): ReactNode {
 // An assistant answer as formatted text. It never renders raw HTML: the text is
 // parsed to plain data first (see lib/markdown.ts), so it is safe on half-written
 // answers while they stream.
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
-  return <div className="text-ink">{parseMarkdown(text).map(renderBlock)}</div>;
+export const Markdown = memo(function Markdown({
+  text,
+  threadId = null,
+  workspacePath = null,
+}: {
+  text: string;
+  threadId?: number | null;
+  workspacePath?: string | null;
+}) {
+  return (
+    <WorkspaceDownloadContext.Provider value={{ threadId, workspacePath }}>
+      <div className="text-ink">{parseMarkdown(text).map(renderBlock)}</div>
+    </WorkspaceDownloadContext.Provider>
+  );
 });
