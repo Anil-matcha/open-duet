@@ -21,6 +21,7 @@ import { AgentsPanel } from "./AgentsPanel";
 import { NotificationBell } from "./NotificationBell";
 import { LanguageSelect } from "@/components/settings/LanguageSelect";
 import { RoutinesPanel } from "./RoutinesPanel";
+import { WorkflowsPanel } from "@/components/workflows/WorkflowsPanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { EngineModelFields } from "./EngineModelFields";
 import { ComputerView } from "./ComputerPanel";
@@ -203,8 +204,10 @@ export function ChatApp() {
   const [agentsCreate, setAgentsCreate] = useState(false);
   const [routinesShown, showRoutines] = useState(false);
   const [plannerShown, showPlanner] = useState(false);
+  const [workflowsShown, showWorkflows] = useState(false);
   const routinesOpen = routinesShown || params.get("view") === "routines";
   const plannerOpen = plannerShown || params.get("view") === "planner";
+  const workflowsOpen = workflowsShown || params.get("view") === "workflows";
   const clearBriefTarget = () => {
     const query = new URLSearchParams(params.toString());
     query.delete("view"); query.delete("routine"); query.delete("task");
@@ -212,6 +215,7 @@ export function ChatApp() {
   };
   const setRoutinesOpen = (open: boolean) => { showRoutines(open); if (!open && params.get("view") === "routines") clearBriefTarget(); };
   const setPlannerOpen = (open: boolean) => { showPlanner(open); if (!open && params.get("view") === "planner") clearBriefTarget(); };
+  const setWorkflowsOpen = (open: boolean) => { showWorkflows(open); if (!open && params.get("view") === "workflows") clearBriefTarget(); };
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
@@ -1085,6 +1089,7 @@ export function ChatApp() {
       collaboration={ready ? <RoomList selected={roomId} onTeam={() => setTeamOpen(true)} onNavigate={() => setDrawerOpen(false)} /> : undefined}
       onOpenRoutines={ready && agents !== null ? () => setRoutinesOpen(true) : undefined}
       onOpenPlanner={ready && agents !== null ? () => setPlannerOpen(true) : undefined}
+      onOpenWorkflows={ready && agents !== null ? () => setWorkflowsOpen(true) : undefined}
       onNavigate={() => { setDrawerOpen(false); setModelDraft(null); }}
     />
   );
@@ -1226,6 +1231,9 @@ export function ChatApp() {
         <RoutinesPanel key={params.get("routine")} routineId={parseThreadId(params.get("routine"))} agents={agents} onClose={() => setRoutinesOpen(false)} />
       )}
       {plannerOpen && agents !== null && <PlannerPanel key={params.get("task")} taskId={parseThreadId(params.get("task"))} agents={agents} threads={threads ?? []} onClose={() => setPlannerOpen(false)} onOpenRoutines={() => { setPlannerOpen(false); setRoutinesOpen(true); }} />}
+      {workflowsOpen && agents !== null && (
+        <WorkflowsPanel agents={agents} engines={engines ?? []} onClose={() => setWorkflowsOpen(false)} />
+      )}
       {agentsOpen && agents !== null && (
         <AgentsPanel
           agents={agents}

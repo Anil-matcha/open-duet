@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Columns3,
+  GitBranch,
   LayoutGrid,
   Plus,
   Settings,
@@ -95,6 +96,7 @@ export function Sidebar({
   onNewAgent,
   onOpenRoutines,
   onOpenPlanner,
+  onOpenWorkflows,
   onNavigate,
   collaboration,
 }: {
@@ -116,6 +118,7 @@ export function Sidebar({
   onNewAgent?: () => void;
   onOpenRoutines?: () => void;
   onOpenPlanner?: () => void;
+  onOpenWorkflows?: () => void;
   onNavigate?: () => void;
   collaboration?: React.ReactNode;
 }) {
@@ -363,6 +366,19 @@ export function Sidebar({
             >
               <CalendarClock size={16} aria-hidden="true" className="shrink-0 text-muted" />
               <span className="font-medium">{t("sidebar.routines")}</span>
+            </button>
+          )}
+          {onOpenWorkflows && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenWorkflows();
+                onNavigate?.();
+              }}
+              className={cn(ROW, "hover:bg-hover/60")}
+            >
+              <GitBranch size={16} aria-hidden="true" className="shrink-0 text-muted" />
+              <span className="font-medium">Workflows</span>
             </button>
           )}
           <Link href="/apps/" className={cn(ROW, "hover:bg-hover/60")}>
