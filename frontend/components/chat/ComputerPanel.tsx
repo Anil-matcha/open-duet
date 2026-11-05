@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { api, ApiError, type Agent, type Computer, type ComputerHealth, type ComputerNetwork, type ComputerKind } from "@/lib/api";
 import { LiveBrowser } from "./LiveBrowser";
 import { LiveDesktop } from "./LiveDesktop";
+import { isDesktopApp } from "@/lib/desktop-notifications";
 import { DesktopPicture } from "./DesktopPicture";
 import { BoatDesktop } from "./BoatDesktop";
 import { NativeComputer } from "./NativeComputer";
@@ -216,6 +217,14 @@ function DockerComputerView({
               setBoatConfigured(false);
               setBoatKey("");
             })}>Remove saved key</button>}
+            {!isDesktopApp() && (
+              <p className="text-xs text-muted">
+                Prefer local computers? The free desktop app can run one with Docker—no Boat API key required.{" "}
+                <a className="text-accent underline underline-offset-2 hover:opacity-80" href="/download/">
+                  Download desktop app
+                </a>
+              </p>
+            )}
           </div>
         )}
         <fieldset className="space-y-1">

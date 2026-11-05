@@ -19,6 +19,7 @@
 
 ### Fixed
 - Make Markdown links to files inside the conversation's pinned workspace downloadable from the assistant reply. Other local paths stay plain text.
+- Clarify the free desktop app's local Docker option beside the Boat API key prompt in web mode.
 - Handle missing profile titles in migration previews so the local app UI builds successfully.
 - Include the local Whisper and media packages in the backend lockfile so frozen setup succeeds.
 
