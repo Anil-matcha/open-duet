@@ -4,7 +4,8 @@
 // `npm run setup` (which also installs electron-builder) and `uv`.
 //
 // PyInstaller does not cross-compile, so the installer is for the OS it runs on.
-// Output: desktop/release/. Unsigned (signing is a later step).
+// Output: desktop/release/. Local macOS packages are unsigned; tagged releases
+// set DESKTOP_REQUIRE_SIGNING=1 and provide signing/notarization credentials.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -45,5 +46,21 @@ run(
 );
 if (!fs.existsSync(frozen)) fail(`The frozen backend is missing from ${frozen}.`);
 
-run("Making the installer", process.execPath, [builder, target, "--publish", "never"], paths.desktop);
+const requireMacSigning = target === "--mac" && process.env.DESKTOP_REQUIRE_SIGNING === "1";
+const macSigningArgs = target !== "--mac"
+  ? []
+  : requireMacSigning
+    ? ["--config.mac.forceCodeSigning=true", "--config.mac.notarize=true"]
+    : [
+        "--config.mac.identity=null",
+        "--config.mac.hardenedRuntime=false",
+        "--config.mac.notarize=false",
+      ];
+
+run(
+  "Making the installer",
+  process.execPath,
+  [builder, target, "--publish", "never", ...macSigningArgs],
+  paths.desktop,
+);
 console.log(`\nInstaller in ${path.join(paths.desktop, "release")}`);

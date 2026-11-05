@@ -1,6 +1,6 @@
 {
   "name": "open-dots-desktop",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "description": "Open Duet desktop app: an Electron window around the local backend. Runs from a source checkout or installed.",
   "main": "main.js",
@@ -82,7 +82,6 @@
         }
       ],
       "category": "public.app-category.productivity",
-      "identity": null,
       "artifactName": "Open-Duet-${version}-arm64.${ext}"
     }
   }

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.8.3 - 2026-11-06
+
+### Added
+
+- Add a visual workflow builder with interactive trigger nodes.
+
+### Changed
+
+- Require Developer ID signing and Apple notarization for tagged macOS release builds. Local Mac packages remain unsigned.
+
 ## 0.8.2 - 2026-11-05
 
 ### Added
