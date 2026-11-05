@@ -2,16 +2,18 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
-from app.composio_tools import TOOLS
+from app.composio_tools import ROUTINE_WRITE_TOOLS, TOOLS
 from app.routers.routines import _validated_grants
 from app.schemas.routine import ConnectedAppGrant, RoutineCreateRequest
 READ = next(t for t in TOOLS if t.kind == "read")
-WRITE = next(t for t in TOOLS if t.kind == "write")
+ALLOWED_WRITE = next(t for t in TOOLS if t.kind == "write" and t.name in ROUTINE_WRITE_TOOLS)
+UNSUPPORTED_WRITE = next(t for t in TOOLS if t.kind == "write" and t.name not in ROUTINE_WRITE_TOOLS)
 
 
 def test_grants_default_off_and_only_exact_actions():
     assert RoutineCreateRequest(agent_id=1, name="a", prompt="b").connected_app_grants == []
-    for tool in (WRITE.name, "gmail_create_draft_reply", "unknown", "*"):
+    assert ConnectedAppGrant(tool=ALLOWED_WRITE.name, account_id="ca_test").tool == ALLOWED_WRITE.name
+    for tool in (UNSUPPORTED_WRITE.name, "gmail_create_draft_reply", "unknown", "*"):
         with pytest.raises(ValidationError):
             ConnectedAppGrant(tool=tool, account_id="ca_test")
 

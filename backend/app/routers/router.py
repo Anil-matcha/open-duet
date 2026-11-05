@@ -90,6 +90,8 @@ router.include_router(community_mcp_router)
 from app.routers.onboarding import router as onboarding_router
 from app.routers.engine_install import router as engine_install_router
 from app.routers.desktop_account import router as desktop_account_router
+from app.routers.workflows import router as workflows_router
 router.include_router(onboarding_router)
 router.include_router(engine_install_router)
 router.include_router(desktop_account_router)
+router.include_router(workflows_router)
