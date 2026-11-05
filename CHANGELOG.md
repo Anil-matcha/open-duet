@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.2 - 2026-11-05
+
 ### Added
 
 - Save an agent's selected reasoning effort and use it as the default for new conversations from that agent. Conversations can still choose their own effort in the model dialog. No automated tests, typecheck, migration run, app launch, provider turn or package check was run for this source change.
