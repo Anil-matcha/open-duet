@@ -89,6 +89,21 @@ class NoteStep(BaseStep):
     next_step_id: str | None = None
 
 
+class SectionStep(BaseStep):
+    type: Literal["section"] = "section"
+    color: str | None = "zinc"
+    description: str | None = None
+    next_step_id: str | None = None
+
+
+class TextStep(BaseStep):
+    type: Literal["text"] = "text"
+    text: str = Field(default="", max_length=10_000)
+    font_size: str | None = "medium"
+    color: str | None = "zinc"
+    next_step_id: str | None = None
+
+
 class TriggerStep(BaseStep):
     type: Literal["trigger"] = "trigger"
     trigger_type: Literal["manual", "schedule", "webhook", "message"] = "schedule"
@@ -104,7 +119,18 @@ class TriggerStep(BaseStep):
 
 
 WorkflowStep = Annotated[
-    Union[ActionStep, LLMStep, AgentStep, ConditionStep, ApprovalStep, EndStep, NoteStep, TriggerStep],
+    Union[
+        ActionStep,
+        LLMStep,
+        AgentStep,
+        ConditionStep,
+        ApprovalStep,
+        EndStep,
+        NoteStep,
+        SectionStep,
+        TextStep,
+        TriggerStep,
+    ],
     Field(discriminator="type"),
 ]
 

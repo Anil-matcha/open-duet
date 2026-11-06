@@ -15,12 +15,16 @@ import {
   History,
   Image as ImageIcon,
   Lock,
+  Map,
   Maximize2,
+  Minus,
   MousePointer2,
   PenTool,
+  Pencil,
   Play,
   Plus,
   RotateCcw,
+  Scan,
   Search,
   ShieldAlert,
   Sparkles,
@@ -29,6 +33,7 @@ import {
   Type,
   Unlock,
   X,
+  Layers,
   CalendarClock,
   MousePointerClick,
   Webhook,
@@ -141,6 +146,24 @@ export const NODE_SIZE_CONFIG: Record<string, NodeSizeLimits> = {
     maxWidth: 600,
     minHeight: 140,
     maxHeight: 600,
+    resizable: true,
+  },
+  section: {
+    defaultWidth: 500,
+    defaultHeight: 340,
+    minWidth: 260,
+    maxWidth: 1600,
+    minHeight: 180,
+    maxHeight: 1200,
+    resizable: true,
+  },
+  text: {
+    defaultWidth: 280,
+    defaultHeight: 70,
+    minWidth: 160,
+    maxWidth: 800,
+    minHeight: 40,
+    maxHeight: 400,
     resizable: true,
   },
   end: {
@@ -339,6 +362,57 @@ interface SelectedWire {
   port: "out" | "true" | "false" | "approve" | "reject";
 }
 
+function DockPencilIcon({ active }: { active?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="18"
+      viewBox="0 0 16 18"
+      fill="none"
+      className="transition-transform group-hover:scale-105"
+    >
+      <rect x="5" y="6" width="6" height="12" rx="1" fill="#f4f4f5" />
+      <polygon points="5,6 11,6 8,1" fill="#fed7aa" />
+      <polygon points="7,3 9,3 8,1" fill="#18181b" />
+      <line x1="8" y1="6" x2="8" y2="18" stroke="#e4e4e7" strokeWidth="0.8" />
+    </svg>
+  );
+}
+
+function DockNoteIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 20 20"
+      fill="none"
+      className="transition-transform group-hover:scale-105"
+    >
+      <path d="M4 6h12v12H4z" fill="#9a3412" rx="2" opacity="0.6" />
+      <path
+        d="M2 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v9l-5 5H4a2 2 0 0 1-2-2V3z"
+        fill="#f97316"
+      />
+      <path d="M11 12h5l-5 5v-5z" fill="#fdba74" opacity="0.9" />
+    </svg>
+  );
+}
+
+function DockShapeIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 22 22"
+      fill="none"
+      className="transition-transform group-hover:scale-105"
+    >
+      <circle cx="15" cy="15" r="5.5" fill="#71717a" opacity="0.8" />
+      <rect x="2" y="2" width="12" height="12" rx="3" fill="#ffffff" />
+    </svg>
+  );
+}
+
 export function WorkflowCanvas({
   workflow,
   workflows,
@@ -436,7 +510,7 @@ export function WorkflowCanvas({
           if (s.on_reject === targetStepId && (s.on_reject_target_port || "text") === targetPort) {
             return { fromStep: s, port: "reject" as const };
           }
-        } else if (s.type !== "end" && s.type !== "note") {
+        } else if (s.type !== "end" && s.type !== "note" && s.type !== "section" && s.type !== "text") {
           if (s.next_step_id === targetStepId && (s.target_port || "text") === targetPort) {
             return { fromStep: s, port: "out" as const };
           }
@@ -630,6 +704,13 @@ export function WorkflowCanvas({
   const [nodeSearch, setNodeSearch] = useState("");
   const [executionNotice, setExecutionNotice] = useState<string | null>(null);
 
+  // Dock & Canvas Tools States
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [showSearchPalette, setShowSearchPalette] = useState(false);
+  const [canvasSearchQuery, setCanvasSearchQuery] = useState("");
+  const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
+  const [drawColor, setDrawColor] = useState<string>("#ffffff");
+
   // Execution states
   const [runningStepId, setRunningStepId] = useState<string | null>(null);
   const [stepOutputs, setStepOutputs] = useState<Record<string, string>>({});
@@ -642,6 +723,93 @@ export function WorkflowCanvas({
   const [actionBusy, setActionBusy] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Reset zoom to 100%
+  const handleResetZoom = useCallback(() => {
+    setZoom(1);
+  }, []);
+
+  // Fit all nodes onto the visible screen with padding
+  const handleFitToScreen = useCallback(() => {
+    if (effectiveSteps.length === 0) {
+      setPan({ x: 0, y: 0 });
+      setZoom(1);
+      return;
+    }
+
+    const clientW = containerRef.current?.clientWidth || 1000;
+    const clientH = containerRef.current?.clientHeight || 700;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    effectiveSteps.forEach((st) => {
+      const pos = nodePositions[st.id] || { x: 420, y: 140 };
+      const { width: w, height: h } = getNodeSize(st);
+      if (pos.x < minX) minX = pos.x;
+      if (pos.y < minY) minY = pos.y;
+      if (pos.x + w > maxX) maxX = pos.x + w;
+      if (pos.y + (h || 200) > maxY) maxY = pos.y + (h || 200);
+    });
+
+    const boxW = Math.max(100, maxX - minX);
+    const boxH = Math.max(100, maxY - minY);
+    const padding = 120;
+
+    const scaleX = (clientW - padding * 2) / boxW;
+    const scaleY = (clientH - padding * 2) / boxH;
+    const targetZoom = Math.min(1.2, Math.max(0.35, Math.min(scaleX, scaleY)));
+
+    const centerX = minX + boxW / 2;
+    const centerY = minY + boxH / 2;
+
+    const targetPanX = Math.round(clientW / 2 - centerX * targetZoom);
+    const targetPanY = Math.round(clientH / 2 - centerY * targetZoom);
+
+    setZoom(Math.round(targetZoom * 100) / 100);
+    setPan({ x: targetPanX, y: targetPanY });
+  }, [effectiveSteps, nodePositions, getNodeSize]);
+
+  // Jump to specific node from search palette & trigger pulsing highlight
+  const handleJumpToNode = useCallback(
+    (stepId: string) => {
+      const pos = nodePositions[stepId];
+      const targetStep = effectiveSteps.find((s) => s.id === stepId);
+      if (pos && targetStep && containerRef.current) {
+        const clientW = containerRef.current.clientWidth;
+        const clientH = containerRef.current.clientHeight;
+        const { width: w, height: h } = getNodeSize(targetStep);
+        const targetPanX = Math.round(clientW / 2 - (pos.x + w / 2) * zoom);
+        const targetPanY = Math.round(clientH / 2 - (pos.y + (h || 200) / 2) * zoom);
+        setPan({ x: targetPanX, y: targetPanY });
+        setSelectedNodeId(stepId);
+        setPulsingNodeId(stepId);
+        setTimeout(() => setPulsingNodeId(null), 2200);
+      }
+      setShowSearchPalette(false);
+    },
+    [nodePositions, effectiveSteps, zoom, getNodeSize]
+  );
+
+  // Global Ctrl+F / Cmd+F shortcut to open Canvas Search Palette
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          e.preventDefault();
+          setShowSearchPalette(true);
+        }
+      }
+      if (e.key === "Escape") {
+        setShowSearchPalette(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
 
 
@@ -766,39 +934,6 @@ export function WorkflowCanvas({
     });
   }, []);
 
-  // Fit to screen (computes bounding box of all nodes)
-  const handleFitToScreen = useCallback(() => {
-    const allX: number[] = [];
-    const allY: number[] = [];
-
-    Object.values(nodePositionsRef.current).forEach((pos) => {
-      allX.push(pos.x);
-      allY.push(pos.y);
-    });
-
-    if (allX.length === 0 || !containerRef.current) return;
-
-    const minX = Math.min(...allX);
-    const maxX = Math.max(...allX) + 380;
-    const minY = Math.min(...allY);
-    const maxY = Math.max(...allY) + 340;
-
-    const width = maxX - minX;
-    const height = maxY - minY;
-
-    const clientW = containerRef.current.clientWidth || 1000;
-    const clientH = containerRef.current.clientHeight || 700;
-
-    const zoomX = (clientW - 160) / width;
-    const zoomY = (clientH - 160) / height;
-    const fitZoom = Math.min(1.2, Math.max(0.35, Math.min(zoomX, zoomY)));
-
-    const fitPanX = (clientW - width * fitZoom) / 2 - minX * fitZoom;
-    const fitPanY = (clientH - height * fitZoom) / 2 - minY * fitZoom;
-
-    setZoom(Math.round(fitZoom * 100) / 100);
-    setPan({ x: Math.round(fitPanX), y: Math.round(fitPanY) });
-  }, []);
 
   // Wheel zoom anchored to pointer
   const handleWheel = useCallback(
@@ -835,7 +970,7 @@ export function WorkflowCanvas({
       setCurrentStroke({
         id: `stroke_${Date.now()}`,
         points: [{ x: ptX, y: ptY }],
-        color: "#a855f7",
+        color: drawColor || "#ffffff",
       });
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       return;
@@ -928,7 +1063,7 @@ export function WorkflowCanvas({
 
         effectiveSteps.forEach((st) => {
           if (st.id === draggingWire.fromStepId) return;
-          if (st.type === "end" || st.type === "note") return; // End and Note have no output ports
+          if (st.type === "end" || st.type === "note" || st.type === "section" || st.type === "text") return; // Non-output steps
           const pos = nodePositions[st.id] || { x: 420, y: 140 };
           const { width: nodeW } = getNodeSize(st);
           const portX = pos.x + nodeW;
@@ -985,7 +1120,7 @@ export function WorkflowCanvas({
 
         effectiveSteps.forEach((st) => {
           if (st.id === draggingWire.fromStepId) return;
-          if (st.type === "trigger" || st.type === "note") return; // Triggers and Notes have no input ports
+          if (st.type === "trigger" || st.type === "note" || st.type === "section" || st.type === "text") return; // Non-input steps
           const pos = nodePositions[st.id] || { x: 420, y: 140 };
           const portX = pos.x;
 
@@ -1323,6 +1458,31 @@ export function WorkflowCanvas({
           x: centerX,
           y: centerY,
         };
+      } else if (type === "section") {
+        newStep = {
+          id: newId,
+          name: `Section ${count}`,
+          type: "section",
+          color: "zinc",
+          prompt: "Pipeline Group",
+          x: centerX - 60,
+          y: centerY - 60,
+          width: 500,
+          height: 340,
+        };
+      } else if (type === "text") {
+        newStep = {
+          id: newId,
+          name: "Text Label",
+          type: "text",
+          text: "Text Annotation",
+          font_size: "medium",
+          color: "zinc",
+          x: centerX,
+          y: centerY,
+          width: 280,
+          height: 70,
+        };
       } else {
         newStep = {
           id: newId,
@@ -1645,24 +1805,6 @@ export function WorkflowCanvas({
 
           <div className="h-4 w-px bg-zinc-800" />
 
-          {/* Engine indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-700/60 text-xs font-medium text-zinc-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/80 animate-pulse" />
-            <span>Local</span>
-            <ChevronDown size={13} className="text-zinc-500" />
-          </div>
-
-          {/* Undo / Redo */}
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800/80 disabled:opacity-30"
-              title="Undo"
-            >
-              <RotateCcw size={14} />
-            </button>
-          </div>
-
           {/* Workflow Title Switcher */}
           <div className="relative">
             {editingTitle ? (
@@ -1956,7 +2098,14 @@ export function WorkflowCanvas({
 
               const elements: React.ReactNode[] = [];
 
-              if (step.type !== "condition" && step.type !== "approval" && step.next_step_id) {
+              if (
+                step.type !== "condition" &&
+                step.type !== "approval" &&
+                step.type !== "section" &&
+                step.type !== "text" &&
+                step.type !== "note" &&
+                step.next_step_id
+              ) {
                 elements.push(
                   renderWire(step.next_step_id, "out", step.target_port || "text", "rgba(255, 255, 255, 0.35)")
                 );
@@ -2123,27 +2272,40 @@ export function WorkflowCanvas({
                 }}
                 onPointerDown={(e) => handleNodePointerDown(e, step.id)}
                 className={cn(
-                  "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow z-10",
-                  step.type === "note"
-                    ? (step.color === "neutral" || step.color === "white"
-                        ? "bg-[#22242c]/95 border-zinc-600/60 text-zinc-100"
+                  "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow",
+                  step.type === "section"
+                    ? (step.color === "amber"
+                        ? "bg-amber-950/20 border-amber-600/50 border-dashed text-amber-200 z-0"
                         : step.color === "emerald"
-                        ? "bg-[#092419]/95 border-emerald-600/60 text-emerald-100"
-                        : step.color === "rose"
-                        ? "bg-[#2d0e19]/95 border-rose-600/60 text-rose-100"
+                        ? "bg-emerald-950/20 border-emerald-600/50 border-dashed text-emerald-200 z-0"
                         : step.color === "blue"
-                        ? "bg-[#0c1f35]/95 border-blue-600/60 text-blue-100"
-                        : "bg-[#291b0a]/95 border-amber-600/60 text-amber-100")
-                    : "bg-[#16171d]",
+                        ? "bg-blue-950/20 border-blue-600/50 border-dashed text-blue-200 z-0"
+                        : step.color === "purple"
+                        ? "bg-purple-950/20 border-purple-600/50 border-dashed text-purple-200 z-0"
+                        : "bg-zinc-900/30 border-zinc-700/60 border-dashed text-zinc-200 z-0")
+                    : step.type === "text"
+                    ? "bg-transparent border border-transparent hover:border-zinc-700/50 p-2 shadow-none backdrop-blur-none z-10"
+                    : step.type === "note"
+                    ? (step.color === "neutral" || step.color === "white"
+                        ? "bg-[#22242c]/95 border-zinc-600/60 text-zinc-100 z-10"
+                        : step.color === "emerald"
+                        ? "bg-[#092419]/95 border-emerald-600/60 text-emerald-100 z-10"
+                        : step.color === "rose"
+                        ? "bg-[#2d0e19]/95 border-rose-600/60 text-rose-100 z-10"
+                        : step.color === "blue"
+                        ? "bg-[#0c1f35]/95 border-blue-600/60 text-blue-100 z-10"
+                        : "bg-[#291b0a]/95 border-amber-600/60 text-amber-100 z-10")
+                    : "bg-[#16171d] z-10",
                   isSelected
                     ? "border-zinc-300 ring-2 ring-zinc-300/20"
                     : isRunningThis
                     ? "border-purple-500 shadow-purple-500/20 ring-2 ring-purple-500/30 animate-pulse"
                     : isTargetSnapped
                     ? "border-emerald-400 ring-2 ring-emerald-400/40"
-                    : step.type === "note"
+                    : step.type === "note" || step.type === "section" || step.type === "text"
                     ? ""
-                    : "border-zinc-800/90 hover:border-zinc-700/80"
+                    : "border-zinc-800/90 hover:border-zinc-700/80",
+                  pulsingNodeId === step.id && "ring-4 ring-purple-400 shadow-xl shadow-purple-500/50 scale-[1.03]"
                 )}
               >
                 {/* Benchmark-matching Node Category Indicator above the card */}
@@ -2177,6 +2339,16 @@ export function WorkflowCanvas({
                     <>
                       <StickyNote size={11} className="text-yellow-400" />
                       <span>Note</span>
+                    </>
+                  ) : step.type === "section" ? (
+                    <>
+                      <Layers size={11} className="text-zinc-400" />
+                      <span>Section</span>
+                    </>
+                  ) : step.type === "text" ? (
+                    <>
+                      <Type size={11} className="text-zinc-400" />
+                      <span>Text</span>
                     </>
                   ) : (
                     <>
@@ -2252,8 +2424,8 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Left Input Ports (Triggers and Notes have no left input ports) */}
-                {step.type !== "note" && step.type !== "trigger" && (
+                {/* Left Input Ports (Triggers, Notes, Sections, and Text labels have no left input ports) */}
+                {step.type !== "note" && step.type !== "trigger" && step.type !== "section" && step.type !== "text" && (
                   <>
                     {step.type === "llm" || step.type === "agent" || step.type === "action" ? (
                       <>
@@ -2537,8 +2709,8 @@ export function WorkflowCanvas({
                   </>
                 )}
 
-                {/* Node Title & Status Header for non-trigger nodes */}
-                {step.type !== "trigger" && (
+                {/* Node Title & Status Header for standard nodes */}
+                {step.type !== "trigger" && step.type !== "section" && step.type !== "text" && (
                   <div className="flex items-center justify-between text-xs cursor-grab active:cursor-grabbing select-none" data-drag-handle="true">
                     <div className="flex items-center gap-2">
                       {step.type === "llm" && <Sparkles size={15} className="text-purple-400" />}
@@ -3505,6 +3677,141 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
+                {/* Section Group Frame Form */}
+                {step.type === "section" && (
+                  <div className="flex-1 min-h-0 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-2 border-b border-zinc-800/60 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Layers size={13} className="text-zinc-400" />
+                        <input
+                          type="text"
+                          value={step.name || ""}
+                          placeholder="Section Title..."
+                          onChange={(e) => handleUpdateStep(step.id, { name: e.target.value })}
+                          className="bg-transparent border-none text-xs font-semibold text-zinc-100 placeholder-zinc-500 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {(["zinc", "amber", "emerald", "blue", "purple"] as const).map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { color: c })}
+                            className={cn(
+                              "w-3 h-3 rounded-full transition-transform hover:scale-125",
+                              c === "zinc" && "bg-zinc-400",
+                              c === "amber" && "bg-amber-400",
+                              c === "emerald" && "bg-emerald-400",
+                              c === "blue" && "bg-blue-400",
+                              c === "purple" && "bg-purple-400",
+                              (step.color || "zinc") === c ? "ring-2 ring-white scale-110" : "opacity-40"
+                            )}
+                            title={`Color ${c}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <textarea
+                      value={step.prompt || ""}
+                      placeholder="Optional section description or pipeline note..."
+                      onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
+                      className="mt-2 flex-1 w-full bg-transparent border-none text-[11px] text-zinc-400 leading-relaxed focus:outline-none resize-none font-sans"
+                    />
+                  </div>
+                )}
+
+                {/* Text Label Form */}
+                {step.type === "text" && (
+                  <div className="flex flex-col gap-1 w-full h-full">
+                    {isSelected && (
+                      <div className="flex items-center justify-between pb-1 border-b border-zinc-800/60 text-[10px] text-zinc-400">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "small" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-mono",
+                              (step.font_size || "medium") === "small" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            S
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "medium" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-mono",
+                              (step.font_size || "medium") === "medium" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            M
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "large" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-mono",
+                              step.font_size === "large" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            L
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "h1" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-bold font-mono",
+                              step.font_size === "h1" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            H1
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {(["zinc", "amber", "emerald", "blue", "rose"] as const).map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => handleUpdateStep(step.id, { color: c })}
+                              className={cn(
+                                "w-2.5 h-2.5 rounded-full transition-transform hover:scale-125",
+                                c === "zinc" && "bg-zinc-300",
+                                c === "amber" && "bg-amber-400",
+                                c === "emerald" && "bg-emerald-400",
+                                c === "blue" && "bg-blue-400",
+                                c === "rose" && "bg-rose-400",
+                                (step.color || "zinc") === c ? "ring-1 ring-white scale-125" : "opacity-40"
+                              )}
+                              title={`Color ${c}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <textarea
+                      value={step.text ?? step.prompt ?? ""}
+                      placeholder="Type text annotation..."
+                      onChange={(e) => handleUpdateStep(step.id, { text: e.target.value, prompt: e.target.value })}
+                      className={cn(
+                        "w-full bg-transparent border-none focus:outline-none resize-none font-sans leading-normal",
+                        step.font_size === "small" && "text-xs",
+                        (!step.font_size || step.font_size === "medium") && "text-sm",
+                        step.font_size === "large" && "text-lg font-semibold",
+                        step.font_size === "h1" && "text-2xl font-bold tracking-tight",
+                        step.color === "amber"
+                          ? "text-amber-300"
+                          : step.color === "emerald"
+                          ? "text-emerald-300"
+                          : step.color === "blue"
+                          ? "text-blue-300"
+                          : step.color === "rose"
+                          ? "text-rose-300"
+                          : "text-zinc-100"
+                      )}
+                    />
+                  </div>
+                )}
+
                 {/* Right Output Ports */}
                 {step.type === "condition" ? (
                   <>
@@ -3712,7 +4019,7 @@ export function WorkflowCanvas({
                       );
                     })()}
                   </>
-                ) : step.type !== "end" && step.type !== "note" ? (
+                ) : step.type !== "end" && step.type !== "note" && step.type !== "section" && step.type !== "text" ? (
                   (() => {
                     const isOutActive =
                       (draggingWire?.fromDirection !== "input" &&
@@ -3777,39 +4084,348 @@ export function WorkflowCanvas({
           })}
         </div>
 
-        {/* Bottom Floating Dock Toolbar */}
-        <div className="ui-dock fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-3 py-2 rounded-2xl z-40">
-          <div className="flex items-center gap-1 pr-2 border-r border-zinc-800 text-xs">
-            <button
-              type="button"
-              onClick={() => handleZoom(-0.1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Zoom out"
-            >
-              <ZoomOut size={15} />
-            </button>
-            <span className="w-12 text-center font-mono font-medium text-zinc-300">
-              {Math.round(zoom * 100)}%
+        {/* Interactive Canvas Minimap Panel */}
+        {showMinimap && (
+          <div
+            className="fixed bottom-20 left-6 w-64 bg-[#14151a]/95 border border-zinc-700/80 rounded-2xl shadow-2xl backdrop-blur-xl p-3 z-40 flex flex-col gap-2 select-none animate-in fade-in zoom-in-95 duration-150"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between text-xs font-semibold text-zinc-300">
+              <span className="flex items-center gap-1.5">
+                <Map size={13} className="text-zinc-400" />
+                <span>Canvas Minimap</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMinimap(false)}
+                className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+                title="Close minimap"
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            {/* Minimap Viewport */}
+            {(() => {
+              const miniW = 232;
+              const miniH = 120;
+              const clientW = containerRef.current?.clientWidth || 1000;
+              const clientH = containerRef.current?.clientHeight || 700;
+
+              let minX = 0;
+              let minY = 0;
+              let maxX = 1800;
+              let maxY = 1200;
+
+              effectiveSteps.forEach((s) => {
+                const pos = nodePositions[s.id] || { x: 420, y: 140 };
+                const sz = getNodeSize(s);
+                minX = Math.min(minX, pos.x - 100);
+                minY = Math.min(minY, pos.y - 100);
+                maxX = Math.max(maxX, pos.x + sz.width + 100);
+                maxY = Math.max(maxY, pos.y + (sz.height || 200) + 100);
+              });
+
+              const worldW = Math.max(1200, maxX - minX);
+              const worldH = Math.max(800, maxY - minY);
+              const scale = Math.min(miniW / worldW, miniH / worldH);
+
+              const vpX = -pan.x / zoom;
+              const vpY = -pan.y / zoom;
+              const vpW = clientW / zoom;
+              const vpH = clientH / zoom;
+
+              const handleMinimapClick = (e: React.MouseEvent<SVGSVGElement>) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                const targetWorldX = minX + clickX / scale;
+                const targetWorldY = minY + clickY / scale;
+                setPan({
+                  x: Math.round(clientW / 2 - targetWorldX * zoom),
+                  y: Math.round(clientH / 2 - targetWorldY * zoom),
+                });
+              };
+
+              return (
+                <div className="relative rounded-xl overflow-hidden bg-zinc-950/90 border border-zinc-800/80 cursor-crosshair">
+                  <svg
+                    width={miniW}
+                    height={miniH}
+                    className="w-full h-full block"
+                    onClick={handleMinimapClick}
+                  >
+                    {/* Miniature nodes */}
+                    {effectiveSteps.map((s) => {
+                      const pos = nodePositions[s.id] || { x: 420, y: 140 };
+                      const sz = getNodeSize(s);
+                      const nx = (pos.x - minX) * scale;
+                      const ny = (pos.y - minY) * scale;
+                      const nw = Math.max(4, sz.width * scale);
+                      const nh = Math.max(3, (sz.height || 180) * scale);
+                      const fill =
+                        s.type === "trigger"
+                          ? "#f59e0b"
+                          : s.type === "llm"
+                          ? "#a855f7"
+                          : s.type === "agent" || s.type === "action"
+                          ? "#3b82f6"
+                          : s.type === "condition"
+                          ? "#eab308"
+                          : s.type === "approval"
+                          ? "#f43f5e"
+                          : s.type === "note"
+                          ? s.color === "neutral"
+                            ? "#e4e4e7"
+                            : "#f97316"
+                          : s.type === "section"
+                          ? "#3f3f46"
+                          : "#10b981";
+
+                      return (
+                        <rect
+                          key={s.id}
+                          x={nx}
+                          y={ny}
+                          width={nw}
+                          height={nh}
+                          rx={1.5}
+                          fill={fill}
+                          opacity={s.type === "section" ? 0.35 : 0.85}
+                          stroke={s.id === selectedNodeId ? "#ffffff" : "none"}
+                          strokeWidth={s.id === selectedNodeId ? 1.5 : 0}
+                        />
+                      );
+                    })}
+
+                    {/* Viewport indicator */}
+                    <rect
+                      x={(vpX - minX) * scale}
+                      y={(vpY - minY) * scale}
+                      width={Math.max(8, vpW * scale)}
+                      height={Math.max(6, vpH * scale)}
+                      rx={2}
+                      fill="rgba(255, 255, 255, 0.08)"
+                      stroke="#ffffff"
+                      strokeWidth={1.2}
+                      className="pointer-events-none"
+                    />
+                  </svg>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Search & Navigation Command Palette */}
+        {showSearchPalette && (
+          <div
+            className="fixed top-20 left-1/2 -translate-x-1/2 w-[460px] max-w-[92vw] bg-[#14151a]/98 border border-zinc-700/90 rounded-2xl shadow-2xl backdrop-blur-2xl p-3 z-50 flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150 select-none"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl">
+              <Search size={14} className="text-zinc-400 shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Find any node in canvas by name, prompt or type..."
+                value={canvasSearchQuery}
+                onChange={(e) => setCanvasSearchQuery(e.target.value)}
+                className="bg-transparent border-none text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none w-full"
+              />
+              {canvasSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setCanvasSearchQuery("")}
+                  className="text-zinc-500 hover:text-white p-0.5"
+                >
+                  <X size={12} />
+                </button>
+              )}
+              <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-400 font-mono">
+                ESC
+              </kbd>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto flex flex-col gap-1 pr-0.5">
+              {(() => {
+                const query = canvasSearchQuery.trim().toLowerCase();
+                const matched = effectiveSteps.filter((st) => {
+                  if (!query) return true;
+                  return (
+                    st.name.toLowerCase().includes(query) ||
+                    st.type.toLowerCase().includes(query) ||
+                    (st.prompt && st.prompt.toLowerCase().includes(query)) ||
+                    (st.model && st.model.toLowerCase().includes(query)) ||
+                    (st.text && st.text.toLowerCase().includes(query))
+                  );
+                });
+
+                if (matched.length === 0) {
+                  return (
+                    <div className="py-6 text-center text-xs text-zinc-500">
+                      No nodes matching &quot;{canvasSearchQuery}&quot;
+                    </div>
+                  );
+                }
+
+                return matched.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => handleJumpToNode(st.id)}
+                    className="w-full px-2.5 py-2 rounded-xl text-left hover:bg-zinc-800/80 transition-colors flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="p-1 rounded-lg bg-zinc-800 text-zinc-300 group-hover:text-white shrink-0">
+                        {st.type === "trigger" && <Zap size={13} className="text-amber-400" />}
+                        {st.type === "llm" && <Sparkles size={13} className="text-purple-400" />}
+                        {(st.type === "agent" || st.type === "action") && (
+                          <Bot size={13} className="text-blue-400" />
+                        )}
+                        {st.type === "condition" && <GitBranch size={13} className="text-amber-400" />}
+                        {st.type === "approval" && <ShieldAlert size={13} className="text-rose-400" />}
+                        {st.type === "note" && <StickyNote size={13} className="text-yellow-400" />}
+                        {st.type === "section" && <Layers size={13} className="text-zinc-400" />}
+                        {st.type === "text" && <Type size={13} className="text-zinc-400" />}
+                        {st.type === "end" && <CheckCircle2 size={13} className="text-emerald-400" />}
+                      </span>
+                      <div className="min-w-0 flex flex-col">
+                        <span className="text-xs font-semibold text-zinc-200 truncate group-hover:text-white">
+                          {st.name || st.id}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 truncate">
+                          {st.prompt || st.text || st.type}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 shrink-0">
+                      {st.type}
+                    </span>
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Floating Drawing Tool Palette */}
+        {tool === "draw" && (
+          <div
+            className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/70 shadow-2xl backdrop-blur-xl px-3 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span className="text-[11px] font-medium text-zinc-400 pr-1 flex items-center gap-1">
+              <Pencil size={12} />
+              <span>Drawing:</span>
             </span>
+            <div className="flex items-center gap-1.5 pr-2 border-r border-zinc-800">
+              {[
+                { name: "White", hex: "#ffffff", bg: "bg-white" },
+                { name: "Amber", hex: "#f59e0b", bg: "bg-amber-400" },
+                { name: "Purple", hex: "#a855f7", bg: "bg-purple-400" },
+                { name: "Emerald", hex: "#10b981", bg: "bg-emerald-400" },
+                { name: "Rose", hex: "#f43f5e", bg: "bg-rose-400" },
+                { name: "Blue", hex: "#3b82f6", bg: "bg-blue-400" },
+              ].map((c) => (
+                <button
+                  key={c.hex}
+                  type="button"
+                  onClick={() => setDrawColor(c.hex)}
+                  className={cn(
+                    "w-3.5 h-3.5 rounded-full transition-transform hover:scale-125",
+                    c.bg,
+                    drawColor === c.hex ? "ring-2 ring-white scale-110" : "opacity-60 hover:opacity-100"
+                  )}
+                  title={c.name}
+                />
+              ))}
+            </div>
+
             <button
               type="button"
-              onClick={() => handleZoom(0.1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Zoom in"
+              disabled={strokes.length === 0}
+              onClick={() => setStrokes((prev) => prev.slice(0, -1))}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              title="Undo last stroke"
             >
-              <ZoomIn size={15} />
+              <RotateCcw size={12} />
+              <span>Undo</span>
             </button>
             <button
               type="button"
-              onClick={handleFitToScreen}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Fit all nodes to view"
+              disabled={strokes.length === 0}
+              onClick={() => setStrokes([])}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              title="Clear all drawings"
             >
-              <Maximize2 size={15} />
+              <Trash2 size={12} />
+              <span>Clear</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool("select")}
+              className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 ml-1"
+              title="Exit draw tool"
+            >
+              <X size={13} />
             </button>
           </div>
+        )}
 
-          <div className="flex items-center gap-1 pr-2 border-r border-zinc-800">
+        {/* Left Floating Dock: Zoom Controls, Fit Screen, Minimap */}
+        <div className="ui-dock-left fixed bottom-6 left-6 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs">
+          <button
+            type="button"
+            onClick={() => handleZoom(-0.1)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Zoom out"
+          >
+            <Minus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            className="w-11 text-center font-mono font-medium text-zinc-300 hover:text-white transition-colors"
+            title="Click to reset zoom (100%)"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={() => handleZoom(0.1)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Zoom in"
+          >
+            <Plus size={14} />
+          </button>
+
+          <div className="w-[1px] h-3.5 bg-zinc-800 mx-0.5" />
+
+          <button
+            type="button"
+            onClick={handleFitToScreen}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Fit view (Scan all nodes)"
+          >
+            <Scan size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowMinimap(!showMinimap)}
+            className={cn(
+              "p-1.5 rounded-lg transition-colors",
+              showMinimap ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+            )}
+            title="Toggle Minimap"
+          >
+            <Map size={14} />
+          </button>
+        </div>
+
+        {/* Main Floating Dock: Tools, Shapes, Search, Add Node */}
+        <div className="ui-dock-main fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-3 py-2 rounded-2xl z-40">
+          <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
             <button
               type="button"
               onClick={() => setTool("select")}
@@ -3817,7 +4433,7 @@ export function WorkflowCanvas({
                 "p-2 rounded-xl transition-colors",
                 tool === "select" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Select tool"
+              title="Pointer / Select"
             >
               <MousePointer2 size={16} />
             </button>
@@ -3828,170 +4444,195 @@ export function WorkflowCanvas({
                 "p-2 rounded-xl transition-colors",
                 tool === "pan" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Hand / Pan tool"
+              title="Hand / Pan canvas"
             >
               <Hand size={16} />
             </button>
+          </div>
+
+          <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
             <button
               type="button"
               onClick={() => setTool(tool === "draw" ? "select" : "draw")}
               className={cn(
-                "p-2 rounded-xl transition-colors",
-                tool === "draw" ? "bg-purple-900 text-purple-200" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+                "group p-2 rounded-xl transition-all",
+                tool === "draw"
+                  ? "bg-purple-950/80 ring-1 ring-purple-500/80 text-white shadow-lg shadow-purple-500/20"
+                  : "hover:bg-zinc-800/60"
               )}
-              title="Pencil / Draw annotations"
+              title="Pencil / Draw"
             >
-              <PenTool size={16} />
+              <DockPencilIcon active={tool === "draw"} />
             </button>
             <button
               type="button"
               onClick={() => handleAddNode("note", "amber")}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
-              title="Orange Sticky Note"
+              className="group p-2 rounded-xl hover:bg-zinc-800/60 transition-colors"
+              title="Add Orange Sticky Note"
             >
-              <div className="w-4 h-4 rounded-md bg-amber-500 shadow-sm" />
+              <DockNoteIcon />
             </button>
             <button
               type="button"
-              onClick={() => handleAddNode("note", "neutral")}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
-              title="White Sticky Note"
+              onClick={() => handleAddNode("section")}
+              className="group p-2 rounded-xl hover:bg-zinc-800/60 transition-colors"
+              title="Add Section Frame"
             >
-              <div className="w-4 h-4 rounded-md bg-zinc-200 shadow-sm" />
+              <DockShapeIcon />
             </button>
             <button
               type="button"
-              onClick={() => handleAddNode("note", "neutral")}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
-              title="Text Tool"
+              onClick={() => handleAddNode("text")}
+              className="p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors font-serif font-bold text-base leading-none w-8 h-8 flex items-center justify-center"
+              title="Add Text Label"
             >
-              <Type size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddMenu(!showAddMenu);
-                setNodeSearch("");
-              }}
-              className={cn(
-                "p-2 rounded-xl transition-colors",
-                showAddMenu ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
-              )}
-              title="Search and add nodes"
-            >
-              <Search size={16} />
+              T
             </button>
           </div>
 
-          <div className="relative">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => {
-                setShowAddMenu(!showAddMenu);
-                setNodeSearch("");
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-100 shadow-md transition-all active:scale-95"
+              onClick={() => setShowSearchPalette(!showSearchPalette)}
+              className={cn(
+                "p-2 rounded-xl transition-colors",
+                showSearchPalette ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+              )}
+              title="Search canvas nodes (Ctrl+F)"
             >
-              <Plus size={15} />
-              <span>Add node</span>
+              <Search size={16} />
             </button>
 
-            {showAddMenu && (
-              <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-64 rounded-2xl border border-zinc-700/80 bg-[#14151a] shadow-2xl backdrop-blur-xl p-2 z-50 flex flex-col gap-1">
-                <div className="px-2 py-1 border-b border-zinc-800 flex items-center gap-1.5 mb-1">
-                  <Search size={13} className="text-zinc-500" />
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Search node types..."
-                    value={nodeSearch}
-                    onChange={(e) => setNodeSearch(e.target.value)}
-                    className="bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
-                  />
-                </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddMenu(!showAddMenu);
+                  setNodeSearch("");
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-100 shadow-md transition-all active:scale-95"
+              >
+                <Plus size={15} />
+                <span>Add node</span>
+              </button>
 
-                {(!nodeSearch || "trigger node".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("trigger"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <Zap size={15} className="text-amber-400 fill-amber-400" />
-                    <span>Trigger Node</span>
-                  </button>
-                )}
-                {(!nodeSearch || "llm step".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("llm"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <Sparkles size={15} className="text-purple-400" />
-                    <span>LLM Step</span>
-                  </button>
-                )}
-                {(!nodeSearch || "agent step".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("agent"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <Bot size={15} className="text-blue-400" />
-                    <span>Agent Step</span>
-                  </button>
-                )}
-                {(!nodeSearch || "condition branch".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("condition"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <GitBranch size={15} className="text-amber-400" />
-                    <span>Condition Branch</span>
-                  </button>
-                )}
-                {(!nodeSearch || "human approval".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("approval"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <ShieldAlert size={15} className="text-rose-400" />
-                    <span>Human Approval</span>
-                  </button>
-                )}
-                {(!nodeSearch || "orange sticky note".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("note", "amber"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <div className="w-3.5 h-3.5 rounded bg-amber-500" />
-                    <span>Orange Sticky Note</span>
-                  </button>
-                )}
-                {(!nodeSearch || "white sticky note".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("note", "neutral"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <div className="w-3.5 h-3.5 rounded bg-zinc-200" />
-                    <span>White Sticky Note</span>
-                  </button>
-                )}
-                {(!nodeSearch || "end completion".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("end"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <CheckCircle2 size={15} className="text-emerald-400" />
-                    <span>End</span>
-                  </button>
-                )}
-              </div>
-            )}
+              {showAddMenu && (
+                <div className="absolute bottom-full mb-3 right-0 w-64 rounded-2xl border border-zinc-700/80 bg-[#14151a] shadow-2xl backdrop-blur-xl p-2 z-50 flex flex-col gap-1">
+                  <div className="px-2 py-1 border-b border-zinc-800 flex items-center gap-1.5 mb-1">
+                    <Search size={13} className="text-zinc-500" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search node types..."
+                      value={nodeSearch}
+                      onChange={(e) => setNodeSearch(e.target.value)}
+                      className="bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
+                    />
+                  </div>
+
+                  {(!nodeSearch || "trigger node".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("trigger"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Zap size={15} className="text-amber-400 fill-amber-400" />
+                      <span>Trigger Node</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "llm step".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("llm"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Sparkles size={15} className="text-purple-400" />
+                      <span>LLM Step</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "agent step".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("agent"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Bot size={15} className="text-blue-400" />
+                      <span>Agent Step</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "condition branch".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("condition"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <GitBranch size={15} className="text-amber-400" />
+                      <span>Condition Branch</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "human approval".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("approval"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <ShieldAlert size={15} className="text-rose-400" />
+                      <span>Human Approval</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "orange sticky note".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("note", "amber"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <div className="w-3.5 h-3.5 rounded bg-amber-500" />
+                      <span>Orange Sticky Note</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "white sticky note".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("note", "neutral"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <div className="w-3.5 h-3.5 rounded bg-zinc-200" />
+                      <span>White Sticky Note</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "section frame shape group".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("section"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Layers size={15} className="text-zinc-400" />
+                      <span>Section Frame</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "text label annotation".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("text"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Type size={15} className="text-zinc-400" />
+                      <span>Text Label</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "end completion".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("end"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <CheckCircle2 size={15} className="text-emerald-400" />
+                      <span>End</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
