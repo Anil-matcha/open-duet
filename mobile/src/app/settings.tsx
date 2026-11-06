@@ -1,20 +1,22 @@
 import { useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { useRouter } from 'expo-router';
 
 import { Text } from '@/components/text';
 import { canManageAgents } from '@/lib/agents';
 import { useAuth } from '@/lib/auth-context';
-import { HOSTED_ORIGIN } from '@/lib/hosted';
+import { describeHostedError, HOSTED_ORIGIN, HostedError } from '@/lib/hosted';
 import { isPlainHttp, NOT_ENCRYPTED_NOTICE, serverLabel } from '@/lib/server-url';
 import { radius, useStyles, type Palette } from '@/lib/theme';
 
 export default function Settings() {
   const styles = useStyles(createStyles);
   const router = useRouter();
-  const { state, signOut } = useAuth();
+  const { state, signOut, hostedSetFiles } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [filesBusy, setFilesBusy] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
   if (state.status !== 'paired') return null;
 
   const hosted = state.hosted;
@@ -33,6 +35,18 @@ export default function Settings() {
         },
       },
     ]);
+  };
+
+  const toggleFiles = async (enabled: boolean) => {
+    setFilesBusy(true);
+    setFilesError(null);
+    try {
+      await hostedSetFiles(enabled);
+    } catch (error) {
+      setFilesError(error instanceof HostedError ? describeHostedError(error) : 'Something went wrong. Try again.');
+    } finally {
+      setFilesBusy(false);
+    }
   };
 
   return (
@@ -62,6 +76,16 @@ export default function Settings() {
         </Pressable>
       ) : null}
       {hosted ? (
+        <View style={styles.row}>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowText}>File access</Text>
+            <Text style={styles.hint}>Let this phone browse and send files in your workspace.</Text>
+          </View>
+          <Switch accessibilityLabel="File access" value={state.scopes.includes('files')} disabled={filesBusy || busy} onValueChange={(value) => void toggleFiles(value)} />
+        </View>
+      ) : null}
+      {hosted && filesError ? <Text style={styles.notice}>{filesError}</Text> : null}
+      {hosted ? (
         <Pressable accessibilityRole="link" style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={() => void Linking.openURL(`${HOSTED_ORIGIN}/account/phones`)}>
           <Text style={styles.rowText}>Connected phones</Text>
           <Text style={styles.value}>Manage on suparagent.ai</Text>
@@ -88,6 +112,8 @@ const createStyles = (p: Palette) =>
     notice: { fontSize: 14, color: p.notice },
     row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, marginTop: 16, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: p.border },
     rowText: { fontSize: 16, fontWeight: '600', color: p.text },
+    rowBody: { flex: 1, paddingRight: 12 },
+    hint: { fontSize: 13, color: p.muted },
     pressed: { opacity: 0.7 },
     danger: { marginTop: 32, borderWidth: 1, borderColor: p.danger, borderRadius: radius.field, paddingVertical: 14, alignItems: 'center' },
     dangerText: { color: p.danger, fontSize: 16, fontWeight: '600' },

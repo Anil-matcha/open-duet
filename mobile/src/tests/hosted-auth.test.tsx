@@ -313,3 +313,71 @@ describe('when the workspace refuses this phone’s token', () => {
     expect(mockApi.session).not.toHaveBeenCalled();
   });
 });
+
+describe('file access on a hosted phone', () => {
+  async function hostedPhone(scopes: string[] = ['chat']) {
+    mockLoadCredentials.mockResolvedValue({ ...SAVED_HOSTED, scopes });
+    mockLoadAccount.mockResolvedValue(ACCOUNT);
+    await mount();
+  }
+
+  it('asks for a files token with the account session, keeps it, and shows no welcome note', async () => {
+    await hostedPhone();
+    mockApi.createDevice.mockResolvedValue({ ...GRANT, token: 'ods_' + 'f'.repeat(43), scopes: ['chat', 'files'] });
+    await act(async () => auth.hostedSetFiles(true));
+    expect(mockApi.createDevice).toHaveBeenCalledWith(SESSION.token, 'files');
+    expect(mockSaveCredentials).toHaveBeenCalledWith(expect.objectContaining({ scopes: ['chat', 'files'], hosted: { email: 'me@example.com' } }));
+    expect(auth.state).toMatchObject({ status: 'paired', token: 'ods_' + 'f'.repeat(43), scopes: ['chat', 'files'] });
+    expect(auth.welcome).toBe(false);
+  });
+
+  it('goes back to chat only by asking for a chat token', async () => {
+    await hostedPhone(['chat', 'files']);
+    await act(async () => auth.hostedSetFiles(false));
+    expect(mockApi.createDevice).toHaveBeenCalledWith(SESSION.token, 'chat');
+    expect(auth.state).toMatchObject({ scopes: ['chat'] });
+  });
+
+  it('never wakes the workspace and never reads its status to do it', async () => {
+    await hostedPhone();
+    await act(async () => auth.hostedSetFiles(true));
+    expect(mockApi.wake).not.toHaveBeenCalled();
+    expect(mockApi.status).not.toHaveBeenCalled();
+  });
+
+  it('keeps the old token and says so when the workspace is not running', async () => {
+    await hostedPhone();
+    mockApi.createDevice.mockRejectedValue(new HostedError(409, 'workspace_not_ready'));
+    await act(async () => {
+      await expect(auth.hostedSetFiles(true)).rejects.toMatchObject({ code: 'workspace_not_ready' });
+    });
+    expect(mockSaveCredentials).not.toHaveBeenCalled();
+    expect(auth.state).toMatchObject({ token: 'ods_old', scopes: ['chat'] });
+  });
+
+  it('asks for a new sign-in when the account session has ended', async () => {
+    await hostedPhone();
+    mockApi.createDevice.mockRejectedValue(new HostedError(401, 'session_invalid'));
+    await act(async () => {
+      await expect(auth.hostedSetFiles(true)).rejects.toBeInstanceOf(HostedError);
+    });
+    expect(auth.state.status).toBe('unpaired');
+    expect(auth.notice).toMatch(/hosted sign-in ended/);
+  });
+
+  it('does nothing for a phone paired to a server', async () => {
+    mockLoadCredentials.mockResolvedValue({ server: 'https://dots.example.com', token: 'ods_s', label: 'Pixel', scopes: ['chat'] });
+    await mount();
+    await act(async () => auth.hostedSetFiles(true));
+    expect(mockApi.createDevice).not.toHaveBeenCalled();
+  });
+
+  it('keeps files after a token renewal', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(5_000_000);
+    await hostedPhone(['chat', 'files']);
+    await act(async () => auth.revoked());
+    await flush();
+    expect(mockApi.createDevice).toHaveBeenCalledWith(SESSION.token, 'files');
+    jest.restoreAllMocks();
+  });
+});

@@ -10,6 +10,7 @@ const mockPush = jest.fn();
 const mockSignOut = jest.fn(async () => undefined);
 const mockHostedSignIn = jest.fn();
 const mockHostedContinue = jest.fn();
+const mockHostedSetFiles = jest.fn(async (_enabled: boolean) => undefined);
 let mockState: unknown;
 let mockSaved: { token: string; email: string; expiresAt: string } | null = null;
 const mockStartEmail = jest.fn();
@@ -21,7 +22,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/lib/use-server-check', () => ({ useServerCheck: () => 'idle' }));
 jest.mock('@/lib/auth-context', () => ({
-  useAuth: () => ({ state: mockState, notice: null, pair: jest.fn(), hostedSignIn: mockHostedSignIn, hostedContinue: mockHostedContinue, signOut: mockSignOut }),
+  useAuth: () => ({ state: mockState, notice: null, pair: jest.fn(), hostedSignIn: mockHostedSignIn, hostedContinue: mockHostedContinue, hostedSetFiles: (enabled: boolean) => mockHostedSetFiles(enabled), signOut: mockSignOut }),
 }));
 jest.mock('@/lib/hosted-credentials', () => ({
   loadHostedAccount: async () => mockSaved,
@@ -39,6 +40,7 @@ beforeEach(() => {
   mockStartEmail.mockReset().mockResolvedValue(undefined);
   mockHostedSignIn.mockReset();
   mockHostedContinue.mockReset();
+  mockHostedSetFiles.mockReset().mockResolvedValue(undefined);
 });
 
 async function toCodeStep(email = 'Me@Example.com') {
@@ -225,6 +227,43 @@ describe('Settings of a hosted phone', () => {
     mockState = { ...hosted, scopes: ['chat', 'files'] };
     await render(<Settings />);
     expect(screen.getByText('Chat and files')).toBeTruthy();
+  });
+
+  it('has a file access switch, off for a chat-only phone', async () => {
+    mockState = hosted;
+    await render(<Settings />);
+    expect(screen.getByRole('switch', { name: 'File access' }).props.value).toBe(false);
+  });
+
+  it('has the file access switch on when the phone has files', async () => {
+    mockState = { ...hosted, scopes: ['chat', 'files'] };
+    await render(<Settings />);
+    expect(screen.getByRole('switch', { name: 'File access' }).props.value).toBe(true);
+  });
+
+  it('asks for files when the switch goes on, and for chat only when it goes off', async () => {
+    mockState = hosted;
+    await render(<Settings />);
+    await fireEvent(screen.getByRole('switch', { name: 'File access' }), 'valueChange', true);
+    expect(mockHostedSetFiles).toHaveBeenLastCalledWith(true);
+    await fireEvent(screen.getByRole('switch', { name: 'File access' }), 'valueChange', false);
+    expect(mockHostedSetFiles).toHaveBeenLastCalledWith(false);
+  });
+
+  it('says why when the workspace is not running, and leaves the switch where it was', async () => {
+    mockState = hosted;
+    mockHostedSetFiles.mockRejectedValue(new HostedError(409, 'workspace_not_ready'));
+    await render(<Settings />);
+    await fireEvent(screen.getByRole('switch', { name: 'File access' }), 'valueChange', true);
+    await flush();
+    expect(screen.getByText('Your workspace is not running yet.')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'File access' }).props.value).toBe(false);
+  });
+
+  it('shows no file switch for a phone paired to a server', async () => {
+    mockState = { status: 'paired', server: 'https://dots.example.com', token: 'ods_x', label: 'Pixel', scopes: ['chat'] };
+    await render(<Settings />);
+    expect(screen.queryByRole('switch', { name: 'File access' })).toBeNull();
   });
 
   it('points to the connected phones page on the site', async () => {

@@ -32,6 +32,8 @@ type AuthValue = {
   hostedSignIn: (args: { email: string; code: string; onUpdate?: (workspace: Workspace) => void }) => Promise<HostedResult>;
   /** Carries on a sign-in that stopped because the workspace was not ready, using the account session kept so far. */
   hostedContinue: (args: { onUpdate?: (workspace: Workspace) => void }) => Promise<HostedResult>;
+  /** Hosted only: swaps this phone's workspace token for one with or without file access. Needs a running workspace. */
+  hostedSetFiles: (enabled: boolean) => Promise<void>;
   /** The hosted account session ended (the service said so): forget everything and ask for a new sign-in. */
   hostedEnded: () => void;
   signOut: () => Promise<void>;
@@ -182,6 +184,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: 'unpaired' });
   }, []);
 
+  const hostedSetFiles = useCallback(
+    async (enabled: boolean) => {
+      const current = stateRef.current;
+      if (current.status !== 'paired' || !current.hosted) return;
+      const link = current.hosted;
+      try {
+        // The service replaces this phone's earlier token with the new one. Nothing here wakes the workspace.
+        const grant = await hosted.createDevice(link.accountToken, enabled ? 'files' : 'chat');
+        await finishHosted(link.email, link.accountToken, grant, current.label, false);
+      } catch (error) {
+        if (error instanceof HostedError && error.code === 'session_invalid') hostedEnded();
+        throw error;
+      }
+    },
+    [hosted, finishHosted, hostedEnded],
+  );
+
   const signOut = useCallback(async () => {
     const current = stateRef.current;
     if (current.status === 'paired') {
@@ -224,8 +243,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const dismissWelcome = useCallback(() => setWelcome(false), []);
 
   const value = useMemo(
-    () => ({ state, notice, welcome, dismissWelcome, pair, hostedSignIn, hostedContinue, hostedEnded, signOut, revoked }),
-    [state, notice, welcome, dismissWelcome, pair, hostedSignIn, hostedContinue, hostedEnded, signOut, revoked],
+    () => ({ state, notice, welcome, dismissWelcome, pair, hostedSignIn, hostedContinue, hostedSetFiles, hostedEnded, signOut, revoked }),
+    [state, notice, welcome, dismissWelcome, pair, hostedSignIn, hostedContinue, hostedSetFiles, hostedEnded, signOut, revoked],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
