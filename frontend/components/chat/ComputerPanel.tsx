@@ -25,6 +25,23 @@ import {
   type ComputerAction,
 } from "@/lib/computers";
 
+const CLOUD_PROVIDERS = {
+  muapi: {
+    label: "Muapi",
+    description: "Muapi cloud computers are shell-only for now. They have internet access and are billed per second from your Muapi credits while running ($0.072/hour); stopped computers are free, and idle ones auto-stop after 15 minutes. You need at least a $1 balance to start.",
+    status: () => api.muapiCredentialStatus(),
+    save: (key: string) => api.saveMuapiCredential(key),
+    remove: () => api.deleteMuapiCredential(),
+  },
+  boat: {
+    label: "Boat",
+    description: "Boat cloud computers run in your Boat account, have internet access, and may incur usage charges. They auto-archive one hour after creation or resume; an agent can resume one on a later turn when auto-start is enabled. Screenshots can be returned to the selected engine.",
+    status: () => api.boatCredentialStatus(),
+    save: (key: string) => api.saveBoatCredential(key),
+    remove: () => api.deleteBoatCredential(),
+  },
+} as const;
+
 const FIELD =
   "w-full rounded-md border border-line bg-transparent px-2 py-1 text-sm placeholder:text-muted";
 const SMALL =
@@ -81,9 +98,12 @@ function DockerComputerView({
   const [kind, setKind] = useState<ComputerKind>("shell");
   const [advanced, setAdvanced] = useState(false);
   const [network, setNetwork] = useState<ComputerNetwork>("none");
-  const [provider, setProvider] = useState<"docker" | "boat">("docker");
-  const [boatConfigured, setBoatConfigured] = useState<boolean | null>(null);
-  const [boatKey, setBoatKey] = useState("");
+  const [provider, setProvider] = useState<"docker" | "muapi" | "boat">("docker");
+  const [configured, setConfigured] = useState<Record<"muapi" | "boat", boolean | null>>({ muapi: null, boat: null });
+  const [cloudKey, setCloudKey] = useState("");
+  const isCloud = provider !== "docker";
+  const cloud = provider === "muapi" ? CLOUD_PROVIDERS.muapi : CLOUD_PROVIDERS.boat;
+  const cloudConfigured = isCloud ? configured[provider] : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -119,10 +139,12 @@ function DockerComputerView({
   useEffect(() => {
     if (phase.kind !== "none" || phase.health?.hosted) return;
     let active = true;
-    void api.boatCredentialStatus().then((result) => {
-      if (active) setBoatConfigured(result.configured);
-    }).catch(() => {
-      if (active) setBoatConfigured(false);
+    (["muapi", "boat"] as const).forEach((key) => {
+      void CLOUD_PROVIDERS[key].status().then((result) => {
+        if (active) setConfigured((current) => ({ ...current, [key]: result.configured }));
+      }).catch(() => {
+        if (active) setConfigured((current) => ({ ...current, [key]: false }));
+      });
     });
     return () => { active = false; };
   }, [phase.kind, phase.kind === "none" ? phase.health?.hosted : false]);
@@ -181,9 +203,13 @@ function DockerComputerView({
             <input type="radio" name="computer-provider" checked={provider === "docker"} onChange={() => setProvider("docker")} />
             Local
           </label>
+          <label className="mr-4 inline-flex items-center gap-2">
+            <input type="radio" name="computer-provider" checked={provider === "muapi"} onChange={() => { setProvider("muapi"); setKind("shell"); setCloudKey(""); }} />
+            Cloud · Muapi
+          </label>
           <label className="inline-flex items-center gap-2">
-            <input type="radio" name="computer-provider" checked={provider === "boat"} onChange={() => setProvider("boat")} />
-            Cloud
+            <input type="radio" name="computer-provider" checked={provider === "boat"} onChange={() => { setProvider("boat"); setCloudKey(""); }} />
+            Cloud · Boat
           </label>
         </fieldset>
         {provider === "docker" && docker && !docker.available && (
@@ -193,33 +219,33 @@ function DockerComputerView({
           <p className="text-xs text-muted">Local uses an isolated Docker computer on this machine. Only its workspace folder is shared with the agent.</p>
         ) : (
           <div className="space-y-2 rounded-md border border-line p-3">
-            <p className="text-xs text-muted">Cloud computers run in your Boat account, have internet access, and may incur usage charges. They auto-archive one hour after creation or resume; an agent can resume one on a later turn when auto-start is enabled. Commands and files go to the cloud computer; screenshots can be returned to the selected engine. Its files are not synced with this machine&apos;s workspace. The API key is encrypted in this Desktop profile and sent by the local backend only to authenticate Boat API requests over HTTPS; it is not sent to the agent or cloud computer.</p>
-            {boatConfigured ? (
-              <p className="text-xs text-muted">Boat API key saved on this device. Enter a new key to replace it.</p>
+            <p className="text-xs text-muted">{cloud.description} Commands and files go to the cloud computer. Its files are not synced with this machine&apos;s workspace. The API key is encrypted in this Desktop profile and sent by the local backend only to authenticate {cloud.label} API requests over HTTPS; it is not sent to the agent or cloud computer.</p>
+            {cloudConfigured ? (
+              <p className="text-xs text-muted">{cloud.label} API key saved on this device. Enter a new key to replace it.</p>
             ) : (
-              <p className="text-xs text-muted">Add a Boat API key to enable cloud computers.</p>
+              <p className="text-xs text-muted">Add a {cloud.label} API key to enable {cloud.label} computers.{provider === "muapi" && <> Get one at <a className="text-accent underline underline-offset-2 hover:opacity-80" href="https://muapi.ai/access-keys" target="_blank" rel="noopener noreferrer">muapi.ai</a>.</>}</p>
             )}
             <form className="flex flex-wrap gap-2" onSubmit={async (event) => {
               event.preventDefault();
-              if (!boatKey.trim()) return;
+              if (!cloudKey.trim() || !isCloud) return;
               setBusy(true); setError(null);
               try {
-                await api.saveBoatCredential(boatKey.trim());
-                setBoatConfigured(true); setBoatKey("");
+                await cloud.save(cloudKey.trim());
+                setConfigured((current) => ({ ...current, [provider]: true })); setCloudKey("");
               } catch (err) { setError(errorText(err)); }
               finally { setBusy(false); }
             }}>
-              <input type="password" autoComplete="off" spellCheck={false} aria-label="Boat API key" placeholder="Boat API key" value={boatKey} onChange={(event) => setBoatKey(event.target.value)} className={`${FIELD} min-w-48 flex-1`} />
-              <button type="submit" disabled={busy || !boatKey.trim()} className={SMALL}>Save key on this device</button>
+              <input type="password" autoComplete="off" spellCheck={false} aria-label={`${cloud.label} API key`} placeholder={`${cloud.label} API key`} value={cloudKey} onChange={(event) => setCloudKey(event.target.value)} className={`${FIELD} min-w-48 flex-1`} />
+              <button type="submit" disabled={busy || !cloudKey.trim()} className={SMALL}>Save key on this device</button>
             </form>
-            {boatConfigured && <button type="button" disabled={busy} className={SMALL} onClick={() => void act(async () => {
-              await api.deleteBoatCredential();
-              setBoatConfigured(false);
-              setBoatKey("");
+            {cloudConfigured && isCloud && <button type="button" disabled={busy} className={SMALL} onClick={() => void act(async () => {
+              await cloud.remove();
+              setConfigured((current) => ({ ...current, [provider]: false }));
+              setCloudKey("");
             })}>Remove saved key</button>}
             {!isDesktopApp() && (
               <p className="text-xs text-muted">
-                Prefer local computers? The free desktop app can run one with Docker—no Boat API key required.{" "}
+                Prefer local computers? The free desktop app can run one with Docker—no cloud API key required.{" "}
                 <a className="text-accent underline underline-offset-2 hover:opacity-80" href="/download/">
                   Download desktop app
                 </a>
@@ -231,7 +257,7 @@ function DockerComputerView({
           <legend className="text-xs text-muted">Computer</legend>
           {(["shell", "desktop"] as const).map((value) => (
             <label key={value} className="mr-4 inline-flex items-center gap-2">
-              <input type="radio" name="kind" checked={kind === value} onChange={() => setKind(value)} />
+              <input type="radio" name="kind" checked={kind === value} disabled={provider === "muapi" && value === "desktop"} onChange={() => setKind(value)} />
               {value === "shell" ? "Shell only" : "Desktop"}
             </label>
           ))}
@@ -256,7 +282,7 @@ function DockerComputerView({
           </p>
         )}
         <button
-          disabled={busy || !createGate.enabled || (provider === "boat" && !boatConfigured)}
+          disabled={busy || !createGate.enabled || (isCloud && !cloudConfigured)}
           aria-describedby={!createGate.enabled ? capabilityHelpId : undefined}
           className={PRIMARY}
           onClick={() => act(() => api.createAgentComputer(agent.id, { provider, ...(provider === "docker" ? { network } : {}), kind }))}
@@ -299,7 +325,7 @@ function DockerComputerView({
           </span>}
         </p>
         <p className="mt-1 text-xs text-muted">
-          {computer.provider === "boat" ? "Cloud · Internet enabled · auto-archives after 1 hour · resources managed by provider" : `${computer.provider} · ${NETWORK_MODES.find((m) => m.value === computer.network)?.label ?? computer.network} · ${limitsText(computer)}`}
+          {computer.provider === "muapi" ? "Cloud · Muapi · Internet enabled · billed per second from Muapi credits · auto-stops after 15 minutes idle" : computer.provider === "boat" ? "Cloud · Internet enabled · auto-archives after 1 hour · resources managed by provider" : `${computer.provider} · ${NETWORK_MODES.find((m) => m.value === computer.network)?.label ?? computer.network} · ${limitsText(computer)}`}
           {computer.idle_minutes > 0 ? ` · stops after ${computer.idle_minutes} idle min` : " · never stops on its own"}
         </p>
         {computer.workspace_path && (
@@ -308,7 +334,7 @@ function DockerComputerView({
           </p>
         )}
         {computer.health && !computer.health.available && (
-          <p className="mt-2 text-xs text-warning">{computer.provider === "boat" ? "Cloud provider unavailable:" : "Docker is not available:"} {computer.health.error}</p>
+          <p className="mt-2 text-xs text-warning">{computer.provider === "boat" || computer.provider === "muapi" ? "Cloud provider unavailable:" : "Docker is not available:"} {computer.health.error}</p>
         )}
         {computer.problem && <p className="mt-2 text-xs text-warning">{computer.problem}</p>}
         {!computer.problem && computer.last_error && state !== "running" && (
@@ -416,7 +442,7 @@ function DockerComputerView({
       <div className="border-t border-line pt-3">
         {confirmRemove ? (
           <p className="flex flex-wrap items-center gap-2 text-xs">
-            {computer.provider === "boat" ? "Permanently remove the cloud computer and its provider data? Boat deletion runs in the background while Open Dots waits for confirmation." : "Remove the computer? Everything inside it is lost; the workspace folder stays."} {agent.name} then works on this machine again.
+            {computer.provider === "muapi" ? "Permanently delete the Muapi computer and its files?" : computer.provider === "boat" ? "Permanently remove the cloud computer and its provider data? Boat deletion runs in the background while Open Dots waits for confirmation." : "Remove the computer? Everything inside it is lost; the workspace folder stays."} {agent.name} then works on this machine again.
             <button disabled={busy} className={SMALL} onClick={() => act(() => api.deleteComputer(computer.id)).then(() => setConfirmRemove(false))}>
               Remove
             </button>

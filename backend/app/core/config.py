@@ -10,6 +10,8 @@ from app.desktop import profile
 
 class Settings(BaseSettings):
     BOAT_BASE_URL : str = "https://boat.dev/api/v1"
+    # Muapi Sandbox API (cloud computers billed from the user's Muapi credits).
+    MUAPI_SANDBOX_BASE_URL : str = "https://api.muapi.ai/api/v1"
     # Boat is optional. Empty means no Boat sandboxes: the app starts without
     # it and anything that needs a sandbox answers "Boat is not configured".
     BOAT_API_KEY : str = ""

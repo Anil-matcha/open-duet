@@ -28,6 +28,8 @@ class CredentialError(Exception):
 
 
 class BoatCredentials:
+    FILE_NAME = FILE_NAME
+
     def __init__(self, *, data_dir: Path | None = None, encryption_key: str | None = None) -> None:
         current = profile.current()
         if current is None and (data_dir is None or encryption_key is None):
@@ -44,7 +46,7 @@ class BoatCredentials:
 
     @property
     def path(self) -> Path:
-        return self.data_dir / FILE_NAME
+        return self.data_dir / self.FILE_NAME
 
     def configured(self) -> bool:
         return self.get() is not None
@@ -74,7 +76,7 @@ class BoatCredentials:
         self.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary: str | None = None
         try:
-            fd, temporary = tempfile.mkstemp(prefix=f".{FILE_NAME}.", dir=self.data_dir)
+            fd, temporary = tempfile.mkstemp(prefix=f".{self.FILE_NAME}.", dir=self.data_dir)
             with os.fdopen(fd, "wb") as stream:
                 os.fchmod(stream.fileno(), 0o600)
                 stream.write(encrypted)
