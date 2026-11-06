@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.db.models  # noqa: F401  (registers every table)
 from app.db.base import Base
 from app.db.transactions import begin_write
-from app.desktop import boat_credentials, profile
+from app.desktop import boat_credentials, boxd_credentials, profile
 
 KEPT_TABLES = frozenset({"auth_owner", "auth_session", "auth_pairing_code"})
 
@@ -55,6 +55,9 @@ def wipe_files() -> None:
     _clear_directory(current.data_dir / profile.WORKSPACE_DIR_NAME)
     _clear_directory(current.backup_dir)
     boat_credentials.BoatCredentials(
+        data_dir=current.data_dir, encryption_key=current.encryption_key
+    ).delete()
+    boxd_credentials.BoxdCredentials(
         data_dir=current.data_dir, encryption_key=current.encryption_key
     ).delete()
 

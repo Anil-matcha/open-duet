@@ -104,7 +104,7 @@ async def automatic(runtime, run, tool: str, arguments: dict):
                 computer_id = ceiling.get("computer_id")
                 computer = await db.get(Computer, computer_id) if type(computer_id) is int and computer_id > 0 else None
                 if (computer is None or computer.owner_id != runtime.owner_id or computer.agent_id != run.agent_id
-                        or computer.state == "deleting" or computer.provider not in ("docker", "boat")
+                        or computer.state == "deleting" or computer.provider not in ("docker", "boat", "boxd")
                         or binding is None or getattr(binding, "computer_id", None) != computer.id
                         or getattr(binding, "provider", None) != computer.provider):
                     return "denied", "routine_computer_not_granted"

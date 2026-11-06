@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from app.computers import docker_cli, grants
+from app.computers.provider import CLOUD_PROVIDERS
 
 WIDTH, HEIGHT = 1280, 800
 INPUT_NAMES = frozenset({"click", "double_click", "move", "drag", "type", "key", "scroll"})
@@ -161,7 +162,7 @@ class Screen:
             if name == "wait":
                 time.sleep(args["seconds"])
                 return _text(f"Waited {args['seconds']} seconds.")
-            if getattr(s, "provider", "docker") == "boat":
+            if getattr(s, "provider", "docker") in CLOUD_PROVIDERS:
                 result = s._provider_tool(name, args)
                 if name == "screenshot" and not result.get("isError"):
                     self.observed_epoch = epoch

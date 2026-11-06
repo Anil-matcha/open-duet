@@ -26,6 +26,7 @@ import urllib.request
 from pathlib import Path
 
 from app.computers import browser, docker_cli, grants, screen
+from app.computers.provider import CLOUD_PROVIDERS
 
 PROTOCOL_VERSION = "2025-06-18"
 LAST_COMMAND_FILE = "last-command.json"
@@ -143,7 +144,7 @@ class Server:
             return _text(problem, error=True)
         # The local bridge consumes cloud-tool permits after checking the
         # turn capability; the child cannot consume one on behalf of itself.
-        if self.provider != "boat" and not grants.consume(self.grants_dir, name, arguments):
+        if self.provider not in CLOUD_PROVIDERS and not grants.consume(self.grants_dir, name, arguments):
             return _text(NOT_APPROVED, error=True)
         if name not in ("read_file", "list_files") and screen.held(self.state_dir):
             self.screen.needs_observation = True
@@ -155,7 +156,7 @@ class Server:
         return getattr(self, f"_{name}")(arguments)
 
     def _exec(self, args: dict) -> dict:
-        if self.provider == "boat":
+        if self.provider in CLOUD_PROVIDERS:
             return self._provider_tool("exec", args)
         seconds = docker_cli.exec_seconds(args.get("timeout_seconds"))
         cwd = args.get("cwd")
@@ -182,7 +183,7 @@ class Server:
         return _text("\n".join(lines), error=code != 0)
 
     def _read_file(self, args: dict) -> dict:
-        if self.provider == "boat":
+        if self.provider in CLOUD_PROVIDERS:
             return self._provider_tool("read_file", args)
         done = docker_cli.run(docker_cli.read_args(self.container, args["path"], self.user), timeout=60, docker=self.docker)
         self._remember("read_file", args["path"], done.code, done.timed_out, "")
@@ -196,7 +197,7 @@ class Server:
         return _text(data.decode("utf-8", errors="replace"))
 
     def _write_file(self, args: dict) -> dict:
-        if self.provider == "boat":
+        if self.provider in CLOUD_PROVIDERS:
             return self._provider_tool("write_file", args)
         content = args["content"].encode("utf-8")
         done = docker_cli.run(
@@ -209,7 +210,7 @@ class Server:
         return _text(f"Wrote {len(content)} bytes to {args['path']}.")
 
     def _list_files(self, args: dict) -> dict:
-        if self.provider == "boat":
+        if self.provider in CLOUD_PROVIDERS:
             return self._provider_tool("list_files", args)
         path = args.get("path") or "."
         done = docker_cli.run(docker_cli.list_args(self.container, path, self.user), timeout=60, docker=self.docker)
@@ -219,7 +220,7 @@ class Server:
         return _text(docker_cli.clip_output(done.stdout))
 
     def _provider_tool(self, name: str, arguments: dict) -> dict:
-        if self.provider != "boat" or not self.computer_id or not self.api_origin or not self.capability:
+        if self.provider not in CLOUD_PROVIDERS or not self.computer_id or not self.api_origin or not self.capability:
             return _text("The cloud computer tool bridge is unavailable.", error=True)
         body = json.dumps({"name": name, "arguments": arguments}, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(
@@ -337,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--turn-id", default="")
     parser.add_argument("--max-screen-actions", type=int, default=300)
     parser.add_argument("--browser", action="store_true")
-    parser.add_argument("--provider", choices=("docker", "boat"), default="docker")
+    parser.add_argument("--provider", choices=("docker", *CLOUD_PROVIDERS), default="docker")
     parser.add_argument("--computer-id", type=int)
     parser.add_argument("--api-origin", default="")
     parser.add_argument("--capability-file", default=None)

@@ -10,7 +10,8 @@ a Boat cloud computer. Cloud computers have internet access, use a separate
   and sent by its backend to Boat's API over HTTPS for authentication. It is
   never sent to the agent or cloud computer. Cloud
 computers auto-archive one hour after creation or resume, and can be resumed by
-a later turn when auto-start is enabled. The macOS desktop app also offers a
+a later turn when auto-start is enabled. A [boxd](#boxd-cloud-computers) cloud
+computer is the second cloud choice. The macOS desktop app also offers a
 separate, explicitly enabled [native desktop preview](NATIVE-DESKTOP.md) that
 acts on this Mac's apps. Remote SSH computers remain unimplemented.
 
@@ -52,7 +53,7 @@ One table, `computer` (migration `4b7e1d9c2a58`), at most one row per agent:
 | Column | Meaning |
 |---|---|
 | `agent_id` | The agent (unique). No foreign key, like `thread.agent_id`: a row outlives its agent until its machine is removed. |
-| `provider` | `docker` for a local isolated computer or `boat` for a Desktop cloud computer. The native macOS desktop preview is a separate, opt-in app path; SSH computers are not implemented. |
+| `provider` | `docker` for a local isolated computer, or `boat` or `boxd` for a Desktop cloud computer. The native macOS desktop preview is a separate, opt-in app path; SSH computers are not implemented. |
 | `image`, `image_id` | The image reference (a digest pins it) and the content id it resolved to when the machine was made. |
 | `cpu_millis`, `memory_mb`, `pids_limit` | Limits. CPU is stored in thousandths so the column is an integer on every database. |
 | `network` | `none` (no network at all, the default) or `default` (Docker's bridge: internet out, nothing in). |
@@ -265,6 +266,43 @@ revocation endpoint. Remove all cloud computers before resetting or deleting
 the Desktop profile. Boat deletion is accepted asynchronously; Open Dots keeps
 the local computer record and blocks profile reset until Boat reports deletion
 complete. The resources may incur charges until removed or archived.
+
+### boxd cloud computers
+
+[boxd](https://boxd.sh/?ref=open-duet) runs full Linux microVMs (KVM) with a
+persistent disk that start in about a second, and can be hibernated,
+snapshotted and forked. In the Desktop app, **Cloud (boxd)** makes each agent
+computer one boxd machine (`backend/app/computers/boxd_provider.py`).
+
+Setup:
+
+1. Install the backend with the optional boxd SDK: `uv sync --extra boxd` in
+   `backend/`. Without it the choice reports that the SDK is missing.
+2. Create an API key in the [boxd console](https://boxd.sh/?ref=open-duet) and
+   save it under **Cloud (boxd)** when giving an agent a computer. It is stored
+   like the Boat key (`boxd-api-key.enc` in the Desktop profile, encrypted,
+   write-only) and used only by the local backend to call the boxd API.
+
+How it maps:
+
+| Open Duet | boxd |
+|---|---|
+| create | `machines.create` with the computer's name and labels `open-dots/instance`, `open-dots/computer`, `open-dots/generation`. A create cut short is resumed by name; a machine with that name made by anyone else is refused. |
+| start | wake a hibernated machine or start a stopped one, wait until it answers, then make `/home/boxd/workspace` (and the display of a desktop computer). |
+| stop (idle stop too) | `machines.hibernate`: memory and disk are kept, so open apps survive, and the next start wakes it in about a second. |
+| recreate, remove | `machines.delete`, which is synchronous. A machine whose labels do not match is never deleted. |
+| `exec` | `machines.exec` as user `boxd` (passwordless sudo) under `timeout`, in `/home/boxd/workspace` (shown to the agent as `/workspace`). |
+| `read_file`, `write_file`, `list_files` | the boxd file API, limited to the workspace and `/tmp` like Boat. |
+| screen tools | a 1280x800 Xvfb display `:99` started on demand, driven with `xdotool`, captured with ImageMagick `import`. |
+
+The machine runs the boxd default image (Ubuntu 24.04) at the org's default
+size, with internet access; resource, image and network settings are not
+offered for it. Its desktop is not the machine's own boxd console Desktop view
+(display `:100`, which resizes to whoever watches it), so the panel shows it
+as screenshots and there is
+no take-control view. Remove boxd computers before resetting the Desktop
+profile, as with Boat. Machines keep running (and billing) until stopped,
+hibernated or removed; boxd's own idle auto-hibernate setting still applies.
 
 ## Testing
 
