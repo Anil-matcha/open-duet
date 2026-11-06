@@ -52,6 +52,7 @@ import {
   type WorkflowStep,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { Select } from "@/components/ui/Select";
 
 export interface WorkflowCanvasProps {
   workflow: Workflow;
@@ -68,6 +69,97 @@ export interface WorkflowCanvasProps {
 }
 
 type ToolMode = "select" | "pan" | "draw" | "note" | "text" | "search";
+
+export interface NodeSizeLimits {
+  defaultWidth: number;
+  defaultHeight?: number;
+  minWidth: number;
+  maxWidth: number;
+  minHeight?: number;
+  maxHeight?: number;
+  resizable: boolean;
+}
+
+export const NODE_SIZE_CONFIG: Record<string, NodeSizeLimits> = {
+  trigger: {
+    defaultWidth: 320,
+    minWidth: 280,
+    maxWidth: 480,
+    resizable: false,
+  },
+  llm: {
+    defaultWidth: 440,
+    defaultHeight: 380,
+    minWidth: 340,
+    maxWidth: 720,
+    minHeight: 260,
+    maxHeight: 850,
+    resizable: true,
+  },
+  agent: {
+    defaultWidth: 440,
+    defaultHeight: 380,
+    minWidth: 340,
+    maxWidth: 720,
+    minHeight: 260,
+    maxHeight: 850,
+    resizable: true,
+  },
+  action: {
+    defaultWidth: 380,
+    defaultHeight: 280,
+    minWidth: 320,
+    maxWidth: 640,
+    minHeight: 200,
+    maxHeight: 650,
+    resizable: true,
+  },
+  condition: {
+    defaultWidth: 360,
+    defaultHeight: 240,
+    minWidth: 300,
+    maxWidth: 540,
+    minHeight: 180,
+    maxHeight: 500,
+    resizable: true,
+  },
+  approval: {
+    defaultWidth: 360,
+    defaultHeight: 240,
+    minWidth: 300,
+    maxWidth: 540,
+    minHeight: 180,
+    maxHeight: 500,
+    resizable: true,
+  },
+  note: {
+    defaultWidth: 300,
+    defaultHeight: 200,
+    minWidth: 220,
+    maxWidth: 600,
+    minHeight: 140,
+    maxHeight: 600,
+    resizable: true,
+  },
+  end: {
+    defaultWidth: 280,
+    minWidth: 240,
+    maxWidth: 360,
+    resizable: false,
+  },
+};
+
+interface ResizingNodeState {
+  stepId: string;
+  startPointerX: number;
+  startPointerY: number;
+  startWidth: number;
+  startHeight: number;
+  minWidth: number;
+  maxWidth: number;
+  minHeight: number;
+  maxHeight: number;
+}
 
 interface DraggingConnection {
   fromStepId: string;
@@ -114,6 +206,12 @@ export function WorkflowCanvas({
   // High-performance local node positions map
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const nodePositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  // High-performance dynamic node sizes map
+  const [nodeSizes, setNodeSizes] = useState<Record<string, { width: number; height?: number }>>({});
+  const nodeSizesRef = useRef<Record<string, { width: number; height?: number }>>({});
+  const [resizingNode, setResizingNode] = useState<ResizingNodeState | null>(null);
+  const hasResizedNodeRef = useRef(false);
 
   // Trigger node popover menus
   const [activeTriggerMenuStepId, setActiveTriggerMenuStepId] = useState<string | null>(null);
@@ -215,6 +313,66 @@ export function WorkflowCanvas({
     nodePositionsRef.current = next;
   }, [workflow.id, effectiveSteps]);
 
+  // Sync sizes from effective steps or fallback to standard benchmark sizes
+  useEffect(() => {
+    const next: Record<string, { width: number; height?: number }> = {};
+    effectiveSteps.forEach((step) => {
+      const existing = nodeSizesRef.current[step.id];
+      if (existing) {
+        next[step.id] = existing;
+      } else {
+        const cfg = NODE_SIZE_CONFIG[step.type] || NODE_SIZE_CONFIG.llm;
+        next[step.id] = {
+          width: step.width ?? cfg.defaultWidth,
+          ...(step.height || cfg.defaultHeight ? { height: step.height ?? cfg.defaultHeight } : {}),
+        };
+      }
+    });
+    setNodeSizes(next);
+    nodeSizesRef.current = next;
+  }, [workflow.id, effectiveSteps]);
+
+  // Helper to obtain current size & config for a node
+  const getNodeSize = useCallback(
+    (step: WorkflowStep) => {
+      const local = nodeSizes[step.id];
+      const cfg = NODE_SIZE_CONFIG[step.type] || NODE_SIZE_CONFIG.llm;
+      const width = local?.width ?? step.width ?? cfg.defaultWidth;
+      const height = local?.height ?? step.height ?? cfg.defaultHeight;
+      return { width, height, cfg };
+    },
+    [nodeSizes]
+  );
+
+  // Initiate bottom-right corner resize gesture
+  const handleResizePointerDown = (
+    e: React.PointerEvent,
+    stepId: string,
+    cfg: NodeSizeLimits,
+    currentWidth: number,
+    currentHeight: number | undefined
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    const cardEl = (e.currentTarget as HTMLElement).closest(".workflow-node") as HTMLElement | null;
+    const startH = currentHeight ?? (cardEl ? cardEl.offsetHeight : cfg.defaultHeight ?? 300);
+
+    setResizingNode({
+      stepId,
+      startPointerX: e.clientX,
+      startPointerY: e.clientY,
+      startWidth: currentWidth,
+      startHeight: startH,
+      minWidth: cfg.minWidth,
+      maxWidth: cfg.maxWidth,
+      minHeight: cfg.minHeight ?? 140,
+      maxHeight: cfg.maxHeight ?? 900,
+    });
+    hasResizedNodeRef.current = false;
+  };
+
   // Node selection & dragging
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -238,7 +396,6 @@ export function WorkflowCanvas({
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(workflow.name);
-  const [activeModelMenuStepId, setActiveModelMenuStepId] = useState<string | null>(null);
   const [expandedOutputStepIds, setExpandedOutputStepIds] = useState<Set<string>>(new Set());
   const [expandedSystemPromptStepIds, setExpandedSystemPromptStepIds] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState("");
@@ -344,7 +501,6 @@ export function WorkflowCanvas({
         setSelectedWire(null);
         setShowAddMenu(false);
         setShowWorkflowMenu(false);
-        setActiveModelMenuStepId(null);
       } else if (e.key === " ") {
         setTool("pan");
       }
@@ -465,7 +621,6 @@ export function WorkflowCanvas({
     };
     setSelectedNodeId(null);
     setSelectedWire(null);
-    setActiveModelMenuStepId(null);
     setActiveTriggerMenuStepId(null);
     setActiveChipMenu(null);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -473,6 +628,30 @@ export function WorkflowCanvas({
 
   // High-performance pointer move (60fps local update)
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
+    if (resizingNode) {
+      const dx = (e.clientX - resizingNode.startPointerX) / zoom;
+      const dy = (e.clientY - resizingNode.startPointerY) / zoom;
+
+      const newWidth = Math.round(
+        Math.min(resizingNode.maxWidth, Math.max(resizingNode.minWidth, resizingNode.startWidth + dx))
+      );
+      const newHeight = Math.round(
+        Math.min(resizingNode.maxHeight, Math.max(resizingNode.minHeight, resizingNode.startHeight + dy))
+      );
+
+      hasResizedNodeRef.current = true;
+
+      setNodeSizes((prev) => {
+        const next = {
+          ...prev,
+          [resizingNode.stepId]: { width: newWidth, height: newHeight },
+        };
+        nodeSizesRef.current = next;
+        return next;
+      });
+      return;
+    }
+
     if (currentStroke) {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -543,6 +722,22 @@ export function WorkflowCanvas({
 
   // Drag finish
   const handleCanvasPointerUp = () => {
+    if (resizingNode) {
+      if (hasResizedNodeRef.current) {
+        const finalSize = nodeSizesRef.current[resizingNode.stepId];
+        if (finalSize) {
+          const updatedSteps = effectiveSteps.map((s) =>
+            s.id === resizingNode.stepId
+              ? { ...s, width: finalSize.width, height: finalSize.height }
+              : s
+          );
+          void onUpdateWorkflow({ steps: updatedSteps });
+        }
+      }
+      setResizingNode(null);
+      hasResizedNodeRef.current = false;
+    }
+
     if (currentStroke) {
       setStrokes((prev) => [...prev, currentStroke]);
       setCurrentStroke(null);
@@ -647,6 +842,10 @@ export function WorkflowCanvas({
       const step = base.find((s) => s.id === stepId);
       if (!step) return;
       const currentPos = nodePositions[stepId] || { x: 420, y: 140 };
+      const currentSize = nodeSizesRef.current[stepId] || {
+        width: step.width,
+        height: step.height,
+      };
       const newId = `${step.type === "trigger" ? "trigger" : "step"}_${Date.now().toString(36)}`;
       const newX = currentPos.x + 40;
       const newY = currentPos.y + 40;
@@ -657,6 +856,8 @@ export function WorkflowCanvas({
         name: `${step.name} (Copy)`,
         x: newX,
         y: newY,
+        width: currentSize.width,
+        height: currentSize.height,
         next_step_id: null,
       };
 
@@ -665,6 +866,17 @@ export function WorkflowCanvas({
         nodePositionsRef.current = next;
         return next;
       });
+
+      if (currentSize.width) {
+        setNodeSizes((prev) => {
+          const next = {
+            ...prev,
+            [newId]: { width: currentSize.width, height: currentSize.height },
+          };
+          nodeSizesRef.current = next;
+          return next;
+        });
+      }
 
       void onUpdateWorkflow({ steps: [...base, duplicated] });
       setSelectedNodeId(newId);
@@ -775,9 +987,24 @@ export function WorkflowCanvas({
         };
       }
 
+      const cfg = NODE_SIZE_CONFIG[type] || NODE_SIZE_CONFIG.llm;
+      newStep.width = cfg.defaultWidth;
+      if (cfg.defaultHeight) {
+        newStep.height = cfg.defaultHeight;
+      }
+
       setNodePositions((prev) => {
         const next = { ...prev, [newId]: { x: centerX, y: centerY } };
         nodePositionsRef.current = next;
+        return next;
+      });
+
+      setNodeSizes((prev) => {
+        const next = {
+          ...prev,
+          [newId]: { width: cfg.defaultWidth, height: cfg.defaultHeight },
+        };
+        nodeSizesRef.current = next;
         return next;
       });
 
@@ -1097,7 +1324,9 @@ export function WorkflowCanvas({
         onPointerUp={handleCanvasPointerUp}
         className={cn(
           "relative flex-1 w-full h-full overflow-hidden select-none",
-          tool === "pan" || isPanning
+          resizingNode
+            ? "cursor-nwse-resize"
+            : tool === "pan" || isPanning
             ? "cursor-grab active:cursor-grabbing"
             : tool === "draw"
             ? "cursor-crosshair"
@@ -1167,8 +1396,9 @@ export function WorkflowCanvas({
             {/* Node-to-Node Connections */}
             {effectiveSteps.map((step) => {
               const srcPos = nodePositions[step.id] || { x: 420, y: 140 };
+              const { width: nodeW } = getNodeSize(step);
               const isTrigger = step.type === "trigger";
-              const srcX = srcPos.x + (isTrigger ? 320 : 360);
+              const srcX = srcPos.x + nodeW;
               const srcY = isTrigger ? srcPos.y + getTriggerPortOffsetY(step) : srcPos.y + 48;
 
               const renderWire = (
@@ -1317,6 +1547,9 @@ export function WorkflowCanvas({
             const outputText = stepOutputs[step.id] || stepRunState?.output;
             const isOutputExpanded = expandedOutputStepIds.has(step.id);
             const isTargetSnapped = draggingWire?.snappedTargetId === step.id;
+            const { width: nodeW, height: nodeH, cfg } = getNodeSize(step);
+            const isResizingThis = resizingNode?.stepId === step.id;
+            const isDraggingThis = draggingNodeId === step.id;
 
             return (
               <div
@@ -1325,6 +1558,16 @@ export function WorkflowCanvas({
                   transform: `translate(${pos.x}px, ${pos.y}px)`,
                   position: "absolute",
                   touchAction: "none",
+                  width: `${nodeW}px`,
+                  height: nodeH ? `${nodeH}px` : undefined,
+                  minWidth: `${cfg.minWidth}px`,
+                  maxWidth: `${cfg.maxWidth}px`,
+                  minHeight: cfg.minHeight ? `${cfg.minHeight}px` : undefined,
+                  maxHeight: cfg.maxHeight ? `${cfg.maxHeight}px` : undefined,
+                  transition:
+                    isResizingThis || isDraggingThis
+                      ? "none"
+                      : "width 0.18s cubic-bezier(0.16, 1, 0.3, 1), height 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
                 onPointerDownCapture={() => {
                   setSelectedNodeId(step.id);
@@ -1333,7 +1576,6 @@ export function WorkflowCanvas({
                 onPointerDown={(e) => handleNodePointerDown(e, step.id)}
                 className={cn(
                   "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow z-10",
-                  step.type === "trigger" ? "w-[320px]" : "w-[360px]",
                   step.type === "note"
                     ? (step.color === "neutral" || step.color === "white"
                         ? "bg-[#22242c]/95 border-zinc-600/60 text-zinc-100"
@@ -1434,9 +1676,32 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Bottom-right Corner Focus Bracket (Screenshot 3 style) */}
-                {isSelected && (
-                  <div className="absolute bottom-1 right-1 w-3 h-3 border-r-2 border-b-2 border-zinc-300 pointer-events-none" />
+                {/* Interactive Curved Corner Resize Handle (conforming to rounded-2xl bottom-right arc) */}
+                {isSelected && !isLocked && cfg.resizable && (
+                  <div
+                    onPointerDown={(e) =>
+                      handleResizePointerDown(e, step.id, cfg, nodeW, nodeH)
+                    }
+                    onPointerMove={handleCanvasPointerMove}
+                    onPointerUp={handleCanvasPointerUp}
+                    className="absolute -bottom-1 -right-1 w-7 h-7 flex items-end justify-end p-1.5 cursor-nwse-resize z-30 group/resize select-none"
+                    title="Drag to resize"
+                  >
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 15 15"
+                      fill="none"
+                      className="text-white/85 group-hover/resize:text-white group-hover/resize:scale-110 group-active/resize:scale-125 transition-transform drop-shadow"
+                    >
+                      <path
+                        d="M 2 13 C 7 13 13 7 13 2"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
                 )}
 
                 {/* Left Input Port (Triggers and Notes have no left input port) */}
@@ -2059,201 +2324,193 @@ export function WorkflowCanvas({
 
                 {/* LLM & Agent Form */}
                 {(step.type === "llm" || step.type === "agent" || step.type === "action") && (
-                  <div className="flex flex-col gap-3">
-                    <textarea
-                      rows={3}
-                      value={step.prompt || ""}
-                      placeholder={step.type === "llm" ? "Type your prompt here" : "Tell the agent what to do"}
-                      onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
-                      className="w-full bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none resize-none font-sans leading-relaxed"
-                    />
+                  <div className="flex-1 min-h-0 flex flex-col justify-between gap-3">
+                    <div className="flex-1 min-h-0 flex flex-col gap-3">
+                      <textarea
+                        value={step.prompt || ""}
+                        placeholder={step.type === "llm" ? "Type your prompt here" : "Tell the agent what to do"}
+                        onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
+                        className="w-full flex-1 min-h-[70px] bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none resize-none font-sans leading-relaxed"
+                      />
 
-                    {/* Bottom Controls Row */}
-                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/80 text-xs">
-                      {step.type === "llm" ? (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActiveModelMenuStepId(
-                                activeModelMenuStepId === step.id ? null : step.id
-                              )
-                            }
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
-                          >
-                            <span className="truncate max-w-[140px]">
-                              {availableModels.find((m) => m.id === step.model)?.label ||
-                                step.model ||
-                                "Gemini 2.0 Flash"}
-                            </span>
-                            <ChevronDown size={12} className="text-zinc-400" />
-                          </button>
-
-                          {activeModelMenuStepId === step.id && (
-                            <div className="absolute bottom-full left-0 mb-1 w-60 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 max-h-48 overflow-y-auto">
-                              {availableModels.map((m) => (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => {
-                                    handleUpdateStep(step.id, { model: m.id });
-                                    setActiveModelMenuStepId(null);
-                                  }}
-                                  className={cn(
-                                    "w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between",
-                                    step.model === m.id
-                                      ? "bg-zinc-800 text-white font-medium"
-                                      : "text-zinc-300 hover:bg-zinc-800/60"
-                                  )}
-                                >
+                      {/* Bottom Controls Row */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/80 text-xs shrink-0">
+                        {step.type === "llm" ? (
+                          <Select
+                            value={step.model || availableModels[0]?.id || "gemini-2.0-flash"}
+                            onChange={(e) => handleUpdateStep(step.id, { model: e.target.value })}
+                            containerClassName="w-auto max-w-[200px]"
+                            triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200"
+                            menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50 max-h-56"
+                            options={availableModels.map((m) => ({
+                              value: m.id,
+                              label: (
+                                <div className="flex items-center justify-between gap-3 w-full">
                                   <span className="truncate">{m.label}</span>
-                                  <span className="text-[10px] text-zinc-500">{m.provider}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={step.agent_id || agents[0]?.id || 1}
-                            onChange={(e) => handleUpdateStep(step.id, { agent_id: Number(e.target.value) })}
-                            className="bg-zinc-800/90 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                          >
-                            {agents.map((ag) => (
-                              <option key={ag.id} value={ag.id}>
-                                {ag.name}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="text-[11px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800">
-                            Gemini 2.0 Flash
-                          </span>
-                        </div>
-                      )}
-
-                      {step.type === "llm" && (
-                        <select
-                          value={step.effort || "medium"}
-                          onChange={(e) => handleUpdateStep(step.id, { effort: e.target.value })}
-                          className="bg-zinc-800/90 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-300 focus:outline-none capitalize"
-                        >
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                        </select>
-                      )}
-                    </div>
-
-                    {/* Optional System Prompt Expander (Screenshot 3 exact clone) */}
-                    {step.type === "llm" && (
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setExpandedSystemPromptStepIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(step.id)) next.delete(step.id);
-                              else next.add(step.id);
-                              return next;
-                            });
-                          }}
-                          className="text-left text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
-                        >
-                          <ChevronRight
-                            size={11}
-                            className={cn(
-                              "transition-transform",
-                              expandedSystemPromptStepIds.has(step.id) ? "rotate-90" : ""
-                            )}
+                                  <span className="text-[10px] text-zinc-500 shrink-0">{m.provider}</span>
+                                </div>
+                              ),
+                            }))}
                           />
-                          <span>System prompt (optional)</span>
-                        </button>
-                        {expandedSystemPromptStepIds.has(step.id) && (
-                          <textarea
-                            rows={2}
-                            value={step.system_prompt || ""}
-                            placeholder="Enter custom persona or system instructions..."
-                            onChange={(e) => handleUpdateStep(step.id, { system_prompt: e.target.value })}
-                            className="w-full bg-zinc-950/80 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none resize-none font-sans"
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* Agent Select */}
+                            <Select
+                              value={String(step.agent_id || agents[0]?.id || 1)}
+                              onChange={(e) => handleUpdateStep(step.id, { agent_id: Number(e.target.value) })}
+                              containerClassName="w-auto max-w-[150px]"
+                              triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200"
+                              menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50 max-h-56"
+                              leadingIcon={<span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />}
+                              options={agents.map((ag) => ({
+                                value: String(ag.id),
+                                label: (
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                    <span className="truncate">{ag.name}</span>
+                                  </div>
+                                ),
+                              }))}
+                            />
+
+                            {/* Agent Model Select */}
+                            <Select
+                              value={step.model || availableModels[0]?.id || "gemini-2.0-flash"}
+                              onChange={(e) => handleUpdateStep(step.id, { model: e.target.value })}
+                              containerClassName="w-auto max-w-[160px]"
+                              triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-300"
+                              menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50 max-h-56"
+                              leadingIcon={<Sparkles size={11} className="text-blue-400 shrink-0" />}
+                              options={availableModels.map((m) => ({
+                                value: m.id,
+                                label: (
+                                  <div className="flex items-center justify-between gap-3 w-full">
+                                    <span className="truncate">{m.label}</span>
+                                    <span className="text-[10px] text-zinc-500 shrink-0">{m.provider}</span>
+                                  </div>
+                                ),
+                              }))}
+                            />
+                          </div>
+                        )}
+
+                        {step.type === "llm" && (
+                          <Select
+                            value={step.effort || "medium"}
+                            onChange={(e) => handleUpdateStep(step.id, { effort: e.target.value })}
+                            containerClassName="w-auto min-w-[105px]"
+                            triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200 capitalize"
+                            menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50"
+                            leadingIcon={
+                              <div className="flex items-end gap-0.5 h-3">
+                                <span className={cn("w-0.5 rounded-full bg-zinc-300", step.effort === "high" || step.effort === "medium" || !step.effort ? "h-2" : "h-1.5")} />
+                                <span className={cn("w-0.5 rounded-full", step.effort === "high" || step.effort === "medium" || !step.effort ? "h-2.5 bg-zinc-300" : "h-1 bg-zinc-600")} />
+                                <span className={cn("w-0.5 rounded-full", step.effort === "high" ? "h-3 bg-zinc-300" : "h-1 bg-zinc-600")} />
+                              </div>
+                            }
+                            options={[
+                              { value: "low", label: "Low" },
+                              { value: "medium", label: "Medium" },
+                              { value: "high", label: "High" },
+                            ]}
                           />
                         )}
                       </div>
-                    )}
 
-                    {/* Inline Full-width "Run step" Button */}
-                    <button
-                      type="button"
-                      disabled={isRunningThis}
-                      onClick={() => handleRunStep(step.id)}
-                      className="w-full py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm active:scale-98 disabled:opacity-50"
-                    >
-                      {isRunningThis ? (
-                        <span className="w-3 h-3 border-2 border-zinc-300 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Play size={11} className="fill-zinc-300" />
-                      )}
-                      <span>Run step</span>
-                    </button>
-
-                    {/* Step Output Box */}
-                    {outputText && (
-                      <div className="rounded-xl bg-zinc-950 border border-zinc-800/90 p-2.5 flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
+                      {/* Optional System Prompt Expander */}
+                      {step.type === "llm" && (
+                        <div className="flex flex-col gap-1.5 shrink-0">
                           <button
                             type="button"
                             onClick={() => {
-                              setExpandedOutputStepIds((prev) => {
+                              setExpandedSystemPromptStepIds((prev) => {
                                 const next = new Set(prev);
                                 if (next.has(step.id)) next.delete(step.id);
                                 else next.add(step.id);
                                 return next;
                               });
                             }}
-                            className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
+                            className="text-left text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
                           >
-                            <CheckCircle2 size={12} />
-                            <span>Step Output</span>
-                            <span className="text-zinc-500 text-[10px] ml-1">
-                              ({isOutputExpanded ? "Collapse" : "Expand"})
-                            </span>
+                            <ChevronRight
+                              size={11}
+                              className={cn(
+                                "transition-transform",
+                                expandedSystemPromptStepIds.has(step.id) ? "rotate-90" : ""
+                              )}
+                            />
+                            <span>System prompt (optional)</span>
                           </button>
-
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(outputText);
-                                setCopiedStepId(step.id);
-                                setTimeout(() => setCopiedStepId(null), 2000);
-                              } catch {
-                                // fallback
-                              }
-                            }}
-                            className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
-                            title="Copy output to clipboard"
-                          >
-                            {copiedStepId === step.id ? (
-                              <>
-                                <Check size={11} className="text-emerald-400" />
-                                <span className="text-emerald-400">Copied!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={11} />
-                                <span>Copy</span>
-                              </>
-                            )}
-                          </button>
+                          {expandedSystemPromptStepIds.has(step.id) && (
+                            <textarea
+                              rows={2}
+                              value={step.system_prompt || ""}
+                              placeholder="Enter custom persona or system instructions..."
+                              onChange={(e) => handleUpdateStep(step.id, { system_prompt: e.target.value })}
+                              className="w-full bg-zinc-950/80 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none resize-none font-sans"
+                            />
+                          )}
                         </div>
+                      )}
 
-                        {isOutputExpanded && (
-                          <div className="text-xs text-zinc-300 bg-zinc-900/90 rounded-lg p-2.5 whitespace-pre-wrap font-sans max-h-48 overflow-y-auto leading-relaxed border border-zinc-800">
+                      {/* Benchmark-matching Result Box */}
+                      {outputText && (
+                        <div className="rounded-xl bg-zinc-950/90 border border-zinc-800/90 p-2.5 flex flex-col gap-1.5 shrink-0 shadow-inner">
+                          <div className="flex items-center justify-between text-[11px] font-medium text-zinc-300">
+                            <span className="flex items-center gap-1.5 font-semibold text-zinc-200">
+                              <CheckCircle2 size={12} className="text-emerald-400" />
+                              <span>Result</span>
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(outputText);
+                                  setCopiedStepId(step.id);
+                                  setTimeout(() => setCopiedStepId(null), 2000);
+                                } catch {
+                                  // fallback
+                                }
+                              }}
+                              className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
+                              title="Copy result to clipboard"
+                            >
+                              {copiedStepId === step.id ? (
+                                <>
+                                  <Check size={11} className="text-emerald-400" />
+                                  <span className="text-emerald-400">Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={11} />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="text-xs text-zinc-300 bg-zinc-900/80 rounded-lg p-2.5 whitespace-pre-wrap font-sans max-h-44 overflow-y-auto leading-relaxed border border-zinc-800">
                             {outputText}
                           </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Inline Full-width "Run" Button */}
+                    <button
+                      type="button"
+                      disabled={isRunningThis}
+                      onClick={() => handleRunStep(step.id)}
+                      className="w-full py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-98 disabled:opacity-50 shrink-0"
+                    >
+                      {isRunningThis ? (
+                        <span className="w-3 h-3 border-2 border-zinc-300 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Play size={11} className="fill-zinc-300" />
+                      )}
+                      <span>Run</span>
+                    </button>
                   </div>
                 )}
 
@@ -2267,23 +2524,27 @@ export function WorkflowCanvas({
                       onChange={(e) => handleUpdateStep(step.id, { target: e.target.value })}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono"
                     />
-                    <div className="flex gap-2">
-                      <select
+                    <div className="flex items-center gap-2">
+                      <Select
                         value={step.operator || "contains"}
                         onChange={(e) =>
                           handleUpdateStep(step.id, {
                             operator: e.target.value as WorkflowStep["operator"],
                           })
                         }
-                        className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200"
-                      >
-                        <option value="contains">contains</option>
-                        <option value="equals">equals</option>
-                        <option value="not_equals">not equals</option>
-                        <option value="matches_regex">matches regex</option>
-                        <option value="is_empty">is empty</option>
-                        <option value="is_not_empty">is not empty</option>
-                      </select>
+                        containerClassName="w-auto min-w-[130px]"
+                        triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200"
+                        menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50"
+                        options={[
+                          { value: "contains", label: "contains" },
+                          { value: "equals", label: "equals" },
+                          { value: "not_equals", label: "not equals" },
+                          { value: "matches_regex", label: "matches regex" },
+                          { value: "is_empty", label: "is empty" },
+                          { value: "is_not_empty", label: "is not empty" },
+                        ]}
+                      />
+
                       <input
                         type="text"
                         value={step.value || ""}
@@ -2336,8 +2597,8 @@ export function WorkflowCanvas({
 
                 {/* Sticky Note Form */}
                 {step.type === "note" && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-white/10">
+                  <div className="flex-1 min-h-0 flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-white/10 shrink-0">
                       <span className="font-semibold text-xs opacity-75 flex items-center gap-1.5">
                         <StickyNote size={13} />
                         <span>Sticky Note</span>
@@ -2363,11 +2624,65 @@ export function WorkflowCanvas({
                       </div>
                     </div>
                     <textarea
-                      rows={4}
                       value={step.prompt || ""}
                       placeholder="Type thoughts, instructions or documentation..."
                       onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
-                      className="w-full bg-transparent border-none text-xs leading-relaxed focus:outline-none resize-none font-sans"
+                      className="flex-1 min-h-[70px] w-full bg-transparent border-none text-xs leading-relaxed focus:outline-none resize-none font-sans"
+                    />
+                  </div>
+                )}
+
+                {/* End Step Form */}
+                {step.type === "end" && (
+                  <div className="flex flex-col gap-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px]">Completion status</span>
+                      <Select
+                        value={step.status || "completed"}
+                        onChange={(e) =>
+                          handleUpdateStep(step.id, {
+                            status: e.target.value as "completed" | "failed",
+                          })
+                        }
+                        containerClassName="w-auto min-w-[125px]"
+                        triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200 capitalize"
+                        menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50"
+                        leadingIcon={
+                          <span
+                            className={cn(
+                              "w-2 h-2 rounded-full",
+                              step.status === "failed" ? "bg-rose-400" : "bg-emerald-400"
+                            )}
+                          />
+                        }
+                        options={[
+                          {
+                            value: "completed",
+                            label: (
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                <span>Completed</span>
+                              </div>
+                            ),
+                          },
+                          {
+                            value: "failed",
+                            label: (
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                <span>Failed</span>
+                              </div>
+                            ),
+                          },
+                        ]}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={step.message || ""}
+                      placeholder="Workflow completion message..."
+                      onChange={(e) => handleUpdateStep(step.id, { message: e.target.value })}
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none"
                     />
                   </div>
                 )}
@@ -2377,7 +2692,7 @@ export function WorkflowCanvas({
                   <>
                     <div
                       onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "true", pos.x + 360, pos.y + 38)
+                        handlePortPointerDown(e, step.id, "true", pos.x + nodeW, pos.y + 46)
                       }
                       className="absolute -right-2.5 top-9 w-5 h-5 rounded-full bg-emerald-950 border-2 border-emerald-400 hover:bg-emerald-300 cursor-crosshair flex items-center justify-center z-20"
                       title="True branch port"
@@ -2386,7 +2701,7 @@ export function WorkflowCanvas({
                     </div>
                     <div
                       onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "false", pos.x + 360, pos.y + 66)
+                        handlePortPointerDown(e, step.id, "false", pos.x + nodeW, pos.y + 74)
                       }
                       className="absolute -right-2.5 top-16 w-5 h-5 rounded-full bg-amber-950 border-2 border-amber-400 hover:bg-amber-300 cursor-crosshair flex items-center justify-center z-20"
                       title="False branch port"
@@ -2398,7 +2713,7 @@ export function WorkflowCanvas({
                   <>
                     <div
                       onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "approve", pos.x + 360, pos.y + 38)
+                        handlePortPointerDown(e, step.id, "approve", pos.x + nodeW, pos.y + 46)
                       }
                       className="absolute -right-2.5 top-9 w-5 h-5 rounded-full bg-emerald-950 border-2 border-emerald-400 hover:bg-emerald-300 cursor-crosshair flex items-center justify-center z-20"
                       title="Approve branch port"
@@ -2407,7 +2722,7 @@ export function WorkflowCanvas({
                     </div>
                     <div
                       onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "reject", pos.x + 360, pos.y + 66)
+                        handlePortPointerDown(e, step.id, "reject", pos.x + nodeW, pos.y + 74)
                       }
                       className="absolute -right-2.5 top-16 w-5 h-5 rounded-full bg-rose-950 border-2 border-rose-400 hover:bg-rose-300 cursor-crosshair flex items-center justify-center z-20"
                       title="Reject branch port"
@@ -2422,7 +2737,7 @@ export function WorkflowCanvas({
                         e,
                         step.id,
                         "out",
-                        pos.x + (step.type === "trigger" ? 320 : 360),
+                        pos.x + nodeW,
                         pos.y + (step.type === "trigger" ? getTriggerPortOffsetY(step) : 48)
                       )
                     }

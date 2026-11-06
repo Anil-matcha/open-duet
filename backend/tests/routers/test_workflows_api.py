@@ -214,3 +214,74 @@ async def test_workflows_api_lifecycle(api):
     assert del_res.status_code == 204
     assert (await api.get(f"/api/v1/workflows/{wf_id}")).status_code == 404
 
+
+async def test_workflow_node_dimensions(api):
+    create_res = await api.post(
+        "/api/v1/workflows",
+        json={
+            "name": "Sized Workflow",
+            "steps": [
+                {
+                    "id": "trig_1",
+                    "name": "Schedule Trigger",
+                    "type": "trigger",
+                    "trigger_type": "schedule",
+                    "schedule_kind": "daily",
+                    "width": 320,
+                    "x": 60,
+                    "y": 120,
+                },
+                {
+                    "id": "llm_1",
+                    "name": "LLM Analysis",
+                    "type": "llm",
+                    "prompt": "Summarize input",
+                    "width": 440,
+                    "height": 400,
+                    "x": 440,
+                    "y": 120,
+                },
+                {
+                    "id": "note_1",
+                    "name": "Documentation",
+                    "type": "note",
+                    "prompt": "Note text",
+                    "width": 300,
+                    "height": 220,
+                    "x": 940,
+                    "y": 120,
+                },
+            ],
+        },
+    )
+    assert create_res.status_code == 201
+    wf = create_res.json()
+    assert wf["steps"][0]["width"] == 320
+    assert wf["steps"][1]["width"] == 440
+    assert wf["steps"][1]["height"] == 400
+    assert wf["steps"][2]["width"] == 300
+    assert wf["steps"][2]["height"] == 220
+
+    # Update width & height
+    update_res = await api.put(
+        f"/api/v1/workflows/{wf['id']}",
+        json={
+            "steps": [
+                {
+                    "id": "llm_1",
+                    "name": "LLM Analysis Resized",
+                    "type": "llm",
+                    "prompt": "Summarize input",
+                    "width": 520,
+                    "height": 480,
+                    "x": 440,
+                    "y": 120,
+                }
+            ]
+        },
+    )
+    assert update_res.status_code == 200
+    updated_wf = update_res.json()
+    assert updated_wf["steps"][0]["width"] == 520
+    assert updated_wf["steps"][0]["height"] == 480
+

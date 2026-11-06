@@ -1002,6 +1002,8 @@ export type WorkflowStep = {
   color?: string;
   x?: number;
   y?: number;
+  width?: number;
+  height?: number;
 };
 
 export type Workflow = {

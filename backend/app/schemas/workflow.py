@@ -22,6 +22,8 @@ class BaseStep(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     x: float | None = None
     y: float | None = None
+    width: float | None = None
+    height: float | None = None
 
 
 class ActionStep(BaseStep):
