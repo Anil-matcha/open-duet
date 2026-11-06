@@ -186,6 +186,24 @@ local work and memory upkeep are paused while signed out or unable to validate
 the account. Session validation is cached for at most 60 seconds and never beyond
 expiry; after that, an unavailable account service fails closed.
 
+**Hosted workspace in the desktop app.** The desktop window can show a paid
+account's cloud workspace (`https://suparagent.ai/app`) next to the local one:
+Settings → Account → "Open hosted workspace", or Workspace → Hosted workspace
+(Cmd/Ctrl+2; Cmd/Ctrl+1 returns to local). It is a separate sandboxed view with
+no preload, Node access, launch token or IPC, and its own persistent session
+partition, so hosted cookies never mix with the local app. The desktop account
+token is never sent to it: you sign in to the hosted workspace separately with
+your hosted account email and password, and the hosted service keeps deciding
+plan, usage limits, sleep and wake. Hosted sign-out (Workspace menu) clears only
+that partition. It does not sign out the desktop account or touch local data,
+and signing out of the desktop account or resetting the profile does not touch
+the hosted workspace or account. Nothing is copied between local and hosted.
+While the hosted view is shown, the app reads the hosted status endpoint about
+once a minute (read-only; it never wakes the sandbox). The feature is on by
+default; set `OPEN_DOTS_HOSTED_WORKSPACE=0` to turn it off. Single sign-on from
+the desktop account is not built. See the
+[plan](https://github.com/Anil-matcha/open-dots-cloud/blob/main/docs/specs/hosted/desktop-hosted-workspace-plan.md).
+
 **Exporting history.** Settings has "Export my history", which downloads a ZIP
 from `GET /api/v1/history/export` (agents, conversations as per-thread event
 files, attachment names and hashes, and a manifest with a format version). It

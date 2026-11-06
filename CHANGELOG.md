@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Open your paid hosted workspace from the desktop app. A new **Workspace** menu (Cmd/Ctrl+1 for this computer, +2 for hosted), a Settings → Account button and a sandboxed hosted view show your cloud workspace in the same window. You sign in to it separately with your hosted email and password, hosted sign-out clears only that view, and local data is never copied or changed. On by default; set `OPEN_DOTS_HOSTED_WORKSPACE=0` to turn it off. Checked with unit tests and a source-run Electron smoke; no packaged-build or staging-account check yet.
+
 ## 0.8.3 - 2026-11-06
 
 ### Added
