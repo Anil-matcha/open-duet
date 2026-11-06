@@ -31,6 +31,7 @@ const { registerUpdates } = require("./src/updates-ipc");
 const { registerApplicationMenu } = require("./src/application-menu");
 const { createHostedWorkspace, createWorkspaceStore, PLAN_URL } = require("./src/hosted-workspace");
 const { HEADER } = require("./src/origin");
+const { registerHostedWorkspace } = require("./src/hosted-workspace-ipc");
 
 const mode = process.argv.includes("--mode=dev") ? "dev" : "start";
 // Running from source: use the app icon for the window and the dock. Installers carry the icon in the
@@ -60,6 +61,7 @@ let quitting = false;
 let backendStopped = false;
 let shutdown = null;
 let backendOrigin = null;
+let workspaceController = null; // set while the hosted workspace feature is on
 let nativeControl = null;
 let updater = null;
 
@@ -173,6 +175,7 @@ async function main() {
   registerPathPicker({ ipcMain, dialog, getWindow: () => window, getOrigin: () => backendOrigin });
   registerEngineSignIn({ ipcMain, openExternal: url => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   registerGoogleSignIn({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
+  registerHostedWorkspace({ ipcMain, getController: () => workspaceController, getWindow: () => window, getOrigin: () => backendOrigin });
   registerComposioLink({ ipcMain, openExternal: (url) => shell.openExternal(url), getWindow: () => window, getOrigin: () => backendOrigin });
   ipcMain.handle("open-dots:copy-text", (_event, text) => {
     if (typeof text === "string") {
@@ -321,8 +324,8 @@ async function main() {
 // Local and hosted workspaces share this one window (BL-143). The local page stays the window's own
 // contents; the hosted page is a separate sandboxed view with no preload, no token and its own session.
 function setUpWorkspaces(token) {
-  // Behind a flag until staging and packaged checks pass (plan step 7). Off means no hosted view and no menu.
-  if (process.env.OPEN_DOTS_HOSTED_WORKSPACE !== "1") return;
+  // On by default (owner decision 2026-11-06). OPEN_DOTS_HOSTED_WORKSPACE=0 turns it off: no hosted view, no menu, no Settings card.
+  if (process.env.OPEN_DOTS_HOSTED_WORKSPACE === "0") return;
   const win = window;
   const store = createWorkspaceStore(path.join(app.getPath("userData"), "workspace.json"));
   const state = { signedIn: false, email: null, status: "" };
@@ -392,6 +395,15 @@ function setUpWorkspaces(token) {
       console.error("hosted workspace: account status check failed:", error?.message ?? error);
     }
   };
+  workspaceController = {
+    status: () => ({ available: true, signedIn: state.signedIn, active: hosted.current() === "hosted" }),
+    open: async () => {
+      await refresh(true);
+      if (state.signedIn) hosted.show("hosted");
+      return workspaceController.status();
+    },
+  };
+  win.on("closed", () => { workspaceController = null; });
   win.on("focus", () => void refresh());
   renderMenu();
   void refresh().then(() => {

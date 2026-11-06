@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld("openDots", {
   openGoogleSignIn: (url) => ipcRenderer.invoke("open-dots:google-sign-in", url),
   openComposioLink: (url) => ipcRenderer.invoke("open-dots:open-composio-link", url),
   nativeControl: (request) => ipcRenderer.invoke("open-dots:native-control", request),
+  hostedWorkspace: (action) => ipcRenderer.invoke("open-dots:hosted-workspace", action),
   copyText: (text) => ipcRenderer.invoke("open-dots:copy-text", text),
   showNotification: (payload) => ipcRenderer.invoke("open-dots:show-notification", payload),
   onNotificationClicked: (listener) => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { DesktopAccountSection } from "@/components/DesktopAccountSection";
+import { HostedWorkspaceCard } from "@/components/HostedWorkspaceCard";
 import { DesktopPermissions } from "@/components/DesktopPermissions";
 import { DevicesSection } from "@/components/DevicesSection";
 import { HistoryExport } from "@/components/HistoryExport";
@@ -11,6 +12,7 @@ export function AccountSettings() {
     <p className="text-xs text-muted"><Applies when="now" /> Account, device and permission changes take effect as you make them.</p>
     <div id="setting-account-app" data-setting-id="setting-account-app" data-setting-root data-setting-container tabIndex={-1}>
       <DesktopAccountSection />
+      <HostedWorkspaceCard />
       <span id="setting-account-reset" className="sr-only" />
       <span id="setting-account-delete" className="sr-only" />
     </div>
