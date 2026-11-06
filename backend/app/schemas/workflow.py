@@ -24,6 +24,11 @@ class BaseStep(BaseModel):
     y: float | None = None
     width: float | None = None
     height: float | None = None
+    target_port: Literal["text", "image", "file"] | None = None
+    if_true_target_port: Literal["text", "image", "file"] | None = None
+    if_false_target_port: Literal["text", "image", "file"] | None = None
+    on_approve_target_port: Literal["text", "image", "file"] | None = None
+    on_reject_target_port: Literal["text", "image", "file"] | None = None
 
 
 class ActionStep(BaseStep):

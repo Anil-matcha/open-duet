@@ -262,7 +262,7 @@ async def test_workflow_node_dimensions(api):
     assert wf["steps"][2]["width"] == 300
     assert wf["steps"][2]["height"] == 220
 
-    # Update width & height
+    # Update width & height and target port
     update_res = await api.put(
         f"/api/v1/workflows/{wf['id']}",
         json={
@@ -276,6 +276,8 @@ async def test_workflow_node_dimensions(api):
                     "height": 480,
                     "x": 440,
                     "y": 120,
+                    "next_step_id": "note_1",
+                    "target_port": "image",
                 }
             ]
         },
@@ -284,4 +286,5 @@ async def test_workflow_node_dimensions(api):
     updated_wf = update_res.json()
     assert updated_wf["steps"][0]["width"] == 520
     assert updated_wf["steps"][0]["height"] == 480
+    assert updated_wf["steps"][0]["target_port"] == "image"
 
