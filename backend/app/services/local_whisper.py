@@ -1,5 +1,6 @@
 """Local Whisper speech-to-text service on CPU or GPU using faster-whisper."""
 
+import importlib.util
 import logging
 import math
 import os
@@ -12,15 +13,12 @@ logger = logging.getLogger(__name__)
 _MODEL_LOCK = threading.Lock()
 _LOADED_MODEL: Any = None
 _LOADED_MODEL_SIZE: str | None = None
+_DEVICE_INFO_CACHE: tuple[str, str] | None = None
 
 
 def is_available() -> bool:
     """Return True if faster-whisper is installed and importable."""
-    try:
-        import faster_whisper  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("faster_whisper") is not None
 
 
 def get_device_info() -> tuple[str, str]:
@@ -28,13 +26,19 @@ def get_device_info() -> tuple[str, str]:
 
     Returns (device, compute_type), e.g. ('cuda', 'float16') or ('cpu', 'int8').
     """
-    try:
-        import ctranslate2
-        if ctranslate2.get_cuda_device_count() > 0:
-            return "cuda", "float16"
-    except Exception:
-        pass
-    return "cpu", "int8"
+    global _DEVICE_INFO_CACHE
+    if _DEVICE_INFO_CACHE is not None:
+        return _DEVICE_INFO_CACHE
+    if importlib.util.find_spec("ctranslate2") is not None:
+        try:
+            import ctranslate2
+            if ctranslate2.get_cuda_device_count() > 0:
+                _DEVICE_INFO_CACHE = ("cuda", "float16")
+                return _DEVICE_INFO_CACHE
+        except Exception:
+            pass
+    _DEVICE_INFO_CACHE = ("cpu", "int8")
+    return _DEVICE_INFO_CACHE
 
 
 def get_model(model_size: str = "tiny"):

@@ -214,3 +214,138 @@ async def test_workflows_api_lifecycle(api):
     assert del_res.status_code == 204
     assert (await api.get(f"/api/v1/workflows/{wf_id}")).status_code == 404
 
+
+async def test_workflow_node_dimensions(api):
+    create_res = await api.post(
+        "/api/v1/workflows",
+        json={
+            "name": "Sized Workflow",
+            "steps": [
+                {
+                    "id": "trig_1",
+                    "name": "Schedule Trigger",
+                    "type": "trigger",
+                    "trigger_type": "schedule",
+                    "schedule_kind": "daily",
+                    "width": 320,
+                    "x": 60,
+                    "y": 120,
+                },
+                {
+                    "id": "llm_1",
+                    "name": "LLM Analysis",
+                    "type": "llm",
+                    "prompt": "Summarize input",
+                    "width": 440,
+                    "height": 400,
+                    "x": 440,
+                    "y": 120,
+                },
+                {
+                    "id": "note_1",
+                    "name": "Documentation",
+                    "type": "note",
+                    "prompt": "Note text",
+                    "width": 300,
+                    "height": 220,
+                    "x": 940,
+                    "y": 120,
+                },
+            ],
+        },
+    )
+    assert create_res.status_code == 201
+    wf = create_res.json()
+    assert wf["steps"][0]["width"] == 320
+    assert wf["steps"][1]["width"] == 440
+    assert wf["steps"][1]["height"] == 400
+    assert wf["steps"][2]["width"] == 300
+    assert wf["steps"][2]["height"] == 220
+
+    # Update width & height and target port
+    update_res = await api.put(
+        f"/api/v1/workflows/{wf['id']}",
+        json={
+            "steps": [
+                {
+                    "id": "llm_1",
+                    "name": "LLM Analysis Resized",
+                    "type": "llm",
+                    "prompt": "Summarize input",
+                    "width": 520,
+                    "height": 480,
+                    "x": 440,
+                    "y": 120,
+                    "next_step_id": "note_1",
+                    "target_port": "image",
+                }
+            ]
+        },
+    )
+    assert update_res.status_code == 200
+    updated_wf = update_res.json()
+    assert updated_wf["steps"][0]["width"] == 520
+    assert updated_wf["steps"][0]["height"] == 480
+    assert updated_wf["steps"][0]["target_port"] == "image"
+
+
+@pytest.mark.asyncio
+async def test_workflow_section_and_text_steps(api):
+    create_res = await api.post(
+        "/api/v1/workflows",
+        json={
+            "name": "Canvas With Section and Text Annotation",
+            "trigger_type": "manual",
+            "steps": [
+                {
+                    "id": "sec_1",
+                    "name": "Pipeline Section",
+                    "type": "section",
+                    "color": "amber",
+                    "prompt": "Core data extraction group",
+                    "width": 600,
+                    "height": 400,
+                    "x": 100,
+                    "y": 100,
+                },
+                {
+                    "id": "txt_1",
+                    "name": "Header Text",
+                    "type": "text",
+                    "text": "Production Ingestion Phase",
+                    "font_size": "large",
+                    "color": "emerald",
+                    "width": 320,
+                    "height": 60,
+                    "x": 120,
+                    "y": 120,
+                },
+                {
+                    "id": "end_1",
+                    "name": "Done",
+                    "type": "end",
+                    "status": "completed",
+                    "x": 500,
+                    "y": 200,
+                },
+            ],
+        },
+    )
+    assert create_res.status_code == 201
+    wf = create_res.json()
+    assert len(wf["steps"]) == 3
+    sec = next(s for s in wf["steps"] if s["id"] == "sec_1")
+    txt = next(s for s in wf["steps"] if s["id"] == "txt_1")
+    assert sec["type"] == "section"
+    assert sec["color"] == "amber"
+    assert txt["type"] == "text"
+    assert txt["text"] == "Production Ingestion Phase"
+    assert txt["font_size"] == "large"
+
+    # Test executing the workflow containing section and text steps
+    run_res = await api.post(f"/api/v1/workflows/{wf['id']}/runs", json={"input": {}})
+    assert run_res.status_code == 201
+    run = run_res.json()
+    assert run["status"] == "completed"
+
+

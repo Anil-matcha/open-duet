@@ -310,17 +310,33 @@ export function ChatApp() {
         });
       }
     }).catch(() => { if (!cancelled) setEngines(null); });
-    api.getLocalStatus()
-      .then((status) => {
-        if (cancelled) return;
-        setGate({ phase: "ready", status });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (isLaunchTokenMissing(err)) return setGate({ phase: "locked" });
-        // An answer that is an error (an older backend without the route) is not "unreachable".
-        setGate(err instanceof ApiError ? { phase: "ready", status: { enabled: false, available: false, reason: null, cli_version: null } } : { phase: "unreachable" });
-      });
+    let attempts = 0;
+    const fetchStatus = () => {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("status_timeout")), 25000)
+      );
+      Promise.race([api.getLocalStatus(), timeoutPromise])
+        .then((status) => {
+          if (cancelled) return;
+          setGate({ phase: "ready", status });
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          if (isLaunchTokenMissing(err)) return setGate({ phase: "locked" });
+          if (err instanceof ApiError) {
+            return setGate({ phase: "ready", status: { enabled: false, available: false, reason: null, cli_version: null } });
+          }
+          if (attempts < 2) {
+            attempts++;
+            setTimeout(() => {
+              if (!cancelled) fetchStatus();
+            }, 1500);
+            return;
+          }
+          setGate({ phase: "unreachable" });
+        });
+    };
+    fetchStatus();
     return () => {
       cancelled = true;
     };

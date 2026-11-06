@@ -22,12 +22,19 @@ class BaseStep(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     x: float | None = None
     y: float | None = None
+    width: float | None = None
+    height: float | None = None
+    target_port: Literal["text", "image", "file"] | None = None
+    if_true_target_port: Literal["text", "image", "file"] | None = None
+    if_false_target_port: Literal["text", "image", "file"] | None = None
+    on_approve_target_port: Literal["text", "image", "file"] | None = None
+    on_reject_target_port: Literal["text", "image", "file"] | None = None
 
 
 class ActionStep(BaseStep):
     type: Literal["action"] = "action"
     agent_id: int | None = None
-    prompt: str = Field(min_length=1, max_length=20_000)
+    prompt: str = Field(default="", max_length=20_000)
     approval_mode: ApprovalMode = "ask"
     next_step_id: str | None = None
 
@@ -54,19 +61,19 @@ class AgentStep(BaseStep):
 
 class ConditionStep(BaseStep):
     type: Literal["condition"] = "condition"
-    target: str = Field(min_length=1, max_length=200)
+    target: str = Field(default="", max_length=200)
     operator: ConditionOperator = "contains"
     value: str = ""
-    if_true: str = Field(min_length=1, max_length=64)
-    if_false: str = Field(min_length=1, max_length=64)
+    if_true: str | None = None
+    if_false: str | None = None
 
 
 class ApprovalStep(BaseStep):
     type: Literal["approval"] = "approval"
-    prompt: str = Field(min_length=1, max_length=2_000)
+    prompt: str = Field(default="", max_length=2_000)
     timeout_minutes: int = Field(default=60, ge=1, le=10_080)
-    on_approve: str = Field(min_length=1, max_length=64)
-    on_reject: str | None = Field(default=None, max_length=64)
+    on_approve: str | None = None
+    on_reject: str | None = None
 
 
 class EndStep(BaseStep):
@@ -78,7 +85,38 @@ class EndStep(BaseStep):
 class NoteStep(BaseStep):
     type: Literal["note"] = "note"
     prompt: str = Field(default="", max_length=20_000)
-    color: str | None = "amber"
+    text: str | None = None
+    color: str | None = "yellow"
+    tone: str | None = "yellow"
+    ink: str | None = "ink"
+    font: str | None = "sans"
+    size: str | int | None = "18"
+    align: str | None = "start"
+    bold: bool | None = False
+    next_step_id: str | None = None
+
+
+class ShapeStep(BaseStep):
+    type: Literal["shape"] = "shape"
+    shape: str | None = "rectangle"
+    color: str | None = "ink"
+    text: str | None = ""
+    prompt: str = Field(default="", max_length=20_000)
+    next_step_id: str | None = None
+
+
+class SectionStep(BaseStep):
+    type: Literal["section"] = "section"
+    color: str | None = "zinc"
+    description: str | None = None
+    next_step_id: str | None = None
+
+
+class TextStep(BaseStep):
+    type: Literal["text"] = "text"
+    text: str = Field(default="", max_length=10_000)
+    font_size: str | None = "medium"
+    color: str | None = "zinc"
     next_step_id: str | None = None
 
 
@@ -97,7 +135,19 @@ class TriggerStep(BaseStep):
 
 
 WorkflowStep = Annotated[
-    Union[ActionStep, LLMStep, AgentStep, ConditionStep, ApprovalStep, EndStep, NoteStep, TriggerStep],
+    Union[
+        ActionStep,
+        LLMStep,
+        AgentStep,
+        ConditionStep,
+        ApprovalStep,
+        EndStep,
+        NoteStep,
+        ShapeStep,
+        SectionStep,
+        TextStep,
+        TriggerStep,
+    ],
     Field(discriminator="type"),
 ]
 

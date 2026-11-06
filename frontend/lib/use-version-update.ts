@@ -103,6 +103,15 @@ export function useVersionUpdate(): VersionUpdateState & {
             setInfo(cachedVersionInfo);
             notify();
           }
+        } else if (state?.status === "idle") {
+          if (cachedVersionInfo) {
+            cachedVersionInfo = {
+              ...cachedVersionInfo,
+              update_available: false,
+            };
+            setInfo(cachedVersionInfo);
+            notify();
+          }
         }
       });
     }
@@ -125,9 +134,16 @@ export function useVersionUpdate(): VersionUpdateState & {
 
   const refresh = useCallback(() => fetchVersion(true), [fetchVersion]);
 
+  const isAvailable = Boolean(
+    info?.update_available &&
+    info?.latest_version &&
+    info?.current_version &&
+    info.latest_version !== info.current_version
+  );
+
   return {
     loading,
-    updateAvailable: Boolean(info?.update_available),
+    updateAvailable: isAvailable,
     currentVersion: info?.current_version ?? null,
     latestVersion: info?.latest_version ?? null,
     updateCommand: info?.update_command ?? null,

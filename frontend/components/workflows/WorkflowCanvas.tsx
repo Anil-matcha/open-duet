@@ -2,6 +2,10 @@
 
 import {
   AlertTriangle,
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   ArrowLeft,
   Bot,
   Check,
@@ -9,16 +13,22 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  CopyPlus,
+  Eraser,
+  FileText,
   GitBranch,
   Hand,
   History,
+  Image as ImageIcon,
   Lock,
-  Maximize2,
+  Map,
+  Minus,
   MousePointer2,
   PenTool,
+  Pencil,
   Play,
   Plus,
-  RotateCcw,
+  Scan,
   Search,
   ShieldAlert,
   Sparkles,
@@ -27,14 +37,13 @@ import {
   Type,
   Unlock,
   X,
+  Layers,
   CalendarClock,
   MousePointerClick,
   Webhook,
   MessageSquare,
   RefreshCw,
   Zap,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import React, {
   useCallback,
@@ -52,6 +61,7 @@ import {
   type WorkflowStep,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { Select } from "@/components/ui/Select";
 
 export interface WorkflowCanvasProps {
   workflow: Workflow;
@@ -67,16 +77,289 @@ export interface WorkflowCanvasProps {
   onRefreshRuns: () => Promise<void>;
 }
 
-type ToolMode = "select" | "pan" | "draw" | "note" | "text" | "search";
+type ToolMode = "select" | "pan" | "draw" | "note" | "shape" | "text" | "search";
+export type ShapeKind = "rectangle" | "circle" | "diamond" | "triangle" | "inverted" | "oval" | "star";
+
+export interface NodeSizeLimits {
+  defaultWidth: number;
+  defaultHeight?: number;
+  minWidth: number;
+  maxWidth: number;
+  minHeight?: number;
+  maxHeight?: number;
+  resizable: boolean;
+}
+
+export const NODE_SIZE_CONFIG: Record<string, NodeSizeLimits> = {
+  trigger: {
+    defaultWidth: 320,
+    minWidth: 280,
+    maxWidth: 480,
+    resizable: false,
+  },
+  llm: {
+    defaultWidth: 440,
+    defaultHeight: 380,
+    minWidth: 340,
+    maxWidth: 720,
+    minHeight: 260,
+    maxHeight: 850,
+    resizable: true,
+  },
+  agent: {
+    defaultWidth: 440,
+    defaultHeight: 380,
+    minWidth: 340,
+    maxWidth: 720,
+    minHeight: 260,
+    maxHeight: 850,
+    resizable: true,
+  },
+  action: {
+    defaultWidth: 380,
+    defaultHeight: 280,
+    minWidth: 320,
+    maxWidth: 640,
+    minHeight: 200,
+    maxHeight: 650,
+    resizable: true,
+  },
+  condition: {
+    defaultWidth: 360,
+    defaultHeight: 240,
+    minWidth: 300,
+    maxWidth: 540,
+    minHeight: 180,
+    maxHeight: 500,
+    resizable: true,
+  },
+  approval: {
+    defaultWidth: 360,
+    defaultHeight: 240,
+    minWidth: 300,
+    maxWidth: 540,
+    minHeight: 180,
+    maxHeight: 500,
+    resizable: true,
+  },
+  note: {
+    defaultWidth: 240,
+    defaultHeight: 240,
+    minWidth: 160,
+    maxWidth: 640,
+    minHeight: 140,
+    maxHeight: 640,
+    resizable: true,
+  },
+  shape: {
+    defaultWidth: 208,
+    defaultHeight: 128,
+    minWidth: 48,
+    maxWidth: 960,
+    minHeight: 48,
+    maxHeight: 960,
+    resizable: true,
+  },
+  section: {
+    defaultWidth: 500,
+    defaultHeight: 340,
+    minWidth: 260,
+    maxWidth: 1600,
+    minHeight: 180,
+    maxHeight: 1200,
+    resizable: true,
+  },
+  text: {
+    defaultWidth: 280,
+    defaultHeight: 70,
+    minWidth: 160,
+    maxWidth: 800,
+    minHeight: 40,
+    maxHeight: 400,
+    resizable: true,
+  },
+  end: {
+    defaultWidth: 280,
+    minWidth: 240,
+    maxWidth: 360,
+    resizable: false,
+  },
+};
+
+interface ResizingNodeState {
+  stepId: string;
+  startPointerX: number;
+  startPointerY: number;
+  startWidth: number;
+  startHeight: number;
+  minWidth: number;
+  maxWidth: number;
+  minHeight: number;
+  maxHeight: number;
+}
 
 interface DraggingConnection {
   fromStepId: string;
   fromPort: "out" | "true" | "false" | "approve" | "reject";
+  fromDirection?: "output" | "input";
+  targetInputPort?: "text" | "image" | "file";
   startX: number;
   startY: number;
   currentX: number;
   currentY: number;
   snappedTargetId: string | null;
+  snappedInputPort?: "text" | "image" | "file";
+  snappedOutputPort?: "out" | "true" | "false" | "approve" | "reject";
+  validationResult?: ConnectionValidationResult;
+}
+
+export type WorkflowPortType = "text" | "image" | "file";
+
+export interface ConnectionValidationResult {
+  valid: boolean;
+  error?: string;
+  sourceType: WorkflowPortType;
+  targetType: WorkflowPortType;
+}
+
+export function hasPathInWorkflow(
+  startId: string,
+  endId: string,
+  steps: WorkflowStep[]
+): boolean {
+  if (startId === endId) return true;
+  const visited = new Set<string>();
+  const queue = [startId];
+  visited.add(startId);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    if (currentId === endId) return true;
+
+    const step = steps.find((s) => s.id === currentId);
+    if (!step) continue;
+
+    const neighbors: string[] = [];
+    if (step.next_step_id) neighbors.push(step.next_step_id);
+    if (step.if_true) neighbors.push(step.if_true);
+    if (step.if_false) neighbors.push(step.if_false);
+    if (step.on_approve) neighbors.push(step.on_approve);
+    if (step.on_reject) neighbors.push(step.on_reject);
+
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return false;
+}
+
+export function getOutputPortDataType(
+  _step: WorkflowStep,
+  _port: "out" | "true" | "false" | "approve" | "reject"
+): WorkflowPortType {
+  // Trigger, LLM, Agent, Action, Condition, and Approval output text data
+  return "text";
+}
+
+export function getInputPortDataType(
+  _step: WorkflowStep,
+  port: "text" | "image" | "file"
+): WorkflowPortType {
+  return port;
+}
+
+export function getOutputPortLabel(
+  port: "out" | "true" | "false" | "approve" | "reject"
+): string {
+  if (port === "true") return "True";
+  if (port === "false") return "False";
+  if (port === "approve") return "Approve";
+  if (port === "reject") return "Reject";
+  return "Text";
+}
+
+export function validateConnection(
+  sourceId: string,
+  sourcePort: "out" | "true" | "false" | "approve" | "reject",
+  targetId: string,
+  targetInputPort: "text" | "image" | "file",
+  steps: WorkflowStep[]
+): ConnectionValidationResult {
+  const sourceStep = steps.find((s) => s.id === sourceId);
+  const targetStep = steps.find((s) => s.id === targetId);
+
+  const sourceType = sourceStep ? getOutputPortDataType(sourceStep, sourcePort) : "text";
+  const targetType = targetStep ? getInputPortDataType(targetStep, targetInputPort) : targetInputPort;
+
+  // 1. Self connection limitation
+  if (sourceId === targetId) {
+    return {
+      valid: false,
+      error: "Cannot connect node to itself",
+      sourceType,
+      targetType,
+    };
+  }
+
+  // 2. Already connected
+  if (sourceStep) {
+    let existingTarget: string | null | undefined = null;
+    let existingTargetPort: string | undefined = "text";
+    if (sourcePort === "out") {
+      existingTarget = sourceStep.next_step_id;
+      existingTargetPort = sourceStep.target_port || "text";
+    } else if (sourcePort === "true") {
+      existingTarget = sourceStep.if_true;
+      existingTargetPort = sourceStep.if_true_target_port || "text";
+    } else if (sourcePort === "false") {
+      existingTarget = sourceStep.if_false;
+      existingTargetPort = sourceStep.if_false_target_port || "text";
+    } else if (sourcePort === "approve") {
+      existingTarget = sourceStep.on_approve;
+      existingTargetPort = sourceStep.on_approve_target_port || "text";
+    } else if (sourcePort === "reject") {
+      existingTarget = sourceStep.on_reject;
+      existingTargetPort = sourceStep.on_reject_target_port || "text";
+    }
+
+    if (existingTarget === targetId && existingTargetPort === targetInputPort) {
+      return {
+        valid: false,
+        error: "Already connected",
+        sourceType,
+        targetType,
+      };
+    }
+  }
+
+  // 3. Cyclical connection limitation
+  if (hasPathInWorkflow(targetId, sourceId, steps)) {
+    return {
+      valid: false,
+      error: "Cannot create cyclical loop",
+      sourceType,
+      targetType,
+    };
+  }
+
+  // 4. Data type compatibility limitation ("Gives text, not image", etc.)
+  if (sourceType !== targetType) {
+    return {
+      valid: false,
+      error: `Gives ${sourceType}, not ${targetType}`,
+      sourceType,
+      targetType,
+    };
+  }
+
+  return {
+    valid: true,
+    sourceType,
+    targetType,
+  };
 }
 
 interface FreehandStroke {
@@ -89,6 +372,286 @@ interface SelectedWire {
   fromStepId: string;
   toStepId: string;
   port: "out" | "true" | "false" | "approve" | "reject";
+}
+
+export const SHAPE_DEFAULT_SIZES: Record<ShapeKind, { width: number; height: number }> = {
+  rectangle: { width: 208, height: 128 },
+  circle: { width: 144, height: 144 },
+  diamond: { width: 160, height: 160 },
+  triangle: { width: 160, height: 144 },
+  inverted: { width: 160, height: 144 },
+  oval: { width: 208, height: 128 },
+  star: { width: 160, height: 152 },
+};
+
+export const NOTE_TONE_CONFIG: Record<
+  string,
+  { paper: string; edge: string; ink: string; label: string; preview: string }
+> = {
+  yellow: {
+    paper: "#fde68a",
+    edge: "#f59e0b",
+    ink: "#713f12",
+    label: "Yellow",
+    preview: "#f59e0b",
+  },
+  orange: {
+    paper: "#fed7aa",
+    edge: "#f97316",
+    ink: "#7c2d12",
+    label: "Orange",
+    preview: "#f97316",
+  },
+  red: {
+    paper: "#fecdd3",
+    edge: "#f43f5e",
+    ink: "#881337",
+    label: "Red",
+    preview: "#f43f5e",
+  },
+  pink: {
+    paper: "#fbcfe8",
+    edge: "#ec4899",
+    ink: "#831843",
+    label: "Pink",
+    preview: "#ec4899",
+  },
+  blue: {
+    paper: "#bfdbfe",
+    edge: "#3b82f6",
+    ink: "#1e3a8a",
+    label: "Blue",
+    preview: "#3b82f6",
+  },
+  teal: {
+    paper: "#99f6e4",
+    edge: "#14b8a6",
+    ink: "#134e4a",
+    label: "Teal",
+    preview: "#14b8a6",
+  },
+  green: {
+    paper: "#bbf7d0",
+    edge: "#10b981",
+    ink: "#14532d",
+    label: "Green",
+    preview: "#10b981",
+  },
+  neutral: {
+    paper: "#f4f4f5",
+    edge: "#d4d4d8",
+    ink: "#18181b",
+    label: "White",
+    preview: "#e4e4e7",
+  },
+};
+
+export const INK_COLOR_LIST: { name: string; hex: string; label: string }[] = [
+  { name: "ink", hex: "#18181b", label: "Dark" },
+  { name: "orange", hex: "#ea580c", label: "Orange" },
+  { name: "yellow", hex: "#d97706", label: "Yellow" },
+  { name: "red", hex: "#dc2626", label: "Red" },
+  { name: "pink", hex: "#db2777", label: "Pink" },
+  { name: "blue", hex: "#2563eb", label: "Blue" },
+  { name: "teal", hex: "#0d9488", label: "Teal" },
+  { name: "green", hex: "#16a34a", label: "Green" },
+];
+
+export const CANVAS_COLOR_PALETTE: { name: string; hex: string; label: string }[] = [
+  { name: "ink", hex: "#ffffff", label: "White" },
+  { name: "orange", hex: "#ff9412", label: "Orange" },
+  { name: "peach", hex: "#f0a06a", label: "Peach" },
+  { name: "red", hex: "#fd2f3b", label: "Red" },
+  { name: "pink", hex: "#d98ac9", label: "Pink" },
+  { name: "blue", hex: "#74b9ff", label: "Blue" },
+  { name: "teal", hex: "#6bc7d9", label: "Teal" },
+  { name: "green", hex: "#31cf76", label: "Green" },
+];
+
+const STAR_POINTS = Array.from({ length: 10 }, (_, index) => {
+  const reach = index % 2 === 0 ? 1 : 0.4;
+  const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+  return `${(50 + 50 * reach * Math.cos(angle)).toFixed(1)},${(55 + 55 * reach * Math.sin(angle)).toFixed(1)}`;
+}).join(" ");
+
+const SHAPE_POLYGONS: Partial<Record<ShapeKind, string>> = {
+  diamond: "50,0 100,50 50,100 0,50",
+  triangle: "50,0 100,100 0,100",
+  inverted: "0,0 100,0 50,100",
+  star: STAR_POINTS,
+};
+
+function ShapeSurfaceSvg({
+  shape,
+  color = "#ffffff",
+  width,
+  height,
+  dashed,
+}: {
+  shape: ShapeKind;
+  color?: string;
+  width: number;
+  height: number;
+  dashed?: boolean;
+}) {
+  const poly = SHAPE_POLYGONS[shape];
+  const strokeColor = color === "ink" ? "#ffffff" : color;
+
+  if (poly) {
+    return (
+      <svg
+        width={width}
+        height={height}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="absolute inset-0 w-full h-full pointer-events-none overflow-visible drop-shadow-md"
+      >
+        <polygon
+          points={poly}
+          fill="rgba(255,255,255,0.06)"
+          stroke={strokeColor}
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          strokeDasharray={dashed ? "6 6" : undefined}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
+
+  if (shape === "circle") {
+    return (
+      <div
+        className={cn(
+          "absolute inset-0 rounded-full border-2 transition-all drop-shadow-md",
+          dashed && "border-dashed"
+        )}
+        style={{
+          borderColor: strokeColor,
+          backgroundColor: "rgba(255,255,255,0.06)",
+        }}
+      />
+    );
+  }
+
+  if (shape === "oval") {
+    return (
+      <div
+        className={cn(
+          "absolute inset-0 rounded-full border-2 transition-all drop-shadow-md",
+          dashed && "border-dashed"
+        )}
+        style={{
+          borderColor: strokeColor,
+          backgroundColor: "rgba(255,255,255,0.06)",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 rounded-2xl border-2 transition-all drop-shadow-md",
+        dashed && "border-dashed"
+      )}
+      style={{
+        borderColor: strokeColor,
+        backgroundColor: "rgba(255,255,255,0.06)",
+      }}
+    />
+  );
+}
+
+function DrawArt({ color = "#ffffff", eraser = false }: { color?: string; eraser?: boolean }) {
+  if (eraser) {
+    return (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="transition-transform group-hover:scale-110"
+        aria-hidden="true"
+      >
+        <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+        <path d="M22 21H7" />
+        <path d="m5 11 9 9" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="transition-transform group-hover:scale-110"
+      aria-hidden="true"
+    >
+      <polygon points="12,2 15.5,8 8.5,8" fill="#f59e0b" />
+      <polygon points="12,2 13.5,4.5 10.5,4.5" fill="#18181b" />
+      <rect x="8.5" y="8" width="7" height="14" rx="0.5" fill={color || "#ffffff"} />
+      <rect x="10.8" y="8" width="2.4" height="14" fill="rgba(0,0,0,0.15)" />
+    </svg>
+  );
+}
+
+function StickyArt({ tone = "#ff9412" }: { tone?: string }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 48 48"
+      className="transition-transform group-hover:scale-110"
+      aria-hidden="true"
+    >
+      <rect fill={tone} opacity="0.35" x="8" y="10" width="30" height="30" rx="3" />
+      <rect fill={tone} opacity="0.65" x="9" y="9" width="30" height="30" rx="3" />
+      <path
+        d="M 10 8 L 32 8 L 40 16 L 40 37 A 3 3 0 0 1 37 40 L 13 40 A 3 3 0 0 1 10 37 Z"
+        fill={tone}
+      />
+      <path
+        d="M 32 8 L 32 15 A 1 1 0 0 0 33 16 L 40 16 Z"
+        fill="#fed7aa"
+      />
+    </svg>
+  );
+}
+
+function ShapesArt({
+  shape = "rectangle",
+  color = "#ffffff",
+}: {
+  shape?: string;
+  color?: string;
+}) {
+  void shape;
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 48 48"
+      className="transition-transform group-hover:scale-110"
+      aria-hidden="true"
+    >
+      <rect fill="#52525b" x="6" y="14" width="22" height="22" rx="4" />
+      <circle fill="#71717a" cx="34" cy="28" r="10" />
+      <rect
+        fill={color}
+        x="16"
+        y="8"
+        width="22"
+        height="22"
+        rx="4"
+        stroke="#18181b"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
 }
 
 export function WorkflowCanvas({
@@ -115,13 +678,55 @@ export function WorkflowCanvas({
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const nodePositionsRef = useRef<Record<string, { x: number; y: number }>>({});
 
+  // High-performance dynamic node sizes map
+  const [nodeSizes, setNodeSizes] = useState<Record<string, { width: number; height?: number }>>({});
+  const nodeSizesRef = useRef<Record<string, { width: number; height?: number }>>({});
+  const [resizingNode, setResizingNode] = useState<ResizingNodeState | null>(null);
+  const hasResizedNodeRef = useRef(false);
+
   // Trigger node popover menus
   const [activeTriggerMenuStepId, setActiveTriggerMenuStepId] = useState<string | null>(null);
   const [activeChipMenu, setActiveChipMenu] = useState<{ stepId: string; type: "kind" | "days" | "time" | "hours" } | null>(null);
 
-  // Canvas steps directly from workflow model (no auto-resurrection on delete)
+  // Canvas steps directly from workflow model (no auto-resurrection on delete, with wire sanitization)
   const effectiveSteps = useMemo(() => {
-    return workflow.steps || [];
+    const rawSteps = workflow.steps || [];
+    const nonTargetIds = new Set(
+      rawSteps
+        .filter((s) => s.type === "note" || s.type === "shape" || s.type === "section" || s.type === "text")
+        .map((s) => s.id)
+    );
+    if (nonTargetIds.size === 0) return rawSteps;
+    return rawSteps.map((s) => {
+      let modified = false;
+      const next = { ...s };
+      if (next.next_step_id && nonTargetIds.has(next.next_step_id)) {
+        next.next_step_id = null;
+        next.target_port = undefined;
+        modified = true;
+      }
+      if (next.if_true && nonTargetIds.has(next.if_true)) {
+        next.if_true = undefined;
+        next.if_true_target_port = undefined;
+        modified = true;
+      }
+      if (next.if_false && nonTargetIds.has(next.if_false)) {
+        next.if_false = undefined;
+        next.if_false_target_port = undefined;
+        modified = true;
+      }
+      if (next.on_approve && nonTargetIds.has(next.on_approve)) {
+        next.on_approve = undefined;
+        next.on_approve_target_port = undefined;
+        modified = true;
+      }
+      if (next.on_reject && nonTargetIds.has(next.on_reject)) {
+        next.on_reject = undefined;
+        next.on_reject_target_port = undefined;
+        modified = true;
+      }
+      return modified ? next : s;
+    });
   }, [workflow.steps]);
 
   // Exact port Y offset matching each trigger card height
@@ -136,6 +741,62 @@ export function WorkflowCanvas({
     }
     return 75;
   }, []);
+
+  // Exact port Y offset for target input ports (matching benchmark stacked ports)
+  const getInputPortOffsetY = useCallback(
+    (step: WorkflowStep, portType: "text" | "image" | "file" = "text"): number => {
+      if (step.type === "llm" || step.type === "agent" || step.type === "action") {
+        if (portType === "image") return 82;
+        if (portType === "file") return 116;
+        return 48; // text
+      }
+      return 48;
+    },
+    []
+  );
+
+  // Exact port Y offset for source output ports (matching benchmark right ports)
+  const getOutputPortOffsetY = useCallback(
+    (step: WorkflowStep, port: "out" | "true" | "false" | "approve" | "reject" = "out"): number => {
+      if (step.type === "trigger") {
+        return getTriggerPortOffsetY(step);
+      }
+      if (step.type === "condition" || step.type === "approval") {
+        return port === "false" || port === "reject" ? 74 : 46;
+      }
+      return 48;
+    },
+    [getTriggerPortOffsetY]
+  );
+
+  // Helper to find any active wire plugged into a specific input port
+  const getIncomingWire = useCallback(
+    (targetStepId: string, targetPort: "text" | "image" | "file" = "text") => {
+      for (const s of effectiveSteps) {
+        if (s.type === "condition") {
+          if (s.if_true === targetStepId && (s.if_true_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "true" as const };
+          }
+          if (s.if_false === targetStepId && (s.if_false_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "false" as const };
+          }
+        } else if (s.type === "approval") {
+          if (s.on_approve === targetStepId && (s.on_approve_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "approve" as const };
+          }
+          if (s.on_reject === targetStepId && (s.on_reject_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "reject" as const };
+          }
+        } else if (s.type !== "end" && s.type !== "note" && s.type !== "section" && s.type !== "text") {
+          if (s.next_step_id === targetStepId && (s.target_port || "text") === targetPort) {
+            return { fromStep: s, port: "out" as const };
+          }
+        }
+      }
+      return null;
+    },
+    [effectiveSteps]
+  );
 
   const computeNextRun = useCallback((step: WorkflowStep): string => {
     const now = new Date();
@@ -215,6 +876,66 @@ export function WorkflowCanvas({
     nodePositionsRef.current = next;
   }, [workflow.id, effectiveSteps]);
 
+  // Sync sizes from effective steps or fallback to standard benchmark sizes
+  useEffect(() => {
+    const next: Record<string, { width: number; height?: number }> = {};
+    effectiveSteps.forEach((step) => {
+      const existing = nodeSizesRef.current[step.id];
+      if (existing) {
+        next[step.id] = existing;
+      } else {
+        const cfg = NODE_SIZE_CONFIG[step.type] || NODE_SIZE_CONFIG.llm;
+        next[step.id] = {
+          width: step.width ?? cfg.defaultWidth,
+          ...(step.height || cfg.defaultHeight ? { height: step.height ?? cfg.defaultHeight } : {}),
+        };
+      }
+    });
+    setNodeSizes(next);
+    nodeSizesRef.current = next;
+  }, [workflow.id, effectiveSteps]);
+
+  // Helper to obtain current size & config for a node
+  const getNodeSize = useCallback(
+    (step: WorkflowStep) => {
+      const local = nodeSizes[step.id];
+      const cfg = NODE_SIZE_CONFIG[step.type] || NODE_SIZE_CONFIG.llm;
+      const width = local?.width ?? step.width ?? cfg.defaultWidth;
+      const height = local?.height ?? step.height ?? cfg.defaultHeight;
+      return { width, height, cfg };
+    },
+    [nodeSizes]
+  );
+
+  // Initiate bottom-right corner resize gesture
+  const handleResizePointerDown = (
+    e: React.PointerEvent,
+    stepId: string,
+    cfg: NodeSizeLimits,
+    currentWidth: number,
+    currentHeight: number | undefined
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    const cardEl = (e.currentTarget as HTMLElement).closest(".workflow-node") as HTMLElement | null;
+    const startH = currentHeight ?? (cardEl ? cardEl.offsetHeight : cfg.defaultHeight ?? 300);
+
+    setResizingNode({
+      stepId,
+      startPointerX: e.clientX,
+      startPointerY: e.clientY,
+      startWidth: currentWidth,
+      startHeight: startH,
+      minWidth: cfg.minWidth,
+      maxWidth: cfg.maxWidth,
+      minHeight: cfg.minHeight ?? 140,
+      maxHeight: cfg.maxHeight ?? 900,
+    });
+    hasResizedNodeRef.current = false;
+  };
+
   // Node selection & dragging
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -226,6 +947,23 @@ export function WorkflowCanvas({
   const [draggingWire, setDraggingWire] = useState<DraggingConnection | null>(null);
   const [hoveredWire, setHoveredWire] = useState<SelectedWire | null>(null);
   const [selectedWire, setSelectedWire] = useState<SelectedWire | null>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleWirePointerEnter = useCallback((wire: SelectedWire) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredWire(wire);
+  }, []);
+
+  const handleWirePointerLeave = useCallback((e: React.PointerEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related && related.closest && related.closest(".wire-interactive")) return;
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredWire(null);
+    }, 150);
+  }, []);
 
   // Freehand drawing state
   const [strokes, setStrokes] = useState<FreehandStroke[]>([]);
@@ -238,12 +976,24 @@ export function WorkflowCanvas({
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(workflow.name);
-  const [activeModelMenuStepId, setActiveModelMenuStepId] = useState<string | null>(null);
-  const [expandedOutputStepIds, setExpandedOutputStepIds] = useState<Set<string>>(new Set());
   const [expandedSystemPromptStepIds, setExpandedSystemPromptStepIds] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState("");
-  const [triggerTypeMenuOpen, setTriggerTypeMenuOpen] = useState(false);
   const [executionNotice, setExecutionNotice] = useState<string | null>(null);
+
+  // Dock & Canvas Tools States
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [showSearchPalette, setShowSearchPalette] = useState(false);
+  const [canvasSearchQuery, setCanvasSearchQuery] = useState("");
+  const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
+  const [drawMode, setDrawMode] = useState<"pen" | "eraser">("pen");
+  const [drawColor, setDrawColor] = useState<string>("#ffffff");
+  const [activeShapeKind, setActiveShapeKind] = useState<ShapeKind>("rectangle");
+  const [activeShapeColor, setActiveShapeColor] = useState<string>("#ffffff");
+  const [showShapeColorMenu, setShowShapeColorMenu] = useState(false);
+  const [activeNoteTone, setActiveNoteTone] = useState<string>("orange");
+  const [openNoteMenu, setOpenNoteMenu] = useState<{ id: string; type: "tone" | "ink" | "font" | "size" | "align" } | null>(null);
+  const [openShapeMenu, setOpenShapeMenu] = useState<{ id: string; type: "kind" | "color" } | null>(null);
+  const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
 
   // Execution states
   const [runningStepId, setRunningStepId] = useState<string | null>(null);
@@ -258,12 +1008,151 @@ export function WorkflowCanvas({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Reset zoom to 100%
+  const handleResetZoom = useCallback(() => {
+    setZoom(1);
+  }, []);
+
+  // Fit all nodes onto the visible screen with padding
+  const handleFitToScreen = useCallback(() => {
+    if (effectiveSteps.length === 0) {
+      setPan({ x: 0, y: 0 });
+      setZoom(1);
+      return;
+    }
+
+    const clientW = containerRef.current?.clientWidth || 1000;
+    const clientH = containerRef.current?.clientHeight || 700;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    effectiveSteps.forEach((st) => {
+      const pos = nodePositions[st.id] || { x: 420, y: 140 };
+      const { width: w, height: h } = getNodeSize(st);
+      if (pos.x < minX) minX = pos.x;
+      if (pos.y < minY) minY = pos.y;
+      if (pos.x + w > maxX) maxX = pos.x + w;
+      if (pos.y + (h || 200) > maxY) maxY = pos.y + (h || 200);
+    });
+
+    const boxW = Math.max(100, maxX - minX);
+    const boxH = Math.max(100, maxY - minY);
+    const padding = 120;
+
+    const scaleX = (clientW - padding * 2) / boxW;
+    const scaleY = (clientH - padding * 2) / boxH;
+    const targetZoom = Math.min(1.2, Math.max(0.35, Math.min(scaleX, scaleY)));
+
+    const centerX = minX + boxW / 2;
+    const centerY = minY + boxH / 2;
+
+    const targetPanX = Math.round(clientW / 2 - centerX * targetZoom);
+    const targetPanY = Math.round(clientH / 2 - centerY * targetZoom);
+
+    setZoom(Math.round(targetZoom * 100) / 100);
+    setPan({ x: targetPanX, y: targetPanY });
+  }, [effectiveSteps, nodePositions, getNodeSize]);
+
+  // Jump to specific node from search palette & trigger pulsing highlight
+  const handleJumpToNode = useCallback(
+    (stepId: string) => {
+      const pos = nodePositions[stepId];
+      const targetStep = effectiveSteps.find((s) => s.id === stepId);
+      if (pos && targetStep && containerRef.current) {
+        const clientW = containerRef.current.clientWidth;
+        const clientH = containerRef.current.clientHeight;
+        const { width: w, height: h } = getNodeSize(targetStep);
+        const targetPanX = Math.round(clientW / 2 - (pos.x + w / 2) * zoom);
+        const targetPanY = Math.round(clientH / 2 - (pos.y + (h || 200) / 2) * zoom);
+        setPan({ x: targetPanX, y: targetPanY });
+        setSelectedNodeId(stepId);
+        setPulsingNodeId(stepId);
+        setTimeout(() => setPulsingNodeId(null), 2200);
+      }
+      setShowSearchPalette(false);
+    },
+    [nodePositions, effectiveSteps, zoom, getNodeSize]
+  );
+
+  // Global Keyboard shortcuts matching benchmark design
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") {
+        if (e.key === "Escape") {
+          (e.target as HTMLElement)?.blur();
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setShowSearchPalette(true);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        setShowSearchPalette(false);
+        setTool("select");
+        setOpenNoteMenu(null);
+        setOpenShapeMenu(null);
+        setShowShapeColorMenu(false);
+        setGhostPos(null);
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === "v") {
+        setTool("select");
+        setGhostPos(null);
+      } else if (key === "h") {
+        setTool("pan");
+        setGhostPos(null);
+      } else if (key === "p") {
+        setTool("draw");
+        setDrawMode("pen");
+        setGhostPos(null);
+      } else if (key === "e") {
+        if (tool === "draw") {
+          setDrawMode("eraser");
+        }
+      } else if (key === "n") {
+        setTool("note");
+      } else if (key === "r") {
+        setTool("shape");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tool]);
+
 
 
   // Sync title
   useEffect(() => {
     setTitleInput(workflow.name);
   }, [workflow.name]);
+
+  // Close note & shape popover menus on outside pointerdown
+  useEffect(() => {
+    const handleGlobalPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        !target.closest(".popover-dropdown") &&
+        !target.closest("[data-popover-trigger='true']")
+      ) {
+        setOpenNoteMenu(null);
+        setOpenShapeMenu(null);
+        setShowShapeColorMenu(false);
+      }
+    };
+    window.addEventListener("pointerdown", handleGlobalPointerDown);
+    return () => window.removeEventListener("pointerdown", handleGlobalPointerDown);
+  }, []);
 
   // Extract available models from engines
   const availableModels = useMemo(() => {
@@ -345,8 +1234,6 @@ export function WorkflowCanvas({
         setSelectedWire(null);
         setShowAddMenu(false);
         setShowWorkflowMenu(false);
-        setActiveModelMenuStepId(null);
-        setTriggerTypeMenuOpen(false);
       } else if (e.key === " ") {
         setTool("pan");
       }
@@ -383,39 +1270,6 @@ export function WorkflowCanvas({
     });
   }, []);
 
-  // Fit to screen (computes bounding box of all nodes)
-  const handleFitToScreen = useCallback(() => {
-    const allX: number[] = [];
-    const allY: number[] = [];
-
-    Object.values(nodePositionsRef.current).forEach((pos) => {
-      allX.push(pos.x);
-      allY.push(pos.y);
-    });
-
-    if (allX.length === 0 || !containerRef.current) return;
-
-    const minX = Math.min(...allX);
-    const maxX = Math.max(...allX) + 380;
-    const minY = Math.min(...allY);
-    const maxY = Math.max(...allY) + 340;
-
-    const width = maxX - minX;
-    const height = maxY - minY;
-
-    const clientW = containerRef.current.clientWidth || 1000;
-    const clientH = containerRef.current.clientHeight || 700;
-
-    const zoomX = (clientW - 160) / width;
-    const zoomY = (clientH - 160) / height;
-    const fitZoom = Math.min(1.2, Math.max(0.35, Math.min(zoomX, zoomY)));
-
-    const fitPanX = (clientW - width * fitZoom) / 2 - minX * fitZoom;
-    const fitPanY = (clientH - height * fitZoom) / 2 - minY * fitZoom;
-
-    setZoom(Math.round(fitZoom * 100) / 100);
-    setPan({ x: Math.round(fitPanX), y: Math.round(fitPanY) });
-  }, []);
 
   // Wheel zoom anchored to pointer
   const handleWheel = useCallback(
@@ -444,17 +1298,91 @@ export function WorkflowCanvas({
       return;
     }
 
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ptX = (e.clientX - rect.left - pan.x) / zoom;
+    const ptY = (e.clientY - rect.top - pan.y) / zoom;
+
     if (tool === "draw") {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const ptX = (e.clientX - rect.left - pan.x) / zoom;
-      const ptY = (e.clientY - rect.top - pan.y) / zoom;
-      setCurrentStroke({
-        id: `stroke_${Date.now()}`,
-        points: [{ x: ptX, y: ptY }],
-        color: "#a855f7",
-      });
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      if (drawMode === "pen") {
+        setCurrentStroke({
+          id: `stroke_${Date.now()}`,
+          points: [{ x: ptX, y: ptY }],
+          color: drawColor || "#ffffff",
+        });
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      } else {
+        // Eraser: delete strokes intersecting pointer
+        setStrokes((prev) =>
+          prev.filter(
+            (st) =>
+              !st.points.some(
+                (p) => Math.hypot(p.x - ptX, p.y - ptY) < 22
+              )
+          )
+        );
+      }
+      return;
+    }
+
+    if (tool === "shape") {
+      const shapeDef = SHAPE_DEFAULT_SIZES[activeShapeKind] || { width: 208, height: 128 };
+      const newId = `step_${Date.now().toString(36)}`;
+      const posX = Math.round(ptX - shapeDef.width / 2);
+      const posY = Math.round(ptY - shapeDef.height / 2);
+
+      const newStep: WorkflowStep = {
+        id: newId,
+        name: "Shape",
+        type: "shape",
+        shape: activeShapeKind,
+        color: activeShapeColor || "#ffffff",
+        text: "",
+        x: posX,
+        y: posY,
+        width: shapeDef.width,
+        height: shapeDef.height,
+      };
+
+      setNodePositions((prev) => ({ ...prev, [newId]: { x: posX, y: posY } }));
+      setNodeSizes((prev) => ({ ...prev, [newId]: { width: shapeDef.width, height: shapeDef.height } }));
+      void onUpdateWorkflow({ steps: [...effectiveSteps, newStep] });
+      setSelectedNodeId(newId);
+      setTool("select");
+      setGhostPos(null);
+      return;
+    }
+
+    if (tool === "note") {
+      const newId = `step_${Date.now().toString(36)}`;
+      const posX = Math.round(ptX - 120);
+      const posY = Math.round(ptY - 120);
+      const tone = activeNoteTone || "orange";
+
+      const newStep: WorkflowStep = {
+        id: newId,
+        name: "Note",
+        type: "note",
+        tone: tone,
+        color: tone,
+        ink: NOTE_TONE_CONFIG[tone]?.ink || "#7c2d12",
+        font: "sans",
+        size: 18,
+        align: "left",
+        bold: false,
+        text: "",
+        x: posX,
+        y: posY,
+        width: 240,
+        height: 240,
+      };
+
+      setNodePositions((prev) => ({ ...prev, [newId]: { x: posX, y: posY } }));
+      setNodeSizes((prev) => ({ ...prev, [newId]: { width: 240, height: 240 } }));
+      void onUpdateWorkflow({ steps: [...effectiveSteps, newStep] });
+      setSelectedNodeId(newId);
+      setTool("select");
+      setGhostPos(null);
       return;
     }
 
@@ -467,15 +1395,59 @@ export function WorkflowCanvas({
     };
     setSelectedNodeId(null);
     setSelectedWire(null);
-    setActiveModelMenuStepId(null);
     setActiveTriggerMenuStepId(null);
     setActiveChipMenu(null);
-    setTriggerTypeMenuOpen(false);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   // High-performance pointer move (60fps local update)
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const ptX = rect ? (e.clientX - rect.left - pan.x) / zoom : 0;
+    const ptY = rect ? (e.clientY - rect.top - pan.y) / zoom : 0;
+
+    if (tool === "shape" || tool === "note") {
+      setGhostPos({ x: ptX, y: ptY });
+    }
+
+    if (tool === "draw" && drawMode === "eraser") {
+      setGhostPos({ x: ptX, y: ptY });
+      if (e.buttons === 1) {
+        setStrokes((prev) =>
+          prev.filter(
+            (st) =>
+              !st.points.some(
+                (p) => Math.hypot(p.x - ptX, p.y - ptY) < 22
+              )
+          )
+        );
+      }
+      return;
+    }
+    if (resizingNode) {
+      const dx = (e.clientX - resizingNode.startPointerX) / zoom;
+      const dy = (e.clientY - resizingNode.startPointerY) / zoom;
+
+      const newWidth = Math.round(
+        Math.min(resizingNode.maxWidth, Math.max(resizingNode.minWidth, resizingNode.startWidth + dx))
+      );
+      const newHeight = Math.round(
+        Math.min(resizingNode.maxHeight, Math.max(resizingNode.minHeight, resizingNode.startHeight + dy))
+      );
+
+      hasResizedNodeRef.current = true;
+
+      setNodeSizes((prev) => {
+        const next = {
+          ...prev,
+          [resizingNode.stepId]: { width: newWidth, height: newHeight },
+        };
+        nodeSizesRef.current = next;
+        return next;
+      });
+      return;
+    }
+
     if (currentStroke) {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -513,39 +1485,139 @@ export function WorkflowCanvas({
       const curX = (e.clientX - rect.left - pan.x) / zoom;
       const curY = (e.clientY - rect.top - pan.y) / zoom;
 
-      let snappedTarget: string | null = null;
-      let snapX = curX;
-      let snapY = curY;
+      if (draggingWire.fromDirection === "input") {
+        // Dragging FROM an input port, snapping TO an output port on candidate source nodes
+        let snappedSource: string | null = null;
+        let snappedOutput: "out" | "true" | "false" | "approve" | "reject" = "out";
+        let snapX = curX;
+        let snapY = curY;
+        let minDistance = 38;
 
-      effectiveSteps.forEach((st) => {
-        if (st.id === draggingWire.fromStepId) return;
-        if (st.type === "trigger") return; // Triggers have no input ports
-        const pos = nodePositions[st.id] || { x: 420, y: 140 };
-        const portX = pos.x;
-        const portY = pos.y + 52;
-        const dist = Math.hypot(curX - portX, curY - portY);
-        if (dist < 32) {
-          snappedTarget = st.id;
-          snapX = portX;
-          snapY = portY;
-        }
-      });
+        effectiveSteps.forEach((st) => {
+          if (st.id === draggingWire.fromStepId) return;
+          if (st.type === "end" || st.type === "note" || st.type === "shape" || st.type === "section" || st.type === "text") return; // Non-output steps
+          const pos = nodePositions[st.id] || { x: 420, y: 140 };
+          const { width: nodeW } = getNodeSize(st);
+          const portX = pos.x + nodeW;
 
-      setDraggingWire((prev) =>
-        prev
-          ? {
-              ...prev,
-              currentX: snapX,
-              currentY: snapY,
-              snappedTargetId: snappedTarget,
+          const candidateOutputs: Array<"out" | "true" | "false" | "approve" | "reject"> =
+            st.type === "condition"
+              ? ["true", "false"]
+              : st.type === "approval"
+              ? ["approve", "reject"]
+              : ["out"];
+
+          for (const p of candidateOutputs) {
+            const portY = pos.y + getOutputPortOffsetY(st, p);
+            const dist = Math.hypot(curX - portX, curY - portY);
+            if (dist < minDistance) {
+              minDistance = dist;
+              snappedSource = st.id;
+              snappedOutput = p;
+              snapX = portX;
+              snapY = portY;
             }
-          : null
-      );
+          }
+        });
+
+        const validation = snappedSource
+          ? validateConnection(
+              snappedSource,
+              snappedOutput,
+              draggingWire.fromStepId,
+              draggingWire.targetInputPort || "text",
+              effectiveSteps
+            )
+          : undefined;
+
+        setDraggingWire((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentX: snapX,
+                currentY: snapY,
+                snappedTargetId: snappedSource,
+                snappedOutputPort: snappedSource ? snappedOutput : undefined,
+                validationResult: validation,
+              }
+            : null
+        );
+      } else {
+        // Dragging FROM an output port, snapping TO an input port on candidate target nodes
+        let snappedTarget: string | null = null;
+        let snappedPort: "text" | "image" | "file" = "text";
+        let snapX = curX;
+        let snapY = curY;
+        let minDistance = 38;
+
+        effectiveSteps.forEach((st) => {
+          if (st.id === draggingWire.fromStepId) return;
+          if (st.type === "trigger" || st.type === "note" || st.type === "shape" || st.type === "section" || st.type === "text") return; // Non-input steps
+          const pos = nodePositions[st.id] || { x: 420, y: 140 };
+          const portX = pos.x;
+
+          const candidatePorts: Array<"text" | "image" | "file"> =
+            st.type === "llm" || st.type === "agent" || st.type === "action"
+              ? ["text", "image", "file"]
+              : ["text"];
+
+          for (const p of candidatePorts) {
+            const portY = pos.y + getInputPortOffsetY(st, p);
+            const dist = Math.hypot(curX - portX, curY - portY);
+            if (dist < minDistance) {
+              minDistance = dist;
+              snappedTarget = st.id;
+              snappedPort = p;
+              snapX = portX;
+              snapY = portY;
+            }
+          }
+        });
+
+        const validation = snappedTarget
+          ? validateConnection(
+              draggingWire.fromStepId,
+              draggingWire.fromPort,
+              snappedTarget,
+              snappedPort,
+              effectiveSteps
+            )
+          : undefined;
+
+        setDraggingWire((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentX: snapX,
+                currentY: snapY,
+                snappedTargetId: snappedTarget,
+                snappedInputPort: snappedTarget ? snappedPort : undefined,
+                validationResult: validation,
+              }
+            : null
+        );
+      }
     }
   };
 
   // Drag finish
   const handleCanvasPointerUp = () => {
+    if (resizingNode) {
+      if (hasResizedNodeRef.current) {
+        const finalSize = nodeSizesRef.current[resizingNode.stepId];
+        if (finalSize) {
+          const updatedSteps = effectiveSteps.map((s) =>
+            s.id === resizingNode.stepId
+              ? { ...s, width: finalSize.width, height: finalSize.height }
+              : s
+          );
+          void onUpdateWorkflow({ steps: updatedSteps });
+        }
+      }
+      setResizingNode(null);
+      hasResizedNodeRef.current = false;
+    }
+
     if (currentStroke) {
       setStrokes((prev) => [...prev, currentStroke]);
       setCurrentStroke(null);
@@ -566,7 +1638,27 @@ export function WorkflowCanvas({
 
     if (draggingWire) {
       if (draggingWire.snappedTargetId) {
-        handleConnect(draggingWire.fromStepId, draggingWire.fromPort, draggingWire.snappedTargetId);
+        const sourceId =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.snappedTargetId
+            : draggingWire.fromStepId;
+        const targetId =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.fromStepId
+            : draggingWire.snappedTargetId;
+        const outPort =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.snappedOutputPort || "out"
+            : draggingWire.fromPort;
+        const inPort =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.targetInputPort || "text"
+            : draggingWire.snappedInputPort || "text";
+
+        const val = validateConnection(sourceId, outPort, targetId, inPort, effectiveSteps);
+        if (val.valid) {
+          handleConnect(sourceId, outPort, targetId, inPort);
+        }
       }
       setDraggingWire(null);
     }
@@ -584,11 +1676,11 @@ export function WorkflowCanvas({
     // If locked, prevent canvas dragging but keep node selected so toolbar with Unlock is visible
     if (lockedNodes.has(stepId)) return;
 
+    // Allow dragging unless the target is a text input, textarea, or clicking a popover dropdown item
     if (
       (e.target as HTMLElement).tagName === "INPUT" ||
       (e.target as HTMLElement).tagName === "TEXTAREA" ||
-      (e.target as HTMLElement).tagName === "SELECT" ||
-      (e.target as HTMLElement).tagName === "BUTTON"
+      (e.target as HTMLElement).closest(".popover-dropdown")
     ) {
       return;
     }
@@ -630,11 +1722,26 @@ export function WorkflowCanvas({
       const updated = base.filter((s) => s.id !== stepId);
       const cleaned = updated.map((s) => {
         const next = { ...s };
-        if (next.next_step_id === stepId) next.next_step_id = null;
-        if (next.if_true === stepId) next.if_true = undefined;
-        if (next.if_false === stepId) next.if_false = undefined;
-        if (next.on_approve === stepId) next.on_approve = undefined;
-        if (next.on_reject === stepId) next.on_reject = null;
+        if (next.next_step_id === stepId) {
+          next.next_step_id = null;
+          next.target_port = undefined;
+        }
+        if (next.if_true === stepId) {
+          next.if_true = undefined;
+          next.if_true_target_port = undefined;
+        }
+        if (next.if_false === stepId) {
+          next.if_false = undefined;
+          next.if_false_target_port = undefined;
+        }
+        if (next.on_approve === stepId) {
+          next.on_approve = undefined;
+          next.on_approve_target_port = undefined;
+        }
+        if (next.on_reject === stepId) {
+          next.on_reject = null;
+          next.on_reject_target_port = undefined;
+        }
         return next;
       });
       setSelectedNodeId(null);
@@ -650,6 +1757,10 @@ export function WorkflowCanvas({
       const step = base.find((s) => s.id === stepId);
       if (!step) return;
       const currentPos = nodePositions[stepId] || { x: 420, y: 140 };
+      const currentSize = nodeSizesRef.current[stepId] || {
+        width: step.width,
+        height: step.height,
+      };
       const newId = `${step.type === "trigger" ? "trigger" : "step"}_${Date.now().toString(36)}`;
       const newX = currentPos.x + 40;
       const newY = currentPos.y + 40;
@@ -660,6 +1771,8 @@ export function WorkflowCanvas({
         name: `${step.name} (Copy)`,
         x: newX,
         y: newY,
+        width: currentSize.width,
+        height: currentSize.height,
         next_step_id: null,
       };
 
@@ -668,6 +1781,17 @@ export function WorkflowCanvas({
         nodePositionsRef.current = next;
         return next;
       });
+
+      if (currentSize.width) {
+        setNodeSizes((prev) => {
+          const next = {
+            ...prev,
+            [newId]: { width: currentSize.width, height: currentSize.height },
+          };
+          nodeSizesRef.current = next;
+          return next;
+        });
+      }
 
       void onUpdateWorkflow({ steps: [...base, duplicated] });
       setSelectedNodeId(newId);
@@ -757,14 +1881,62 @@ export function WorkflowCanvas({
           y: centerY,
         };
       } else if (type === "note") {
+        const tone = noteColor || activeNoteTone || "orange";
         newStep = {
           id: newId,
-          name: "Sticky Note",
+          name: "Note",
           type: "note",
-          prompt: "Workflow notes and documentation...",
-          color: noteColor,
+          tone: tone,
+          color: tone,
+          ink: NOTE_TONE_CONFIG[tone]?.ink || "#7c2d12",
+          font: "sans",
+          size: 18,
+          align: "left",
+          bold: false,
+          text: "",
           x: centerX,
           y: centerY,
+          width: 240,
+          height: 240,
+        };
+      } else if (type === "shape") {
+        const shapeDef = SHAPE_DEFAULT_SIZES[activeShapeKind] || { width: 208, height: 128 };
+        newStep = {
+          id: newId,
+          name: "Shape",
+          type: "shape",
+          shape: activeShapeKind,
+          color: activeShapeColor || "#ffffff",
+          text: "",
+          x: centerX,
+          y: centerY,
+          width: shapeDef.width,
+          height: shapeDef.height,
+        };
+      } else if (type === "section") {
+        newStep = {
+          id: newId,
+          name: `Section ${count}`,
+          type: "section",
+          color: "zinc",
+          prompt: "Pipeline Group",
+          x: centerX - 60,
+          y: centerY - 60,
+          width: 500,
+          height: 340,
+        };
+      } else if (type === "text") {
+        newStep = {
+          id: newId,
+          name: "Text Label",
+          type: "text",
+          text: "Text Annotation",
+          font_size: "medium",
+          color: "zinc",
+          x: centerX,
+          y: centerY,
+          width: 280,
+          height: 70,
         };
       } else {
         newStep = {
@@ -778,17 +1950,28 @@ export function WorkflowCanvas({
         };
       }
 
+      const cfg = NODE_SIZE_CONFIG[type] || NODE_SIZE_CONFIG.llm;
+      newStep.width = cfg.defaultWidth;
+      if (cfg.defaultHeight) {
+        newStep.height = cfg.defaultHeight;
+      }
+
       setNodePositions((prev) => {
         const next = { ...prev, [newId]: { x: centerX, y: centerY } };
         nodePositionsRef.current = next;
         return next;
       });
 
-      const existing = [...effectiveSteps];
-      if (existing.length > 0 && !existing[existing.length - 1].next_step_id) {
-        existing[existing.length - 1].next_step_id = newId;
-      }
-      void onUpdateWorkflow({ steps: [...existing, newStep] });
+      setNodeSizes((prev) => {
+        const next = {
+          ...prev,
+          [newId]: { width: cfg.defaultWidth, height: cfg.defaultHeight },
+        };
+        nodeSizesRef.current = next;
+        return next;
+      });
+
+      void onUpdateWorkflow({ steps: [...effectiveSteps, newStep] });
       setSelectedNodeId(newId);
       setShowAddMenu(false);
     },
@@ -799,19 +1982,40 @@ export function WorkflowCanvas({
   const handleConnect = (
     fromStepId: string,
     fromPort: "out" | "true" | "false" | "approve" | "reject",
-    targetStepId: string
+    targetStepId: string,
+    targetInputPort: "text" | "image" | "file" = "text"
   ) => {
     if (fromStepId === targetStepId) return;
+
+    const val = validateConnection(
+      fromStepId,
+      fromPort,
+      targetStepId,
+      targetInputPort,
+      effectiveSteps
+    );
+    if (!val.valid) return;
 
     const base = effectiveSteps;
     const updated = base.map((s) => {
       if (s.id !== fromStepId) return s;
       const copy = { ...s };
-      if (fromPort === "out") copy.next_step_id = targetStepId;
-      else if (fromPort === "true") copy.if_true = targetStepId;
-      else if (fromPort === "false") copy.if_false = targetStepId;
-      else if (fromPort === "approve") copy.on_approve = targetStepId;
-      else if (fromPort === "reject") copy.on_reject = targetStepId;
+      if (fromPort === "out") {
+        copy.next_step_id = targetStepId;
+        copy.target_port = targetInputPort;
+      } else if (fromPort === "true") {
+        copy.if_true = targetStepId;
+        copy.if_true_target_port = targetInputPort;
+      } else if (fromPort === "false") {
+        copy.if_false = targetStepId;
+        copy.if_false_target_port = targetInputPort;
+      } else if (fromPort === "approve") {
+        copy.on_approve = targetStepId;
+        copy.on_approve_target_port = targetInputPort;
+      } else if (fromPort === "reject") {
+        copy.on_reject = targetStepId;
+        copy.on_reject_target_port = targetInputPort;
+      }
       return copy;
     });
     void onUpdateWorkflow({ steps: updated });
@@ -819,14 +2023,25 @@ export function WorkflowCanvas({
 
   // Disconnect wire
   const handleDisconnectWire = (fromId: string, port: string) => {
-    const updated = (workflow.steps || []).map((s) => {
+    const updated = effectiveSteps.map((s) => {
       if (s.id !== fromId) return s;
       const copy = { ...s };
-      if (port === "out") copy.next_step_id = null;
-      else if (port === "true") copy.if_true = undefined;
-      else if (port === "false") copy.if_false = undefined;
-      else if (port === "approve") copy.on_approve = undefined;
-      else if (port === "reject") copy.on_reject = null;
+      if (port === "out") {
+        copy.next_step_id = null;
+        copy.target_port = undefined;
+      } else if (port === "true") {
+        copy.if_true = undefined;
+        copy.if_true_target_port = undefined;
+      } else if (port === "false") {
+        copy.if_false = undefined;
+        copy.if_false_target_port = undefined;
+      } else if (port === "approve") {
+        copy.on_approve = undefined;
+        copy.on_approve_target_port = undefined;
+      } else if (port === "reject") {
+        copy.on_reject = null;
+        copy.on_reject_target_port = undefined;
+      }
       return copy;
     });
     void onUpdateWorkflow({ steps: updated });
@@ -834,7 +2049,7 @@ export function WorkflowCanvas({
     setHoveredWire(null);
   };
 
-  // Start wire drag
+  // Start wire drag from Output port (Right edge)
   const handlePortPointerDown = (
     e: React.PointerEvent,
     stepId: string,
@@ -843,9 +2058,13 @@ export function WorkflowCanvas({
     portY: number
   ) => {
     e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
     setDraggingWire({
       fromStepId: stepId,
       fromPort: port,
+      fromDirection: "output",
       startX: portX,
       startY: portY,
       currentX: portX,
@@ -854,16 +2073,108 @@ export function WorkflowCanvas({
     });
   };
 
-  // Bezier curve path
+  // Start wire drag / detaching from Input port (Left edge)
+  const handleInputPortPointerDown = (
+    e: React.PointerEvent,
+    stepId: string,
+    port: "text" | "image" | "file",
+    portX: number,
+    portY: number
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    // 1. Check if an incoming wire is already plugged into this input port
+    const existingIncoming = getIncomingWire(stepId, port);
+
+    if (existingIncoming) {
+      const fromStep = existingIncoming.fromStep;
+      const fromPort = existingIncoming.port;
+
+      // Select this wire immediately
+      setSelectedWire({
+        fromStepId: fromStep.id,
+        toStepId: stepId,
+        port: fromPort,
+      });
+
+      // Detach the connection from this port and begin dragging from source output
+      const srcPos = nodePositions[fromStep.id] || { x: 420, y: 140 };
+      const { width: srcW } = getNodeSize(fromStep);
+      const srcX = srcPos.x + srcW;
+      const srcY = srcPos.y + getOutputPortOffsetY(fromStep, fromPort);
+
+      handleDisconnectWire(fromStep.id, fromPort);
+
+      setDraggingWire({
+        fromStepId: fromStep.id,
+        fromPort: fromPort,
+        fromDirection: "output",
+        startX: srcX,
+        startY: srcY,
+        currentX: portX,
+        currentY: portY,
+        snappedTargetId: null,
+      });
+      return;
+    }
+
+    // 2. Otherwise start reverse drag from this input port to an output port
+    setDraggingWire({
+      fromStepId: stepId,
+      fromPort: "out",
+      fromDirection: "input",
+      targetInputPort: port,
+      startX: portX,
+      startY: portY,
+      currentX: portX,
+      currentY: portY,
+      snappedTargetId: null,
+    });
+  };
+
+  // Control points calculation for cubic Bezier curve with forward & backward loop handling
+  const getCurveControlPoints = (x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    let cx1: number, cy1: number, cx2: number, cy2: number;
+    if (dx >= 0) {
+      const cx = Math.max(40, dx * 0.5);
+      cx1 = x1 + cx;
+      cy1 = y1;
+      cx2 = x2 - cx;
+      cy2 = y2;
+    } else {
+      // Smooth backward loop when target is behind source
+      const cx = Math.max(50, Math.min(180, Math.abs(dx) * 0.6));
+      const cy = Math.abs(dy) < 40 ? 40 : Math.min(100, Math.abs(dy) * 0.4);
+      const signY = dy >= 0 ? 1 : -1;
+      cx1 = x1 + cx;
+      cy1 = y1 + cy * signY;
+      cx2 = x2 - cx;
+      cy2 = y2 - cy * signY;
+    }
+    return { cx1, cy1, cx2, cy2 };
+  };
+
   const getCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
-    const dx = Math.max(50, Math.abs(x2 - x1) * 0.45);
-    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    const { cx1, cy1, cx2, cy2 } = getCurveControlPoints(x1, y1, x2, y2);
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  };
+
+  const getCurveMidpoint = (x1: number, y1: number, x2: number, y2: number) => {
+    const { cx1, cy1, cx2, cy2 } = getCurveControlPoints(x1, y1, x2, y2);
+    const midX = 0.125 * x1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * x2;
+    const midY = 0.125 * y1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * y2;
+    return { midX, midY };
   };
 
   // Execute workflow live across canvas
   const handleTriggerFullRun = async () => {
     try {
       setIsExecutingWorkflow(true);
+      await onRunWorkflow();
       const run = await api.startWorkflowRun(
         workflow.id,
         { message: "Triggered from visual canvas" },
@@ -871,6 +2182,7 @@ export function WorkflowCanvas({
       );
       setLiveRun(run);
       setSelectedRunId(run.id);
+      await onRefreshRuns();
     } catch (err) {
       setIsExecutingWorkflow(false);
       alert(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -889,13 +2201,11 @@ export function WorkflowCanvas({
         ...prev,
         [stepId]: res.output || "Step completed.",
       }));
-      setExpandedOutputStepIds((prev) => new Set(prev).add(stepId));
     } catch (err) {
       setStepOutputs((prev) => ({
         ...prev,
         [stepId]: `Error: ${err instanceof Error ? err.message : String(err)}`,
       }));
-      setExpandedOutputStepIds((prev) => new Set(prev).add(stepId));
     } finally {
       setRunningStepId(null);
     }
@@ -947,24 +2257,6 @@ export function WorkflowCanvas({
           </button>
 
           <div className="h-4 w-px bg-zinc-800" />
-
-          {/* Engine indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-700/60 text-xs font-medium text-zinc-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/80 animate-pulse" />
-            <span>Local</span>
-            <ChevronDown size={13} className="text-zinc-500" />
-          </div>
-
-          {/* Undo / Redo */}
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800/80 disabled:opacity-30"
-              title="Undo"
-            >
-              <RotateCcw size={14} />
-            </button>
-          </div>
 
           {/* Workflow Title Switcher */}
           <div className="relative">
@@ -1092,7 +2384,9 @@ export function WorkflowCanvas({
         onPointerUp={handleCanvasPointerUp}
         className={cn(
           "relative flex-1 w-full h-full overflow-hidden select-none",
-          tool === "pan" || isPanning
+          resizingNode
+            ? "cursor-nwse-resize"
+            : tool === "pan" || isPanning
             ? "cursor-grab active:cursor-grabbing"
             : tool === "draw"
             ? "cursor-crosshair"
@@ -1149,7 +2443,7 @@ export function WorkflowCanvas({
           </svg>
 
           {/* SVG Connection Wires Layer */}
-          <svg className="absolute inset-0 w-[10000px] h-[10000px] overflow-visible pointer-events-none -z-10">
+          <svg className="absolute inset-0 w-[10000px] h-[10000px] overflow-visible pointer-events-none z-[1]">
             <style>{`
               @keyframes wireFlow {
                 to { stroke-dashoffset: -24; }
@@ -1162,19 +2456,29 @@ export function WorkflowCanvas({
             {/* Node-to-Node Connections */}
             {effectiveSteps.map((step) => {
               const srcPos = nodePositions[step.id] || { x: 420, y: 140 };
-              const isTrigger = step.type === "trigger";
-              const srcX = srcPos.x + (isTrigger ? 320 : 360);
-              const srcY = isTrigger ? srcPos.y + getTriggerPortOffsetY(step) : srcPos.y + 48;
+              const { width: nodeW } = getNodeSize(step);
+              const srcX = srcPos.x + nodeW;
 
               const renderWire = (
                 targetId: string,
                 port: "out" | "true" | "false" | "approve" | "reject",
-                color: string,
-                offsetY: number = 0
+                targetPort: "text" | "image" | "file" = "text",
+                color: string = "rgba(255, 255, 255, 0.35)"
               ) => {
+                const targetStep = effectiveSteps.find((s) => s.id === targetId);
+                if (
+                  !targetStep ||
+                  targetStep.type === "note" ||
+                  targetStep.type === "shape" ||
+                  targetStep.type === "section" ||
+                  targetStep.type === "text"
+                ) {
+                  return null;
+                }
                 const targetPos = nodePositions[targetId] || { x: 420, y: 140 };
+                const srcY = srcPos.y + getOutputPortOffsetY(step, port);
                 const tgtX = targetPos.x;
-                const tgtY = targetPos.y + 48;
+                const tgtY = targetPos.y + (targetStep ? getInputPortOffsetY(targetStep, targetPort) : 48);
                 const isCurrentActive =
                   isExecutingWorkflow && liveRun?.current_step_id === targetId;
                 const isSelected =
@@ -1183,25 +2487,27 @@ export function WorkflowCanvas({
                   hoveredWire?.fromStepId === step.id && hoveredWire?.toStepId === targetId;
                 const isSelectedOrHovered = isSelected || isHovered;
 
-                const pathData = getCurvePath(srcX, srcY + offsetY, tgtX, tgtY);
-                const midX = (srcX + tgtX) / 2;
-                const midY = (srcY + offsetY + tgtY) / 2;
+                const pathData = getCurvePath(srcX, srcY, tgtX, tgtY);
+                const { midX, midY } = getCurveMidpoint(srcX, srcY, tgtX, tgtY);
 
                 return (
                   <g
                     key={`${step.id}-${port}-${targetId}`}
                     className="wire-interactive pointer-events-auto cursor-pointer group"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedWire({ fromStepId: step.id, toStepId: targetId, port });
                     }}
                     onPointerEnter={() =>
-                      setHoveredWire({ fromStepId: step.id, toStepId: targetId, port })
+                      handleWirePointerEnter({ fromStepId: step.id, toStepId: targetId, port })
                     }
-                    onPointerLeave={() => setHoveredWire(null)}
+                    onPointerLeave={handleWirePointerLeave}
                   >
                     {/* Transparent fat hit-test path for easy hovering/clicking */}
-                    <path d={pathData} fill="none" stroke="transparent" strokeWidth={26} />
+                    <path d={pathData} fill="none" stroke="transparent" strokeWidth={28} />
 
                     {/* Visible Wire */}
                     <path
@@ -1223,13 +2529,27 @@ export function WorkflowCanvas({
                     {isSelectedOrHovered && (
                       <g
                         transform={`translate(${midX}, ${midY})`}
-                        onClick={(e) => {
+                        onPointerDown={(e) => {
                           e.stopPropagation();
+                          e.preventDefault();
                           handleDisconnectWire(step.id, port);
                         }}
-                        className="cursor-pointer hover:scale-125 transition-transform"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handleDisconnectWire(step.id, port);
+                        }}
+                        className="cursor-pointer group/btn"
                       >
-                        <circle r={12} fill="#ef4444" stroke="#991b1b" strokeWidth={1.5} />
+                        {/* Generous invisible hit-circle for effortless clicking */}
+                        <circle r={20} fill="transparent" />
+                        <circle
+                          r={12}
+                          fill="#ef4444"
+                          stroke="#991b1b"
+                          strokeWidth={1.5}
+                          className="group-hover/btn:scale-125 transition-transform duration-150 drop-shadow-md"
+                        />
                         <line x1={-4} y1={-4} x2={4} y2={4} stroke="#ffffff" strokeWidth={2.5} strokeLinecap="round" />
                         <line x1={4} y1={-4} x2={-4} y2={4} stroke="#ffffff" strokeWidth={2.5} strokeLinecap="round" />
                       </g>
@@ -1240,41 +2560,80 @@ export function WorkflowCanvas({
 
               const elements: React.ReactNode[] = [];
 
-              if (step.next_step_id) {
+              if (
+                step.type !== "condition" &&
+                step.type !== "approval" &&
+                step.type !== "section" &&
+                step.type !== "text" &&
+                step.type !== "note" &&
+                step.type !== "shape" &&
+                step.next_step_id
+              ) {
                 elements.push(
-                  renderWire(step.next_step_id, "out", "rgba(255, 255, 255, 0.35)")
+                  renderWire(step.next_step_id, "out", step.target_port || "text", "rgba(255, 255, 255, 0.35)")
                 );
               }
               if (step.type === "condition") {
-                if (step.if_true) elements.push(renderWire(step.if_true, "true", "#10b981", -14));
-                if (step.if_false) elements.push(renderWire(step.if_false, "false", "#f59e0b", 14));
+                if (step.if_true) elements.push(renderWire(step.if_true, "true", step.if_true_target_port || "text", "#10b981"));
+                if (step.if_false) elements.push(renderWire(step.if_false, "false", step.if_false_target_port || "text", "#f59e0b"));
               }
               if (step.type === "approval") {
                 if (step.on_approve)
-                  elements.push(renderWire(step.on_approve, "approve", "#10b981", -14));
+                  elements.push(renderWire(step.on_approve, "approve", step.on_approve_target_port || "text", "#10b981"));
                 if (step.on_reject)
-                  elements.push(renderWire(step.on_reject, "reject", "#ef4444", 14));
+                  elements.push(renderWire(step.on_reject, "reject", step.on_reject_target_port || "text", "#ef4444"));
               }
 
               return <g key={`wires-${step.id}`}>{elements}</g>;
             })}
 
             {/* Currently Dragged Elastic Wire */}
-            {draggingWire && (
-              <path
-                d={getCurvePath(
-                  draggingWire.startX,
-                  draggingWire.startY,
-                  draggingWire.currentX,
-                  draggingWire.currentY
-                )}
-                fill="none"
-                stroke={draggingWire.snappedTargetId ? "#10b981" : "#a855f7"}
-                strokeWidth={3}
-                strokeDasharray="5 4"
-                className="wire-animating"
-              />
-            )}
+            {draggingWire && (() => {
+              const x1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentX
+                  : draggingWire.startX;
+              const y1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentY
+                  : draggingWire.startY;
+              const x2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startX
+                  : draggingWire.currentX;
+              const y2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startY
+                  : draggingWire.currentY;
+
+              const pathData = getCurvePath(x1, y1, x2, y2);
+              const isSnapped = !!draggingWire.snappedTargetId;
+              const isInvalid =
+                isSnapped &&
+                draggingWire.validationResult &&
+                !draggingWire.validationResult.valid;
+              const isValid =
+                isSnapped &&
+                (!draggingWire.validationResult ||
+                  draggingWire.validationResult.valid);
+
+              const strokeColor = isInvalid
+                ? "#ef4444"
+                : isValid
+                ? "#10b981"
+                : "rgba(255, 255, 255, 0.4)";
+
+              return (
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={2.5}
+                  strokeDasharray="5 4"
+                  className={isValid ? "wire-animating" : ""}
+                />
+              );
+            })()}
 
             {/* Freehand Pencil Drawing Layer */}
             {strokes.map((st) => (
@@ -1300,6 +2659,101 @@ export function WorkflowCanvas({
             )}
           </svg>
 
+          {/* Connection Limitation Badge on Dragged Wire ("Gives text, not image", etc.) */}
+          {draggingWire &&
+            draggingWire.snappedTargetId &&
+            draggingWire.validationResult &&
+            !draggingWire.validationResult.valid && (() => {
+              const x1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentX
+                  : draggingWire.startX;
+              const y1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentY
+                  : draggingWire.startY;
+              const x2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startX
+                  : draggingWire.currentX;
+              const y2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startY
+                  : draggingWire.currentY;
+              const { midX, midY } = getCurveMidpoint(x1, y1, x2, y2);
+
+              return (
+                <div
+                  style={{
+                    left: `${midX}px`,
+                    top: `${midY}px`,
+                  }}
+                  className="absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-[#18181b] border border-red-500/90 shadow-xl shadow-black/80 text-red-400 text-xs font-medium whitespace-nowrap z-50 select-none animate-in fade-in zoom-in-95 duration-100 flex items-center justify-center"
+                >
+                  {draggingWire.validationResult.error}
+                </div>
+              );
+            })()}
+
+          {/* Ghost Preview Layer (for shapes & notes placement & eraser cursor) */}
+          {ghostPos && tool === "shape" && (() => {
+            const shapeDef = SHAPE_DEFAULT_SIZES[activeShapeKind] || { width: 208, height: 128 };
+            return (
+              <div
+                style={{
+                  transform: `translate(${ghostPos.x - shapeDef.width / 2}px, ${ghostPos.y - shapeDef.height / 2}px)`,
+                  width: `${shapeDef.width}px`,
+                  height: `${shapeDef.height}px`,
+                  position: "absolute",
+                  pointerEvents: "none",
+                  opacity: 0.65,
+                  zIndex: 35,
+                }}
+              >
+                <ShapeSurfaceSvg
+                  shape={activeShapeKind}
+                  color={activeShapeColor}
+                  width={shapeDef.width}
+                  height={shapeDef.height}
+                  dashed
+                />
+              </div>
+            );
+          })()}
+
+          {ghostPos && tool === "note" && (
+            <div
+              style={{
+                transform: `translate(${ghostPos.x - 120}px, ${ghostPos.y - 120}px)`,
+                width: "240px",
+                height: "240px",
+                position: "absolute",
+                pointerEvents: "none",
+                opacity: 0.65,
+                zIndex: 35,
+                backgroundColor: NOTE_TONE_CONFIG[activeNoteTone]?.paper || "#fed7aa",
+                borderColor: NOTE_TONE_CONFIG[activeNoteTone]?.edge || "#f97316",
+              }}
+              className="rounded-2xl border-2 border-dashed shadow-xl p-4 flex items-center justify-center text-sm font-medium"
+            >
+              <span style={{ color: NOTE_TONE_CONFIG[activeNoteTone]?.ink || "#7c2d12" }}>
+                Click to place note
+              </span>
+            </div>
+          )}
+
+          {tool === "draw" && drawMode === "eraser" && ghostPos && (
+            <div
+              style={{
+                transform: `translate(${ghostPos.x}px, ${ghostPos.y}px)`,
+                position: "absolute",
+                pointerEvents: "none",
+                zIndex: 35,
+              }}
+              className="-translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-2 border-dashed border-red-400 bg-red-500/10"
+            />
+          )}
+
           {/* Workflow Canvas Nodes (including draggable Trigger nodes) */}
           {effectiveSteps.map((step) => {
             const pos = nodePositions[step.id] || { x: 420, y: 140 };
@@ -1310,47 +2764,646 @@ export function WorkflowCanvas({
             const stepRunState = liveRun?.step_states?.[step.id];
             const isCompleted = stepRunState?.status === "completed";
             const outputText = stepOutputs[step.id] || stepRunState?.output;
-            const isOutputExpanded = expandedOutputStepIds.has(step.id);
             const isTargetSnapped = draggingWire?.snappedTargetId === step.id;
+            const { width: nodeW, height: nodeH, cfg } = getNodeSize(step);
+            const isResizingThis = resizingNode?.stepId === step.id;
+            const isDraggingThis = draggingNodeId === step.id;
 
             return (
               <div
                 key={step.id}
-                style={{
-                  transform: `translate(${pos.x}px, ${pos.y}px)`,
-                  position: "absolute",
-                  touchAction: "none",
+                onPointerDownCapture={() => {
+                  setSelectedNodeId(step.id);
+                  setSelectedWire(null);
                 }}
                 onPointerDown={(e) => handleNodePointerDown(e, step.id)}
                 className={cn(
-                  "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow",
-                  step.type === "trigger" ? "w-[320px]" : "w-[360px]",
+                  "workflow-node transition-shadow",
                   step.type === "note"
-                    ? (step.color === "neutral" || step.color === "white"
-                        ? "bg-[#22242c]/95 border-zinc-600/60 text-zinc-100"
+                    ? "rounded-2xl border-2 shadow-2xl p-0 flex flex-col select-none"
+                    : step.type === "shape"
+                    ? "rounded-none border-0 shadow-none p-0 bg-transparent backdrop-blur-none flex items-center justify-center select-none"
+                    : step.type === "section"
+                    ? (step.color === "amber"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-amber-950/20 border-amber-600/50 border-dashed text-amber-200 z-0"
                         : step.color === "emerald"
-                        ? "bg-[#092419]/95 border-emerald-600/60 text-emerald-100"
-                        : step.color === "rose"
-                        ? "bg-[#2d0e19]/95 border-rose-600/60 text-rose-100"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-emerald-950/20 border-emerald-600/50 border-dashed text-emerald-200 z-0"
                         : step.color === "blue"
-                        ? "bg-[#0c1f35]/95 border-blue-600/60 text-blue-100"
-                        : "bg-[#291b0a]/95 border-amber-600/60 text-amber-100")
-                    : "bg-[#16171d]",
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-blue-950/20 border-blue-600/50 border-dashed text-blue-200 z-0"
+                        : step.color === "purple"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-purple-950/20 border-purple-600/50 border-dashed text-purple-200 z-0"
+                        : "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-zinc-900/30 border-zinc-700/60 border-dashed text-zinc-200 z-0")
+                    : step.type === "text"
+                    ? "rounded-2xl border border-transparent hover:border-zinc-700/50 p-2 shadow-none backdrop-blur-none z-10 flex flex-col gap-3"
+                    : "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-[#16171d] z-10",
                   isSelected
-                    ? "border-zinc-300 ring-2 ring-zinc-300/20"
+                    ? step.type === "note"
+                      ? "ring-2 ring-black/30"
+                      : "border-zinc-300 ring-2 ring-zinc-300/20"
                     : isRunningThis
                     ? "border-purple-500 shadow-purple-500/20 ring-2 ring-purple-500/30 animate-pulse"
                     : isTargetSnapped
                     ? "border-emerald-400 ring-2 ring-emerald-400/40"
-                    : step.type === "note"
+                    : step.type === "note" || step.type === "shape" || step.type === "section" || step.type === "text"
                     ? ""
-                    : "border-zinc-800/90 hover:border-zinc-700/80"
+                    : "border-zinc-800/90 hover:border-zinc-700/80",
+                  pulsingNodeId === step.id && "ring-4 ring-purple-400 shadow-xl shadow-purple-500/50 scale-[1.03]"
                 )}
+                style={{
+                  transform: `translate(${pos.x}px, ${pos.y}px)`,
+                  position: "absolute",
+                  touchAction: "none",
+                  width: `${nodeW}px`,
+                  height: nodeH ? `${nodeH}px` : undefined,
+                  minWidth: `${cfg.minWidth}px`,
+                  maxWidth: `${cfg.maxWidth}px`,
+                  minHeight: cfg.minHeight ? `${cfg.minHeight}px` : undefined,
+                  maxHeight: cfg.maxHeight ? `${cfg.maxHeight}px` : undefined,
+                  backgroundColor:
+                    step.type === "note"
+                      ? NOTE_TONE_CONFIG[step.tone || "orange"]?.paper || "#fed7aa"
+                      : undefined,
+                  borderColor:
+                    step.type === "note"
+                      ? NOTE_TONE_CONFIG[step.tone || "orange"]?.edge || "#f97316"
+                      : undefined,
+                  color:
+                    step.type === "note"
+                      ? step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12"
+                      : undefined,
+                  zIndex:
+                    isSelected
+                      ? 40
+                      : step.type === "section"
+                      ? 0
+                      : step.type === "shape"
+                      ? 2
+                      : step.type === "note"
+                      ? 5
+                      : 10,
+                  transition:
+                    isResizingThis || isDraggingThis
+                      ? "none"
+                      : "width 0.18s cubic-bezier(0.16, 1, 0.3, 1), height 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                }}
               >
-                {/* Floating Action Bar above selected node (Matches workflow NodeToolbar) */}
-                {isSelected && (
+                {/* Node Category Indicator above the card for standard flow nodes */}
+                {step.type !== "note" && step.type !== "shape" && step.type !== "section" && step.type !== "text" && (
+                  <div className="absolute -top-5 left-1 flex items-center gap-1.5 text-zinc-400 font-medium text-[11px] select-none pointer-events-none">
+                    {step.type === "trigger" ? (
+                      <>
+                        <Zap size={11} className="text-amber-400 fill-amber-400" />
+                        <span>Trigger</span>
+                      </>
+                    ) : step.type === "llm" ? (
+                      <>
+                        <Sparkles size={11} className="text-purple-400" />
+                        <span>LLM</span>
+                      </>
+                    ) : step.type === "agent" || step.type === "action" ? (
+                      <>
+                        <Bot size={11} className="text-blue-400" />
+                        <span>Agent</span>
+                      </>
+                    ) : step.type === "condition" ? (
+                      <>
+                        <GitBranch size={11} className="text-amber-400" />
+                        <span>Condition</span>
+                      </>
+                    ) : step.type === "approval" ? (
+                      <>
+                        <ShieldAlert size={11} className="text-rose-400" />
+                        <span>Approval</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={11} className="text-emerald-400" />
+                        <span>End</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Floating Action Bar above selected Note Node (Matching benchmark Note toolbar) */}
+                {isSelected && step.type === "note" && (
                   <div
-                    className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1a1b22] border border-zinc-700 rounded-xl px-2 py-1 shadow-2xl z-30"
+                    className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181b]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-50 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    {/* Tone Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        data-popover-trigger="true"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "tone"
+                              ? null
+                              : { id: step.id, type: "tone" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Pick note paper tone"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-black/20"
+                          style={{
+                            backgroundColor:
+                              NOTE_TONE_CONFIG[step.tone || "orange"]?.preview || "#f97316",
+                          }}
+                        />
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "tone" && (
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                          {Object.entries(NOTE_TONE_CONFIG).map(([toneKey, cfg]) => (
+                            <button
+                              key={toneKey}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, {
+                                  tone: toneKey,
+                                  color: toneKey,
+                                  ink: cfg.ink,
+                                });
+                                setOpenNoteMenu(null);
+                              }}
+                              className={cn(
+                                "w-5 h-5 rounded-full transition-transform hover:scale-115",
+                                (step.tone || "orange") === toneKey
+                                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                                  : ""
+                              )}
+                              style={{ backgroundColor: cfg.preview }}
+                              title={cfg.label}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Ink Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        data-popover-trigger="true"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "ink"
+                              ? null
+                              : { id: step.id, type: "ink" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Pick ink color"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-black/20"
+                          style={{
+                            backgroundColor:
+                              step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12",
+                          }}
+                        />
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "ink" && (
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                          {INK_COLOR_LIST.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { ink: c.hex });
+                                setOpenNoteMenu(null);
+                              }}
+                              className={cn(
+                                "w-5 h-5 rounded-full transition-transform hover:scale-115",
+                                (step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink) === c.hex
+                                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                                  : ""
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.label}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-[1px] h-3.5 bg-zinc-700/80 mx-0.5" />
+
+                    {/* Font Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        data-popover-trigger="true"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "font"
+                              ? null
+                              : { id: step.id, type: "font" }
+                          )
+                        }
+                        className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 font-medium text-xs transition-colors"
+                        title="Font family"
+                      >
+                        <span>
+                          {step.font === "mono" ? "Mono" : step.font === "serif" ? "Serif" : "Aa"}
+                        </span>
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "font" && (
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[90px] animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { font: "sans" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "px-2 py-1 text-left rounded-lg text-xs font-sans hover:bg-zinc-800 text-zinc-200",
+                              (!step.font || step.font === "sans") && "bg-zinc-800 font-bold"
+                            )}
+                          >
+                            Sans (Aa)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { font: "mono" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "px-2 py-1 text-left rounded-lg text-xs font-mono hover:bg-zinc-800 text-zinc-200",
+                              step.font === "mono" && "bg-zinc-800 font-bold"
+                            )}
+                          >
+                            Mono
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { font: "serif" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "px-2 py-1 text-left rounded-lg text-xs font-serif hover:bg-zinc-800 text-zinc-200",
+                              step.font === "serif" && "bg-zinc-800 font-bold"
+                            )}
+                          >
+                            Serif
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Font Size Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        data-popover-trigger="true"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "size"
+                              ? null
+                              : { id: step.id, type: "size" }
+                          )
+                        }
+                        className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 font-medium text-xs transition-colors"
+                        title="Font size"
+                      >
+                        <span>{step.size || 18}px</span>
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "size" && (
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[80px] animate-in fade-in duration-100">
+                          {[14, 18, 24, 32].map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { size: sz });
+                                setOpenNoteMenu(null);
+                              }}
+                              className={cn(
+                                "px-2 py-1 text-left rounded-lg text-xs hover:bg-zinc-800 text-zinc-200",
+                                (step.size || 18) === sz && "bg-zinc-800 font-bold"
+                              )}
+                            >
+                              {sz}px
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Text Alignment Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        data-popover-trigger="true"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "align"
+                              ? null
+                              : { id: step.id, type: "align" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Text alignment"
+                      >
+                        {step.align === "center" ? (
+                          <AlignCenter size={13} />
+                        ) : step.align === "right" ? (
+                          <AlignRight size={13} />
+                        ) : step.align === "justify" ? (
+                          <AlignJustify size={13} />
+                        ) : (
+                          <AlignLeft size={13} />
+                        )}
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "align" && (
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1 animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "left" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              (!step.align || step.align === "left") && "bg-zinc-800"
+                            )}
+                            title="Left"
+                          >
+                            <AlignLeft size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "center" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              step.align === "center" && "bg-zinc-800"
+                            )}
+                            title="Center"
+                          >
+                            <AlignCenter size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "right" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              step.align === "right" && "bg-zinc-800"
+                            )}
+                            title="Right"
+                          >
+                            <AlignRight size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "justify" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              step.align === "justify" && "bg-zinc-800"
+                            )}
+                            title="Justify"
+                          >
+                            <AlignJustify size={13} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bold Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateStep(step.id, { bold: !step.bold })}
+                      className={cn(
+                        "px-2 py-1 rounded-lg font-bold text-xs transition-colors",
+                        step.bold
+                          ? "bg-zinc-700 text-white"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
+                      title="Bold"
+                    >
+                      B
+                    </button>
+
+                    <div className="w-[1px] h-3.5 bg-zinc-700/80 mx-0.5" />
+
+                    {/* Duplicate */}
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => handleDuplicateStep(step.id)}
+                      className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30"
+                      title="Duplicate note"
+                    >
+                      <CopyPlus size={14} />
+                    </button>
+
+                    {/* Lock */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLock(step.id)}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        isLocked
+                          ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
+                      title={isLocked ? "Unlock note" : "Lock note"}
+                    >
+                      {isLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep(step.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
+                      title="Delete note"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Floating Action Bar above selected Shape Node */}
+                {isSelected && step.type === "shape" && (
+                  <div
+                    className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181b]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-50 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    {/* Shape Kind Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenShapeMenu(
+                            openShapeMenu?.id === step.id && openShapeMenu.type === "kind"
+                              ? null
+                              : { id: step.id, type: "kind" }
+                          )
+                        }
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors capitalize font-medium"
+                        title="Pick shape geometry"
+                      >
+                        <span>{step.shape || "rectangle"}</span>
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openShapeMenu?.id === step.id && openShapeMenu.type === "kind" && (
+                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1 animate-in fade-in duration-100">
+                          {(
+                            [
+                              "rectangle",
+                              "circle",
+                              "diamond",
+                              "triangle",
+                              "inverted",
+                              "oval",
+                              "star",
+                            ] as ShapeKind[]
+                          ).map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { shape: k });
+                                setOpenShapeMenu(null);
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-all",
+                                (step.shape || "rectangle") === k && "bg-zinc-800 text-white"
+                              )}
+                              title={k}
+                            >
+                              {k === "rectangle" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3" /></svg>
+                              )}
+                              {k === "circle" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /></svg>
+                              )}
+                              {k === "diamond" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 22,12 12,22 2,12" /></svg>
+                              )}
+                              {k === "triangle" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,3 22,21 2,21" /></svg>
+                              )}
+                              {k === "inverted" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="2,3 22,3 12,21" /></svg>
+                              )}
+                              {k === "oval" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="6" /></svg>
+                              )}
+                              {k === "star" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" /></svg>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Color Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenShapeMenu(
+                            openShapeMenu?.id === step.id && openShapeMenu.type === "color"
+                              ? null
+                              : { id: step.id, type: "color" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Pick shape outline color"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-white/20"
+                          style={{ backgroundColor: step.color || "#ffffff" }}
+                        />
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openShapeMenu?.id === step.id && openShapeMenu.type === "color" && (
+                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                          {CANVAS_COLOR_PALETTE.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { color: c.hex });
+                                setOpenShapeMenu(null);
+                              }}
+                              className={cn(
+                                "w-5 h-5 rounded-full transition-transform hover:scale-115",
+                                (step.color || "#ffffff") === c.hex
+                                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                                  : ""
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.label}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-[1px] h-3.5 bg-zinc-700/80 mx-0.5" />
+
+                    {/* Duplicate */}
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => handleDuplicateStep(step.id)}
+                      className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30"
+                      title="Duplicate shape"
+                    >
+                      <CopyPlus size={14} />
+                    </button>
+
+                    {/* Lock */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLock(step.id)}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        isLocked
+                          ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
+                      title={isLocked ? "Unlock shape" : "Lock shape"}
+                    >
+                      {isLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep(step.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
+                      title="Delete shape"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Floating Action Bar above selected standard flow node */}
+                {isSelected && step.type !== "note" && step.type !== "shape" && (
+                  <div
+                    className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1a1b22] border border-zinc-700 rounded-xl px-2 py-1 shadow-2xl z-30 select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
                     <button
@@ -1360,164 +3413,508 @@ export function WorkflowCanvas({
                       className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                       title="Duplicate node"
                     >
-                      <Copy size={13} />
+                      <CopyPlus size={14} />
                     </button>
                     <div className="w-[1px] h-3 bg-zinc-700/60 mx-0.5" />
                     <button
                       type="button"
                       onClick={() => handleToggleLock(step.id)}
-                      className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        isLocked
+                          ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
                       title={isLocked ? "Unlock node" : "Lock node"}
                     >
-                      {isLocked ? <Lock size={13} className="text-amber-400" /> : <Unlock size={13} />}
+                      {isLocked ? <Lock size={13} /> : <Unlock size={13} />}
                     </button>
-                    {/* Matching workflow: Delete is hidden when node is locked */}
-                    {!isLocked && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStep(step.id)}
-                        className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
-                        title="Delete node"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep(step.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
+                      title="Delete node"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 )}
 
-                {/* Bottom-right Corner Focus Bracket (Screenshot 3 style) */}
-                {isSelected && (
-                  <div className="absolute bottom-1 right-1 w-3 h-3 border-r-2 border-b-2 border-zinc-300 pointer-events-none" />
-                )}
-
-                {/* Left Input Port (Triggers and Notes have no left input port) */}
-                {step.type !== "note" && step.type !== "trigger" && (
+                {/* Interactive Curved Corner Resize Handle */}
+                {isSelected && !isLocked && cfg.resizable && (
                   <div
-                    className={cn(
-                      "absolute -left-2.5 top-12 -translate-y-1/2 w-5 h-5 rounded-full bg-[#18181b] border-2 transition-all cursor-pointer flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none",
-                      isTargetSnapped
-                        ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-2 ring-emerald-400/60"
-                        : "border-zinc-500 text-zinc-400 hover:border-white hover:text-white"
-                    )}
-                    title="Input port"
+                    onPointerDown={(e) =>
+                      handleResizePointerDown(e, step.id, cfg, nodeW, nodeH)
+                    }
+                    onPointerMove={handleCanvasPointerMove}
+                    onPointerUp={handleCanvasPointerUp}
+                    className="absolute -bottom-1 -right-1 w-7 h-7 flex items-end justify-end p-1.5 cursor-nwse-resize z-30 group/resize select-none"
+                    title="Drag to resize"
                   >
-                    T
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 15 15"
+                      fill="none"
+                      className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)] transition-transform group-hover/resize:scale-110"
+                    >
+                      <path
+                        d="M 2 13 C 7 13 13 7 13 2"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
                   </div>
                 )}
 
-                {/* Node Title & Status Header */}
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    {step.type === "trigger" && <Zap size={15} className="text-amber-400 fill-amber-400" />}
-                    {step.type === "llm" && <Sparkles size={15} className="text-purple-400" />}
-                    {(step.type === "agent" || step.type === "action") && (
-                      <Bot size={15} className="text-blue-400" />
+                {/* Left Input Ports (Triggers, Notes, Shapes, Sections, and Text labels have no left input ports) */}
+                {step.type !== "note" && step.type !== "shape" && step.type !== "trigger" && step.type !== "section" && step.type !== "text" && (
+                  <>
+                    {step.type === "llm" || step.type === "agent" || step.type === "action" ? (
+                      <>
+                        {/* 1. Text Input Port (T) */}
+                        {(() => {
+                          const incoming = getIncomingWire(step.id, "text");
+                          const isSnapped =
+                            (draggingWire?.fromDirection !== "input" &&
+                              isTargetSnapped &&
+                              (draggingWire?.snappedInputPort === "text" || !draggingWire?.snappedInputPort)) ||
+                            (draggingWire?.fromDirection === "input" &&
+                              draggingWire?.fromStepId === step.id &&
+                              (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort));
+                          const isInvalid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            draggingWire?.validationResult &&
+                            !draggingWire.validationResult.valid;
+                          const isValid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                          const isReverseDraggingThis =
+                            draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort);
+
+                          return (
+                            <div
+                              style={{ top: "48px" }}
+                              onPointerDown={(e) =>
+                                handleInputPortPointerDown(e, step.id, "text", pos.x, pos.y + 48)
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (incoming) {
+                                  setSelectedWire({
+                                    fromStepId: incoming.fromStep.id,
+                                    toStepId: step.id,
+                                    port: incoming.port,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                                isInvalid
+                                  ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                                  : isValid
+                                  ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : isReverseDraggingThis
+                                  ? "border-white bg-zinc-800 text-white scale-115"
+                                  : incoming
+                                  ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                  : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                              )}
+                              title={
+                                incoming
+                                  ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                  : "Text input (variables & prompt template). Drag to connect"
+                              }
+                            >
+                              T
+                              {isReverseDraggingThis && (
+                                <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                  Text
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* 2. Image Input Port (ImageIcon) */}
+                        {(() => {
+                          const incoming = getIncomingWire(step.id, "image");
+                          const isSnapped =
+                            (draggingWire?.fromDirection !== "input" &&
+                              isTargetSnapped &&
+                              draggingWire?.snappedInputPort === "image") ||
+                            (draggingWire?.fromDirection === "input" &&
+                              draggingWire?.fromStepId === step.id &&
+                              draggingWire?.targetInputPort === "image");
+                          const isInvalid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            draggingWire?.validationResult &&
+                            !draggingWire.validationResult.valid;
+                          const isValid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                          const isReverseDraggingThis =
+                            draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            draggingWire?.targetInputPort === "image";
+
+                          return (
+                            <div
+                              style={{ top: "82px" }}
+                              onPointerDown={(e) =>
+                                handleInputPortPointerDown(e, step.id, "image", pos.x, pos.y + 82)
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (incoming) {
+                                  setSelectedWire({
+                                    fromStepId: incoming.fromStep.id,
+                                    toStepId: step.id,
+                                    port: incoming.port,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
+                                isInvalid
+                                  ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                                  : isValid
+                                  ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : isReverseDraggingThis
+                                  ? "border-white bg-zinc-800 text-white scale-115"
+                                  : incoming
+                                  ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                  : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                              )}
+                              title={
+                                incoming
+                                  ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                  : "Image input (vision context). Drag to connect"
+                              }
+                            >
+                              <ImageIcon size={11} strokeWidth={2} />
+                              {isReverseDraggingThis && (
+                                <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                  Image
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* 3. File Input Port (FileText) */}
+                        {(() => {
+                          const incoming = getIncomingWire(step.id, "file");
+                          const isSnapped =
+                            (draggingWire?.fromDirection !== "input" &&
+                              isTargetSnapped &&
+                              draggingWire?.snappedInputPort === "file") ||
+                            (draggingWire?.fromDirection === "input" &&
+                              draggingWire?.fromStepId === step.id &&
+                              draggingWire?.targetInputPort === "file");
+                          const isInvalid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            draggingWire?.validationResult &&
+                            !draggingWire.validationResult.valid;
+                          const isValid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                          const isReverseDraggingThis =
+                            draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            draggingWire?.targetInputPort === "file";
+
+                          return (
+                            <div
+                              style={{ top: "116px" }}
+                              onPointerDown={(e) =>
+                                handleInputPortPointerDown(e, step.id, "file", pos.x, pos.y + 116)
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (incoming) {
+                                  setSelectedWire({
+                                    fromStepId: incoming.fromStep.id,
+                                    toStepId: step.id,
+                                    port: incoming.port,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
+                                isInvalid
+                                  ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                                  : isValid
+                                  ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : isReverseDraggingThis
+                                  ? "border-white bg-zinc-800 text-white scale-115"
+                                  : incoming
+                                  ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                  : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                              )}
+                              title={
+                                incoming
+                                  ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                  : "File input (document & code context). Drag to connect"
+                              }
+                            >
+                              <FileText size={11} strokeWidth={2} />
+                              {isReverseDraggingThis && (
+                                <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                  File
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      /* Single Input Port for Condition, Approval, End */
+                      (() => {
+                        const incoming = getIncomingWire(step.id, "text");
+                        const isSnapped =
+                          (draggingWire?.fromDirection !== "input" && isTargetSnapped) ||
+                          (draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort));
+                        const isInvalid =
+                          isSnapped &&
+                          draggingWire?.snappedTargetId &&
+                          draggingWire?.validationResult &&
+                          !draggingWire.validationResult.valid;
+                        const isValid =
+                          isSnapped &&
+                          draggingWire?.snappedTargetId &&
+                          (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                        const isReverseDraggingThis =
+                          draggingWire?.fromDirection === "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort);
+
+                        return (
+                          <div
+                            style={{ top: "48px" }}
+                            onPointerDown={(e) =>
+                              handleInputPortPointerDown(e, step.id, "text", pos.x, pos.y + 48)
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (incoming) {
+                                setSelectedWire({
+                                  fromStepId: incoming.fromStep.id,
+                                  toStepId: step.id,
+                                  port: incoming.port,
+                                });
+                              }
+                            }}
+                            className={cn(
+                              "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                              isInvalid
+                                ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                                : isValid
+                                ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                : isReverseDraggingThis
+                                ? "border-white bg-zinc-800 text-white scale-115"
+                                : incoming
+                                ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                            )}
+                            title={
+                              incoming
+                                ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                : step.type === "end"
+                                ? "Flow completion input. Drag to connect"
+                                : "Input data. Drag to connect"
+                            }
+                          >
+                            {step.type === "end" ? (
+                              <CheckCircle2 size={11} className="text-emerald-400" />
+                            ) : (
+                              "T"
+                            )}
+                            {isReverseDraggingThis && (
+                              <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                Text
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
                     )}
-                    {step.type === "condition" && <GitBranch size={15} className="text-amber-400" />}
-                    {step.type === "approval" && <ShieldAlert size={15} className="text-rose-400" />}
-                    {step.type === "note" && <StickyNote size={15} className="text-yellow-400" />}
-                    {step.type === "end" && <CheckCircle2 size={15} className="text-emerald-400" />}
+                  </>
+                )}
 
-                    <span className="font-semibold text-zinc-200 text-xs">
-                      {step.type === "trigger"
-                        ? "Trigger"
-                        : step.type === "llm"
-                        ? "LLM"
-                        : step.type === "agent" || step.type === "action"
-                        ? "Agent"
-                        : step.type === "condition"
-                        ? "Condition"
-                        : step.type === "approval"
-                        ? "Approval"
-                        : step.type === "note"
-                        ? "Note"
-                        : "End"}
-                    </span>
-                  </div>
+                {/* Node Title & Status Header for standard nodes */}
+                {step.type !== "trigger" && step.type !== "section" && step.type !== "text" && step.type !== "note" && step.type !== "shape" && (
+                  <div className="flex items-center justify-between text-xs cursor-grab active:cursor-grabbing select-none" data-drag-handle="true">
+                    <div className="flex items-center gap-2">
+                      {step.type === "llm" && <Sparkles size={15} className="text-purple-400" />}
+                      {(step.type === "agent" || step.type === "action") && (
+                        <Bot size={15} className="text-blue-400" />
+                      )}
+                      {step.type === "condition" && <GitBranch size={15} className="text-amber-400" />}
+                      {step.type === "approval" && <ShieldAlert size={15} className="text-rose-400" />}
+                      {step.type === "end" && <CheckCircle2 size={15} className="text-emerald-400" />}
 
-                  <div className="flex items-center gap-1.5">
-                    {isRunningThis ? (
-                      <span className="flex items-center gap-1 text-[11px] text-purple-400 font-medium">
-                        <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                        Running...
+                      <span className="font-semibold text-zinc-200 text-xs">
+                        {step.type === "llm"
+                          ? "LLM"
+                          : step.type === "agent" || step.type === "action"
+                          ? "Agent"
+                          : step.type === "condition"
+                          ? "Condition"
+                          : step.type === "approval"
+                          ? "Approval"
+                          : "End"}
                       </span>
-                    ) : isCompleted ? (
-                      <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                        <CheckCircle2 size={12} />
-                        Done
-                      </span>
-                    ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {isLocked && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleLock(step.id);
+                          }}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-medium hover:bg-amber-500/20 transition-colors"
+                          title="Click to unlock"
+                        >
+                          <Lock size={10} />
+                          <span>Unlock</span>
+                        </button>
+                      )}
+                      {step.type === "llm" && (
+                        <span className="text-[11px] font-mono text-zinc-500">{step.id}</span>
+                      )}
+                      {isRunningThis ? (
+                        <span className="flex items-center gap-1 text-[11px] text-purple-400 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                          Running...
+                        </span>
+                      ) : isCompleted ? (
+                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                          <CheckCircle2 size={12} />
+                          Done
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Trigger Node Form (Matches workflow WorkflowTriggerNode options) */}
                 {step.type === "trigger" && (
                   <div className="flex flex-col gap-3">
-                    {/* Trigger Type Selector Row */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveTriggerMenuStepId(activeTriggerMenuStepId === step.id ? null : step.id);
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900/90 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors shadow-sm disabled:opacity-50"
-                      >
-                        <div className="flex items-center gap-2">
-                          {step.trigger_type === "manual" ? (
-                            <MousePointerClick size={15} className="text-blue-400" />
-                          ) : step.trigger_type === "webhook" ? (
-                            <Webhook size={15} className="text-emerald-400" />
-                          ) : step.trigger_type === "message" ? (
-                            <MessageSquare size={15} className="text-purple-400" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                              <CalendarClock size={13} />
-                            </div>
-                          )}
-                          <span className="capitalize">{step.trigger_type || "Schedule"}</span>
-                        </div>
-                        <ChevronDown size={13} className="text-zinc-400" />
-                      </button>
+                    {/* Trigger Top Header Row with Trigger Type & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="relative flex-1">
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveTriggerMenuStepId(activeTriggerMenuStepId === step.id ? null : step.id);
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-2">
+                            {step.trigger_type === "manual" ? (
+                              <div className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                                <MousePointerClick size={13} />
+                              </div>
+                            ) : step.trigger_type === "webhook" ? (
+                              <div className="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                <Webhook size={13} />
+                              </div>
+                            ) : step.trigger_type === "message" ? (
+                              <div className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                                <MessageSquare size={13} />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                                <CalendarClock size={13} />
+                              </div>
+                            )}
+                            <span className="capitalize">{step.trigger_type || "Schedule"}</span>
+                          </div>
+                          <ChevronDown size={13} className="text-zinc-400" />
+                        </button>
 
-                      {/* Dropdown Menu for Trigger Type */}
-                      {activeTriggerMenuStepId === step.id && !isLocked && (
-                        <div className="absolute top-full left-0 mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900/98 shadow-2xl p-1.5 z-50 flex flex-col gap-0.5 backdrop-blur-md">
-                          {[
-                            { id: "schedule", label: "Schedule", icon: CalendarClock, color: "text-amber-400" },
-                            { id: "manual", label: "Manual", icon: MousePointerClick, color: "text-blue-400" },
-                            { id: "webhook", label: "Webhook", icon: Webhook, color: "text-emerald-400" },
-                            { id: "message", label: "Chat Message", icon: MessageSquare, color: "text-purple-400" },
-                          ].map((tItem) => {
-                            const TIcon = tItem.icon;
-                            return (
-                              <button
-                                key={tItem.id}
-                                type="button"
-                                onClick={() => {
-                                  handleUpdateStep(step.id, { trigger_type: tItem.id as "manual" | "schedule" | "webhook" | "message" });
-                                  setActiveTriggerMenuStepId(null);
-                                }}
-                                className={cn(
-                                  "w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors",
-                                  (step.trigger_type || "schedule") === tItem.id
-                                    ? "bg-zinc-800 text-white font-medium"
-                                    : "text-zinc-300 hover:bg-zinc-800/60"
-                                )}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <TIcon size={14} className={tItem.color} />
-                                  <span>{tItem.label}</span>
-                                </div>
-                                {(step.trigger_type || "schedule") === tItem.id && (
-                                  <Check size={12} className="text-accent" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                        {/* Dropdown Menu for Trigger Type */}
+                        {activeTriggerMenuStepId === step.id && !isLocked && (
+                          <div className="popover-dropdown absolute top-full left-0 mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900/98 shadow-2xl p-1.5 z-50 flex flex-col gap-0.5 backdrop-blur-md">
+                            {[
+                              { id: "schedule", label: "Schedule", icon: CalendarClock, color: "text-amber-400" },
+                              { id: "manual", label: "Manual", icon: MousePointerClick, color: "text-blue-400" },
+                              { id: "webhook", label: "Webhook", icon: Webhook, color: "text-emerald-400" },
+                              { id: "message", label: "Chat Message", icon: MessageSquare, color: "text-purple-400" },
+                            ].map((tItem) => {
+                              const TIcon = tItem.icon;
+                              return (
+                                <button
+                                  key={tItem.id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateStep(step.id, { trigger_type: tItem.id as "manual" | "schedule" | "webhook" | "message" });
+                                    setActiveTriggerMenuStepId(null);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors",
+                                    (step.trigger_type || "schedule") === tItem.id
+                                      ? "bg-zinc-800 text-white font-medium"
+                                      : "text-zinc-300 hover:bg-zinc-800/60"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <TIcon size={14} className={tItem.color} />
+                                    <span>{tItem.label}</span>
+                                  </div>
+                                  {(step.trigger_type || "schedule") === tItem.id && (
+                                    <Check size={12} className="text-accent" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isLocked && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleLock(step.id);
+                            }}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-medium hover:bg-amber-500/20 transition-colors"
+                            title="Click to unlock"
+                          >
+                            <Lock size={10} />
+                            <span>Unlock</span>
+                          </button>
+                        )}
+                        {isRunningThis ? (
+                          <span className="flex items-center gap-1 text-[11px] text-purple-400 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                            Running...
+                          </span>
+                        ) : isCompleted ? (
+                          <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                            <CheckCircle2 size={12} />
+                            Done
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     {/* Schedule Configuration (Matching workflow RoutineSchedulePicker Sentence Chips) */}
@@ -1543,7 +3940,7 @@ export function WorkflowCanvas({
                               <ChevronDown size={11} className="text-zinc-400" />
                             </button>
                             {activeChipMenu?.stepId === step.id && activeChipMenu?.type === "kind" && !isLocked && (
-                              <div className="absolute top-full left-0 mt-1 w-28 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
+                              <div className="popover-dropdown absolute top-full left-0 mt-1 w-28 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
                                 {["daily", "hourly", "weekly", "monthly", "cron"].map((k) => (
                                   <button
                                     key={k}
@@ -1589,7 +3986,7 @@ export function WorkflowCanvas({
                                   <ChevronDown size={11} className="text-zinc-400" />
                                 </button>
                                 {activeChipMenu?.stepId === step.id && activeChipMenu?.type === "days" && !isLocked && (
-                                  <div className="absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
+                                  <div className="popover-dropdown absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
                                     {[
                                       { id: "every_day", label: "Every day" },
                                       { id: "weekdays", label: "Weekdays" },
@@ -1727,7 +4124,7 @@ export function WorkflowCanvas({
                                   <ChevronDown size={11} className="text-zinc-400" />
                                 </button>
                                 {activeChipMenu?.stepId === step.id && activeChipMenu?.type === "days" && !isLocked && (
-                                  <div className="absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
+                                  <div className="popover-dropdown absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
                                     {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((wDay) => (
                                       <button
                                         key={wDay}
@@ -1958,201 +4355,193 @@ export function WorkflowCanvas({
 
                 {/* LLM & Agent Form */}
                 {(step.type === "llm" || step.type === "agent" || step.type === "action") && (
-                  <div className="flex flex-col gap-3">
-                    <textarea
-                      rows={3}
-                      value={step.prompt || ""}
-                      placeholder={step.type === "llm" ? "Type your prompt here" : "Tell the agent what to do"}
-                      onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
-                      className="w-full bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none resize-none font-sans leading-relaxed"
-                    />
+                  <div className="flex-1 min-h-0 flex flex-col justify-between gap-3">
+                    <div className="flex-1 min-h-0 flex flex-col gap-3">
+                      <textarea
+                        value={step.prompt || ""}
+                        placeholder={step.type === "llm" ? "Type your prompt here" : "Tell the agent what to do"}
+                        onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
+                        className="w-full flex-1 min-h-[70px] bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none resize-none font-sans leading-relaxed"
+                      />
 
-                    {/* Bottom Controls Row */}
-                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/80 text-xs">
-                      {step.type === "llm" ? (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActiveModelMenuStepId(
-                                activeModelMenuStepId === step.id ? null : step.id
-                              )
-                            }
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
-                          >
-                            <span className="truncate max-w-[140px]">
-                              {availableModels.find((m) => m.id === step.model)?.label ||
-                                step.model ||
-                                "Gemini 2.0 Flash"}
-                            </span>
-                            <ChevronDown size={12} className="text-zinc-400" />
-                          </button>
-
-                          {activeModelMenuStepId === step.id && (
-                            <div className="absolute bottom-full left-0 mb-1 w-60 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 max-h-48 overflow-y-auto">
-                              {availableModels.map((m) => (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => {
-                                    handleUpdateStep(step.id, { model: m.id });
-                                    setActiveModelMenuStepId(null);
-                                  }}
-                                  className={cn(
-                                    "w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between",
-                                    step.model === m.id
-                                      ? "bg-zinc-800 text-white font-medium"
-                                      : "text-zinc-300 hover:bg-zinc-800/60"
-                                  )}
-                                >
+                      {/* Bottom Controls Row */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/80 text-xs shrink-0">
+                        {step.type === "llm" ? (
+                          <Select
+                            value={step.model || availableModels[0]?.id || "gemini-2.0-flash"}
+                            onChange={(e) => handleUpdateStep(step.id, { model: e.target.value })}
+                            containerClassName="w-auto max-w-[200px]"
+                            triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200"
+                            menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50 max-h-56"
+                            options={availableModels.map((m) => ({
+                              value: m.id,
+                              label: (
+                                <div className="flex items-center justify-between gap-3 w-full">
                                   <span className="truncate">{m.label}</span>
-                                  <span className="text-[10px] text-zinc-500">{m.provider}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={step.agent_id || agents[0]?.id || 1}
-                            onChange={(e) => handleUpdateStep(step.id, { agent_id: Number(e.target.value) })}
-                            className="bg-zinc-800/90 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-                          >
-                            {agents.map((ag) => (
-                              <option key={ag.id} value={ag.id}>
-                                {ag.name}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="text-[11px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800">
-                            Gemini 2.0 Flash
-                          </span>
-                        </div>
-                      )}
-
-                      {step.type === "llm" && (
-                        <select
-                          value={step.effort || "medium"}
-                          onChange={(e) => handleUpdateStep(step.id, { effort: e.target.value })}
-                          className="bg-zinc-800/90 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-300 focus:outline-none capitalize"
-                        >
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                        </select>
-                      )}
-                    </div>
-
-                    {/* Optional System Prompt Expander (Screenshot 3 exact clone) */}
-                    {step.type === "llm" && (
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setExpandedSystemPromptStepIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(step.id)) next.delete(step.id);
-                              else next.add(step.id);
-                              return next;
-                            });
-                          }}
-                          className="text-left text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
-                        >
-                          <ChevronRight
-                            size={11}
-                            className={cn(
-                              "transition-transform",
-                              expandedSystemPromptStepIds.has(step.id) ? "rotate-90" : ""
-                            )}
+                                  <span className="text-[10px] text-zinc-500 shrink-0">{m.provider}</span>
+                                </div>
+                              ),
+                            }))}
                           />
-                          <span>System prompt (optional)</span>
-                        </button>
-                        {expandedSystemPromptStepIds.has(step.id) && (
-                          <textarea
-                            rows={2}
-                            value={step.system_prompt || ""}
-                            placeholder="Enter custom persona or system instructions..."
-                            onChange={(e) => handleUpdateStep(step.id, { system_prompt: e.target.value })}
-                            className="w-full bg-zinc-950/80 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none resize-none font-sans"
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* Agent Select */}
+                            <Select
+                              value={String(step.agent_id || agents[0]?.id || 1)}
+                              onChange={(e) => handleUpdateStep(step.id, { agent_id: Number(e.target.value) })}
+                              containerClassName="w-auto max-w-[150px]"
+                              triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200"
+                              menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50 max-h-56"
+                              leadingIcon={<span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />}
+                              options={agents.map((ag) => ({
+                                value: String(ag.id),
+                                label: (
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                    <span className="truncate">{ag.name}</span>
+                                  </div>
+                                ),
+                              }))}
+                            />
+
+                            {/* Agent Model Select */}
+                            <Select
+                              value={step.model || availableModels[0]?.id || "gemini-2.0-flash"}
+                              onChange={(e) => handleUpdateStep(step.id, { model: e.target.value })}
+                              containerClassName="w-auto max-w-[160px]"
+                              triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-300"
+                              menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50 max-h-56"
+                              leadingIcon={<Sparkles size={11} className="text-blue-400 shrink-0" />}
+                              options={availableModels.map((m) => ({
+                                value: m.id,
+                                label: (
+                                  <div className="flex items-center justify-between gap-3 w-full">
+                                    <span className="truncate">{m.label}</span>
+                                    <span className="text-[10px] text-zinc-500 shrink-0">{m.provider}</span>
+                                  </div>
+                                ),
+                              }))}
+                            />
+                          </div>
+                        )}
+
+                        {step.type === "llm" && (
+                          <Select
+                            value={step.effort || "medium"}
+                            onChange={(e) => handleUpdateStep(step.id, { effort: e.target.value })}
+                            containerClassName="w-auto min-w-[105px]"
+                            triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200 capitalize"
+                            menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50"
+                            leadingIcon={
+                              <div className="flex items-end gap-0.5 h-3">
+                                <span className={cn("w-0.5 rounded-full bg-zinc-300", step.effort === "high" || step.effort === "medium" || !step.effort ? "h-2" : "h-1.5")} />
+                                <span className={cn("w-0.5 rounded-full", step.effort === "high" || step.effort === "medium" || !step.effort ? "h-2.5 bg-zinc-300" : "h-1 bg-zinc-600")} />
+                                <span className={cn("w-0.5 rounded-full", step.effort === "high" ? "h-3 bg-zinc-300" : "h-1 bg-zinc-600")} />
+                              </div>
+                            }
+                            options={[
+                              { value: "low", label: "Low" },
+                              { value: "medium", label: "Medium" },
+                              { value: "high", label: "High" },
+                            ]}
                           />
                         )}
                       </div>
-                    )}
 
-                    {/* Inline Full-width "Run step" Button */}
-                    <button
-                      type="button"
-                      disabled={isRunningThis}
-                      onClick={() => handleRunStep(step.id)}
-                      className="w-full py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm active:scale-98 disabled:opacity-50"
-                    >
-                      {isRunningThis ? (
-                        <span className="w-3 h-3 border-2 border-zinc-300 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Play size={11} className="fill-zinc-300" />
-                      )}
-                      <span>Run step</span>
-                    </button>
-
-                    {/* Step Output Box */}
-                    {outputText && (
-                      <div className="rounded-xl bg-zinc-950 border border-zinc-800/90 p-2.5 flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
+                      {/* Optional System Prompt Expander */}
+                      {step.type === "llm" && (
+                        <div className="flex flex-col gap-1.5 shrink-0">
                           <button
                             type="button"
                             onClick={() => {
-                              setExpandedOutputStepIds((prev) => {
+                              setExpandedSystemPromptStepIds((prev) => {
                                 const next = new Set(prev);
                                 if (next.has(step.id)) next.delete(step.id);
                                 else next.add(step.id);
                                 return next;
                               });
                             }}
-                            className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
+                            className="text-left text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
                           >
-                            <CheckCircle2 size={12} />
-                            <span>Step Output</span>
-                            <span className="text-zinc-500 text-[10px] ml-1">
-                              ({isOutputExpanded ? "Collapse" : "Expand"})
-                            </span>
+                            <ChevronRight
+                              size={11}
+                              className={cn(
+                                "transition-transform",
+                                expandedSystemPromptStepIds.has(step.id) ? "rotate-90" : ""
+                              )}
+                            />
+                            <span>System prompt (optional)</span>
                           </button>
-
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(outputText);
-                                setCopiedStepId(step.id);
-                                setTimeout(() => setCopiedStepId(null), 2000);
-                              } catch {
-                                // fallback
-                              }
-                            }}
-                            className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
-                            title="Copy output to clipboard"
-                          >
-                            {copiedStepId === step.id ? (
-                              <>
-                                <Check size={11} className="text-emerald-400" />
-                                <span className="text-emerald-400">Copied!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={11} />
-                                <span>Copy</span>
-                              </>
-                            )}
-                          </button>
+                          {expandedSystemPromptStepIds.has(step.id) && (
+                            <textarea
+                              rows={2}
+                              value={step.system_prompt || ""}
+                              placeholder="Enter custom persona or system instructions..."
+                              onChange={(e) => handleUpdateStep(step.id, { system_prompt: e.target.value })}
+                              className="w-full bg-zinc-950/80 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none resize-none font-sans"
+                            />
+                          )}
                         </div>
+                      )}
 
-                        {isOutputExpanded && (
-                          <div className="text-xs text-zinc-300 bg-zinc-900/90 rounded-lg p-2.5 whitespace-pre-wrap font-sans max-h-48 overflow-y-auto leading-relaxed border border-zinc-800">
+                      {/* Benchmark-matching Result Box */}
+                      {outputText && (
+                        <div className="rounded-xl bg-zinc-950/90 border border-zinc-800/90 p-2.5 flex flex-col gap-1.5 shrink-0 shadow-inner">
+                          <div className="flex items-center justify-between text-[11px] font-medium text-zinc-300">
+                            <span className="flex items-center gap-1.5 font-semibold text-zinc-200">
+                              <CheckCircle2 size={12} className="text-emerald-400" />
+                              <span>Result</span>
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(outputText);
+                                  setCopiedStepId(step.id);
+                                  setTimeout(() => setCopiedStepId(null), 2000);
+                                } catch {
+                                  // fallback
+                                }
+                              }}
+                              className="text-zinc-400 hover:text-white flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors"
+                              title="Copy result to clipboard"
+                            >
+                              {copiedStepId === step.id ? (
+                                <>
+                                  <Check size={11} className="text-emerald-400" />
+                                  <span className="text-emerald-400">Copied!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={11} />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="text-xs text-zinc-300 bg-zinc-900/80 rounded-lg p-2.5 whitespace-pre-wrap font-sans max-h-44 overflow-y-auto leading-relaxed border border-zinc-800">
                             {outputText}
                           </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Inline Full-width "Run" Button */}
+                    <button
+                      type="button"
+                      disabled={isRunningThis}
+                      onClick={() => handleRunStep(step.id)}
+                      className="w-full py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-98 disabled:opacity-50 shrink-0"
+                    >
+                      {isRunningThis ? (
+                        <span className="w-3 h-3 border-2 border-zinc-300 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Play size={11} className="fill-zinc-300" />
+                      )}
+                      <span>Run</span>
+                    </button>
                   </div>
                 )}
 
@@ -2166,23 +4555,27 @@ export function WorkflowCanvas({
                       onChange={(e) => handleUpdateStep(step.id, { target: e.target.value })}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono"
                     />
-                    <div className="flex gap-2">
-                      <select
+                    <div className="flex items-center gap-2">
+                      <Select
                         value={step.operator || "contains"}
                         onChange={(e) =>
                           handleUpdateStep(step.id, {
                             operator: e.target.value as WorkflowStep["operator"],
                           })
                         }
-                        className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-200"
-                      >
-                        <option value="contains">contains</option>
-                        <option value="equals">equals</option>
-                        <option value="not_equals">not equals</option>
-                        <option value="matches_regex">matches regex</option>
-                        <option value="is_empty">is empty</option>
-                        <option value="is_not_empty">is not empty</option>
-                      </select>
+                        containerClassName="w-auto min-w-[130px]"
+                        triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200"
+                        menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50"
+                        options={[
+                          { value: "contains", label: "contains" },
+                          { value: "equals", label: "equals" },
+                          { value: "not_equals", label: "not equals" },
+                          { value: "matches_regex", label: "matches regex" },
+                          { value: "is_empty", label: "is empty" },
+                          { value: "is_not_empty", label: "is not empty" },
+                        ]}
+                      />
+
                       <input
                         type="text"
                         value={step.value || ""}
@@ -2233,28 +4626,143 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Sticky Note Form */}
+                {/* Note Node Body (Pastel Paper matching reference design) */}
                 {step.type === "note" && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-white/10">
-                      <span className="font-semibold text-xs opacity-75 flex items-center gap-1.5">
-                        <StickyNote size={13} />
-                        <span>Sticky Note</span>
-                      </span>
+                  <div className="relative w-full h-full flex flex-col rounded-2xl overflow-hidden">
+                    <textarea
+                      value={
+                        step.text !== undefined && step.text !== null
+                          ? step.text
+                          : step.prompt && step.prompt !== "Workflow notes and documentation..."
+                          ? step.prompt
+                          : ""
+                      }
+                      onChange={(e) =>
+                        handleUpdateStep(step.id, { text: e.target.value, prompt: e.target.value })
+                      }
+                      onFocus={() => {
+                        setSelectedNodeId(step.id);
+                        setSelectedWire(null);
+                      }}
+                      placeholder="Write a note"
+                      style={{
+                        color: step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12",
+                        fontSize: step.size ? `${step.size}px` : "18px",
+                        fontFamily:
+                          step.font === "mono"
+                            ? "ui-monospace, monospace"
+                            : step.font === "serif"
+                            ? "Georgia, serif"
+                            : "inherit",
+                        textAlign: (step.align as "left" | "center" | "right" | "justify") || "left",
+                        fontWeight: step.bold ? "bold" : "normal",
+                      }}
+                      className="w-full h-full bg-transparent border-none outline-none resize-none p-4 placeholder-black/35 font-sans leading-relaxed select-text"
+                    />
+                  </div>
+                )}
+
+                {/* Shape Node Body */}
+                {step.type === "shape" && (
+                  <div className="relative w-full h-full flex items-center justify-center p-3 select-none">
+                    <ShapeSurfaceSvg
+                      shape={step.shape || "rectangle"}
+                      color={step.color || "#ffffff"}
+                      width={nodeW}
+                      height={nodeH || 128}
+                    />
+                    <textarea
+                      value={step.text || ""}
+                      onChange={(e) => handleUpdateStep(step.id, { text: e.target.value })}
+                      placeholder="Add text..."
+                      className="relative z-10 w-full h-full bg-transparent border-none outline-none resize-none flex items-center justify-center text-center font-medium text-white placeholder-zinc-500 leading-normal p-2 select-text"
+                    />
+                  </div>
+                )}
+
+                {/* End Step Form */}
+                {step.type === "end" && (
+                  <div className="flex flex-col gap-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px]">Completion status</span>
+                      <Select
+                        value={step.status || "completed"}
+                        onChange={(e) =>
+                          handleUpdateStep(step.id, {
+                            status: e.target.value as "completed" | "failed",
+                          })
+                        }
+                        containerClassName="w-auto min-w-[125px]"
+                        triggerClassName="h-7 !py-1 !px-2.5 text-xs rounded-lg bg-zinc-800/90 border-zinc-700/80 hover:bg-zinc-700 text-zinc-200 capitalize"
+                        menuClassName="bg-zinc-900 border-zinc-700 text-zinc-200 z-50"
+                        leadingIcon={
+                          <span
+                            className={cn(
+                              "w-2 h-2 rounded-full",
+                              step.status === "failed" ? "bg-rose-400" : "bg-emerald-400"
+                            )}
+                          />
+                        }
+                        options={[
+                          {
+                            value: "completed",
+                            label: (
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                <span>Completed</span>
+                              </div>
+                            ),
+                          },
+                          {
+                            value: "failed",
+                            label: (
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                <span>Failed</span>
+                              </div>
+                            ),
+                          },
+                        ]}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={step.message || ""}
+                      placeholder="Workflow completion message..."
+                      onChange={(e) => handleUpdateStep(step.id, { message: e.target.value })}
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {/* Section Group Frame Form */}
+                {step.type === "section" && (
+                  <div className="flex-1 min-h-0 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-2 border-b border-zinc-800/60 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Layers size={13} className="text-zinc-400" />
+                        <input
+                          type="text"
+                          value={step.name || ""}
+                          placeholder="Section Title..."
+                          onChange={(e) => handleUpdateStep(step.id, { name: e.target.value })}
+                          className="bg-transparent border-none text-xs font-semibold text-zinc-100 placeholder-zinc-500 focus:outline-none"
+                        />
+                      </div>
                       <div className="flex items-center gap-1.5">
-                        {(["amber", "neutral", "emerald", "rose", "blue"] as const).map((c) => (
+                        {(["zinc", "amber", "emerald", "blue", "purple"] as const).map((c) => (
                           <button
                             key={c}
                             type="button"
                             onClick={() => handleUpdateStep(step.id, { color: c })}
                             className={cn(
                               "w-3 h-3 rounded-full transition-transform hover:scale-125",
+                              c === "zinc" && "bg-zinc-400",
                               c === "amber" && "bg-amber-400",
-                              c === "neutral" && "bg-zinc-200",
                               c === "emerald" && "bg-emerald-400",
-                              c === "rose" && "bg-rose-400",
                               c === "blue" && "bg-blue-400",
-                              (step.color || "amber") === c ? "ring-2 ring-white scale-110" : "opacity-40"
+                              c === "purple" && "bg-purple-400",
+                              (step.color || "zinc") === c ? "ring-2 ring-white scale-110" : "opacity-40"
                             )}
                             title={`Color ${c}`}
                           />
@@ -2262,11 +4770,102 @@ export function WorkflowCanvas({
                       </div>
                     </div>
                     <textarea
-                      rows={4}
                       value={step.prompt || ""}
-                      placeholder="Type thoughts, instructions or documentation..."
+                      placeholder="Optional section description or pipeline note..."
                       onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
-                      className="w-full bg-transparent border-none text-xs leading-relaxed focus:outline-none resize-none font-sans"
+                      className="mt-2 flex-1 w-full bg-transparent border-none text-[11px] text-zinc-400 leading-relaxed focus:outline-none resize-none font-sans"
+                    />
+                  </div>
+                )}
+
+                {/* Text Label Form */}
+                {step.type === "text" && (
+                  <div className="flex flex-col gap-1 w-full h-full">
+                    {isSelected && (
+                      <div className="flex items-center justify-between pb-1 border-b border-zinc-800/60 text-[10px] text-zinc-400">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "small" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-mono",
+                              (step.font_size || "medium") === "small" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            S
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "medium" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-mono",
+                              (step.font_size || "medium") === "medium" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            M
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "large" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-mono",
+                              step.font_size === "large" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            L
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStep(step.id, { font_size: "h1" })}
+                            className={cn(
+                              "px-1.5 py-0.5 rounded font-bold font-mono",
+                              step.font_size === "h1" ? "bg-zinc-700 text-white" : "hover:text-zinc-200"
+                            )}
+                          >
+                            H1
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {(["zinc", "amber", "emerald", "blue", "rose"] as const).map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => handleUpdateStep(step.id, { color: c })}
+                              className={cn(
+                                "w-2.5 h-2.5 rounded-full transition-transform hover:scale-125",
+                                c === "zinc" && "bg-zinc-300",
+                                c === "amber" && "bg-amber-400",
+                                c === "emerald" && "bg-emerald-400",
+                                c === "blue" && "bg-blue-400",
+                                c === "rose" && "bg-rose-400",
+                                (step.color || "zinc") === c ? "ring-1 ring-white scale-125" : "opacity-40"
+                              )}
+                              title={`Color ${c}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <textarea
+                      value={step.text ?? step.prompt ?? ""}
+                      placeholder="Type text annotation..."
+                      onChange={(e) => handleUpdateStep(step.id, { text: e.target.value, prompt: e.target.value })}
+                      className={cn(
+                        "w-full bg-transparent border-none focus:outline-none resize-none font-sans leading-normal",
+                        step.font_size === "small" && "text-xs",
+                        (!step.font_size || step.font_size === "medium") && "text-sm",
+                        step.font_size === "large" && "text-lg font-semibold",
+                        step.font_size === "h1" && "text-2xl font-bold tracking-tight",
+                        step.color === "amber"
+                          ? "text-amber-300"
+                          : step.color === "emerald"
+                          ? "text-emerald-300"
+                          : step.color === "blue"
+                          ? "text-blue-300"
+                          : step.color === "rose"
+                          ? "text-rose-300"
+                          : "text-zinc-100"
+                      )}
                     />
                   </div>
                 )}
@@ -2274,112 +4873,743 @@ export function WorkflowCanvas({
                 {/* Right Output Ports */}
                 {step.type === "condition" ? (
                   <>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "true", pos.x + 360, pos.y + 38)
-                      }
-                      className="absolute -right-2.5 top-9 w-5 h-5 rounded-full bg-emerald-950 border-2 border-emerald-400 hover:bg-emerald-300 cursor-crosshair flex items-center justify-center z-20"
-                      title="True branch port"
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    </div>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "false", pos.x + 360, pos.y + 66)
-                      }
-                      className="absolute -right-2.5 top-16 w-5 h-5 rounded-full bg-amber-950 border-2 border-amber-400 hover:bg-amber-300 cursor-crosshair flex items-center justify-center z-20"
-                      title="False branch port"
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    </div>
+                    {(() => {
+                      const isTrueActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "true") ||
+                        (draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "true");
+                      const isTrueInvalid =
+                        isTrueActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isTrueValid =
+                        isTrueActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "true", pos.x + nodeW, pos.y + 46)
+                          }
+                          style={{ top: "46px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isTrueInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isTrueValid
+                              ? "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
+                              : isTrueActive
+                              ? "border-white bg-emerald-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="True branch port"
+                        >
+                          <Check size={11} strokeWidth={2.5} />
+                          {isTrueActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isTrueInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              True
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {(() => {
+                      const isFalseActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "false") ||
+                        (draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "false");
+                      const isFalseInvalid =
+                        isFalseActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isFalseValid =
+                        isFalseActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "false", pos.x + nodeW, pos.y + 74)
+                          }
+                          style={{ top: "74px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-amber-950 border border-amber-500/90 text-amber-300 hover:bg-amber-900 hover:scale-115 hover:border-amber-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isFalseInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isFalseValid
+                              ? "scale-125 ring-4 ring-amber-500/40 shadow-lg border-amber-300"
+                              : isFalseActive
+                              ? "border-white bg-amber-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="False branch port"
+                        >
+                          <X size={11} strokeWidth={2.5} />
+                          {isFalseActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isFalseInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              False
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : step.type === "approval" ? (
                   <>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "approve", pos.x + 360, pos.y + 38)
-                      }
-                      className="absolute -right-2.5 top-9 w-5 h-5 rounded-full bg-emerald-950 border-2 border-emerald-400 hover:bg-emerald-300 cursor-crosshair flex items-center justify-center z-20"
-                      title="Approve branch port"
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    </div>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "reject", pos.x + 360, pos.y + 66)
-                      }
-                      className="absolute -right-2.5 top-16 w-5 h-5 rounded-full bg-rose-950 border-2 border-rose-400 hover:bg-rose-300 cursor-crosshair flex items-center justify-center z-20"
-                      title="Reject branch port"
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                    </div>
+                    {(() => {
+                      const isApproveActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "approve") ||
+                        (draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "approve");
+                      const isApproveInvalid =
+                        isApproveActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isApproveValid =
+                        isApproveActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "approve", pos.x + nodeW, pos.y + 46)
+                          }
+                          style={{ top: "46px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isApproveInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isApproveValid
+                              ? "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
+                              : isApproveActive
+                              ? "border-white bg-emerald-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="Approve branch port"
+                        >
+                          <Check size={11} strokeWidth={2.5} />
+                          {isApproveActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isApproveInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              Approve
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {(() => {
+                      const isRejectActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "reject") ||
+                        (draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "reject");
+                      const isRejectInvalid =
+                        isRejectActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isRejectValid =
+                        isRejectActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "reject", pos.x + nodeW, pos.y + 74)
+                          }
+                          style={{ top: "74px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-rose-950 border border-rose-500/90 text-rose-300 hover:bg-rose-900 hover:scale-115 hover:border-rose-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isRejectInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isRejectValid
+                              ? "scale-125 ring-4 ring-rose-500/40 shadow-lg border-rose-300"
+                              : isRejectActive
+                              ? "border-white bg-rose-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="Reject branch port"
+                        >
+                          <X size={11} strokeWidth={2.5} />
+                          {isRejectActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isRejectInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              Reject
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
-                ) : step.type !== "end" && step.type !== "note" ? (
-                  <div
-                    onPointerDown={(e) =>
-                      handlePortPointerDown(
-                        e,
-                        step.id,
-                        "out",
-                        pos.x + (step.type === "trigger" ? 320 : 360),
-                        pos.y + (step.type === "trigger" ? getTriggerPortOffsetY(step) : 48)
-                      )
-                    }
-                    style={{
-                      top: step.type === "trigger" ? `${getTriggerPortOffsetY(step)}px` : "48px",
-                    }}
-                    className="absolute -right-2.5 -translate-y-1/2 w-5 h-5 rounded-full bg-[#18181b] border-2 border-zinc-500 text-zinc-400 hover:border-white hover:text-white transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none"
-                    title="Drag to connect"
-                  >
-                    T
-                  </div>
+                ) : step.type !== "end" && step.type !== "note" && step.type !== "shape" && step.type !== "section" && step.type !== "text" ? (
+                  (() => {
+                    const isOutActive =
+                      (draggingWire?.fromDirection !== "input" &&
+                        draggingWire?.fromStepId === step.id &&
+                        draggingWire?.fromPort === "out") ||
+                      (draggingWire?.fromDirection === "input" &&
+                        draggingWire?.snappedTargetId === step.id &&
+                        draggingWire?.snappedOutputPort === "out");
+                    const isOutInvalid =
+                      isOutActive &&
+                      draggingWire?.snappedTargetId &&
+                      draggingWire?.validationResult &&
+                      !draggingWire.validationResult.valid;
+                    const isOutValid =
+                      isOutActive &&
+                      draggingWire?.snappedTargetId &&
+                      (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                    return (
+                      <div
+                        onPointerDown={(e) =>
+                          handlePortPointerDown(
+                            e,
+                            step.id,
+                            "out",
+                            pos.x + nodeW,
+                            pos.y + (step.type === "trigger" ? getTriggerPortOffsetY(step) : 48)
+                          )
+                        }
+                        style={{
+                          top: `${step.type === "trigger" ? getTriggerPortOffsetY(step) : 48}px`,
+                        }}
+                        className={cn(
+                          "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                          isOutInvalid
+                            ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                            : isOutValid
+                            ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                            : isOutActive
+                            ? "border-white bg-zinc-800 text-white scale-115"
+                            : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                        )}
+                        title={step.type === "trigger" ? "Trigger output (drag to connect)" : "Output text (drag to connect)"}
+                      >
+                        T
+                        {isOutActive && (
+                          <div
+                            className={cn(
+                              "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                              isOutInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                            )}
+                          >
+                            Text
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : null}
               </div>
             );
           })}
         </div>
 
-        {/* Bottom Floating Dock Toolbar */}
-        <div className="ui-dock fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-3 py-2 rounded-2xl z-40">
-          <div className="flex items-center gap-1 pr-2 border-r border-zinc-800 text-xs">
-            <button
-              type="button"
-              onClick={() => handleZoom(-0.1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Zoom out"
-            >
-              <ZoomOut size={15} />
-            </button>
-            <span className="w-12 text-center font-mono font-medium text-zinc-300">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => handleZoom(0.1)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Zoom in"
-            >
-              <ZoomIn size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={handleFitToScreen}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-              title="Fit all nodes to view"
-            >
-              <Maximize2 size={15} />
-            </button>
-          </div>
+        {/* Interactive Canvas Minimap Panel */}
+        {showMinimap && (
+          <div
+            className="fixed bottom-20 left-6 w-64 bg-[#14151a]/95 border border-zinc-700/80 rounded-2xl shadow-2xl backdrop-blur-xl p-3 z-40 flex flex-col gap-2 select-none animate-in fade-in zoom-in-95 duration-150"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between text-xs font-semibold text-zinc-300">
+              <span className="flex items-center gap-1.5">
+                <Map size={13} className="text-zinc-400" />
+                <span>Canvas Minimap</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMinimap(false)}
+                className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors"
+                title="Close minimap"
+              >
+                <X size={13} />
+              </button>
+            </div>
 
-          <div className="flex items-center gap-1 pr-2 border-r border-zinc-800">
+            {/* Minimap Viewport */}
+            {(() => {
+              const miniW = 232;
+              const miniH = 120;
+              const clientW = containerRef.current?.clientWidth || 1000;
+              const clientH = containerRef.current?.clientHeight || 700;
+
+              let minX = 0;
+              let minY = 0;
+              let maxX = 1800;
+              let maxY = 1200;
+
+              effectiveSteps.forEach((s) => {
+                const pos = nodePositions[s.id] || { x: 420, y: 140 };
+                const sz = getNodeSize(s);
+                minX = Math.min(minX, pos.x - 100);
+                minY = Math.min(minY, pos.y - 100);
+                maxX = Math.max(maxX, pos.x + sz.width + 100);
+                maxY = Math.max(maxY, pos.y + (sz.height || 200) + 100);
+              });
+
+              const worldW = Math.max(1200, maxX - minX);
+              const worldH = Math.max(800, maxY - minY);
+              const scale = Math.min(miniW / worldW, miniH / worldH);
+
+              const vpX = -pan.x / zoom;
+              const vpY = -pan.y / zoom;
+              const vpW = clientW / zoom;
+              const vpH = clientH / zoom;
+
+              const handleMinimapClick = (e: React.MouseEvent<SVGSVGElement>) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                const targetWorldX = minX + clickX / scale;
+                const targetWorldY = minY + clickY / scale;
+                setPan({
+                  x: Math.round(clientW / 2 - targetWorldX * zoom),
+                  y: Math.round(clientH / 2 - targetWorldY * zoom),
+                });
+              };
+
+              return (
+                <div className="relative rounded-xl overflow-hidden bg-zinc-950/90 border border-zinc-800/80 cursor-crosshair">
+                  <svg
+                    width={miniW}
+                    height={miniH}
+                    className="w-full h-full block"
+                    onClick={handleMinimapClick}
+                  >
+                    {/* Miniature nodes */}
+                    {effectiveSteps.map((s) => {
+                      const pos = nodePositions[s.id] || { x: 420, y: 140 };
+                      const sz = getNodeSize(s);
+                      const nx = (pos.x - minX) * scale;
+                      const ny = (pos.y - minY) * scale;
+                      const nw = Math.max(4, sz.width * scale);
+                      const nh = Math.max(3, (sz.height || 180) * scale);
+                      const fill =
+                        s.type === "trigger"
+                          ? "#f59e0b"
+                          : s.type === "llm"
+                          ? "#a855f7"
+                          : s.type === "agent" || s.type === "action"
+                          ? "#3b82f6"
+                          : s.type === "condition"
+                          ? "#eab308"
+                          : s.type === "approval"
+                          ? "#f43f5e"
+                          : s.type === "note"
+                          ? s.color === "neutral"
+                            ? "#e4e4e7"
+                            : "#f97316"
+                          : s.type === "section"
+                          ? "#3f3f46"
+                          : "#10b981";
+
+                      return (
+                        <rect
+                          key={s.id}
+                          x={nx}
+                          y={ny}
+                          width={nw}
+                          height={nh}
+                          rx={1.5}
+                          fill={fill}
+                          opacity={s.type === "section" ? 0.35 : 0.85}
+                          stroke={s.id === selectedNodeId ? "#ffffff" : "none"}
+                          strokeWidth={s.id === selectedNodeId ? 1.5 : 0}
+                        />
+                      );
+                    })}
+
+                    {/* Viewport indicator */}
+                    <rect
+                      x={(vpX - minX) * scale}
+                      y={(vpY - minY) * scale}
+                      width={Math.max(8, vpW * scale)}
+                      height={Math.max(6, vpH * scale)}
+                      rx={2}
+                      fill="rgba(255, 255, 255, 0.08)"
+                      stroke="#ffffff"
+                      strokeWidth={1.2}
+                      className="pointer-events-none"
+                    />
+                  </svg>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Search & Navigation Command Palette */}
+        {showSearchPalette && (
+          <div
+            className="fixed top-20 left-1/2 -translate-x-1/2 w-[460px] max-w-[92vw] bg-[#14151a]/98 border border-zinc-700/90 rounded-2xl shadow-2xl backdrop-blur-2xl p-3 z-50 flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150 select-none"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl">
+              <Search size={14} className="text-zinc-400 shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Find any node in canvas by name, prompt or type..."
+                value={canvasSearchQuery}
+                onChange={(e) => setCanvasSearchQuery(e.target.value)}
+                className="bg-transparent border-none text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none w-full"
+              />
+              {canvasSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setCanvasSearchQuery("")}
+                  className="text-zinc-500 hover:text-white p-0.5"
+                >
+                  <X size={12} />
+                </button>
+              )}
+              <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-400 font-mono">
+                ESC
+              </kbd>
+            </div>
+
+            <div className="max-h-60 overflow-y-auto flex flex-col gap-1 pr-0.5">
+              {(() => {
+                const query = canvasSearchQuery.trim().toLowerCase();
+                const matched = effectiveSteps.filter((st) => {
+                  if (!query) return true;
+                  return (
+                    st.name.toLowerCase().includes(query) ||
+                    st.type.toLowerCase().includes(query) ||
+                    (st.prompt && st.prompt.toLowerCase().includes(query)) ||
+                    (st.model && st.model.toLowerCase().includes(query)) ||
+                    (st.text && st.text.toLowerCase().includes(query))
+                  );
+                });
+
+                if (matched.length === 0) {
+                  return (
+                    <div className="py-6 text-center text-xs text-zinc-500">
+                      No nodes matching &quot;{canvasSearchQuery}&quot;
+                    </div>
+                  );
+                }
+
+                return matched.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => handleJumpToNode(st.id)}
+                    className="w-full px-2.5 py-2 rounded-xl text-left hover:bg-zinc-800/80 transition-colors flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="p-1 rounded-lg bg-zinc-800 text-zinc-300 group-hover:text-white shrink-0">
+                        {st.type === "trigger" && <Zap size={13} className="text-amber-400" />}
+                        {st.type === "llm" && <Sparkles size={13} className="text-purple-400" />}
+                        {(st.type === "agent" || st.type === "action") && (
+                          <Bot size={13} className="text-blue-400" />
+                        )}
+                        {st.type === "condition" && <GitBranch size={13} className="text-amber-400" />}
+                        {st.type === "approval" && <ShieldAlert size={13} className="text-rose-400" />}
+                        {st.type === "note" && <StickyNote size={13} className="text-yellow-400" />}
+                        {st.type === "section" && <Layers size={13} className="text-zinc-400" />}
+                        {st.type === "text" && <Type size={13} className="text-zinc-400" />}
+                        {st.type === "end" && <CheckCircle2 size={13} className="text-emerald-400" />}
+                      </span>
+                      <div className="min-w-0 flex flex-col">
+                        <span className="text-xs font-semibold text-zinc-200 truncate group-hover:text-white">
+                          {st.name || st.id}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 truncate">
+                          {st.prompt || st.text || st.type}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 shrink-0">
+                      {st.type}
+                    </span>
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
+
+
+        {/* Left Floating Dock: Zoom Controls, Fit Screen, Minimap */}
+        <div className="ui-dock-left fixed bottom-6 left-6 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs">
+          <button
+            type="button"
+            onClick={() => handleZoom(-0.1)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Zoom out"
+          >
+            <Minus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            className="w-11 text-center font-mono font-medium text-zinc-300 hover:text-white transition-colors"
+            title="Click to reset zoom (100%)"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={() => handleZoom(0.1)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Zoom in"
+          >
+            <Plus size={14} />
+          </button>
+
+          <div className="w-[1px] h-3.5 bg-zinc-800 mx-0.5" />
+
+          <button
+            type="button"
+            onClick={handleFitToScreen}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            title="Fit view (Scan all nodes)"
+          >
+            <Scan size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowMinimap(!showMinimap)}
+            className={cn(
+              "p-1.5 rounded-lg transition-colors",
+              showMinimap ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+            )}
+            title="Toggle Minimap"
+          >
+            <Map size={14} />
+          </button>
+        </div>
+
+        {/* Draw Tool Sub-Bar (Matching benchmark pencil toolbar) */}
+        {tool === "draw" && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none">
+            <button
+              type="button"
+              onClick={() => setDrawMode("pen")}
+              className={cn(
+                "w-8 h-8 rounded-xl transition-all flex items-center justify-center",
+                drawMode === "pen"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+              )}
+              title="Draw (P)"
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setDrawMode("pen")}
+              className={cn(
+                "w-8 h-8 rounded-xl transition-all flex items-center justify-center",
+                drawMode === "pen"
+                  ? "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+              )}
+              title="Pen (P)"
+            >
+              <PenTool size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setDrawMode("eraser")}
+              className={cn(
+                "w-8 h-8 rounded-xl transition-all flex items-center justify-center",
+                drawMode === "eraser"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+              )}
+              title="Eraser (E)"
+            >
+              <Eraser size={15} />
+            </button>
+
+            <span className="w-px h-4 bg-zinc-800 mx-1" />
+
+            <div className="flex items-center gap-1.5">
+              {CANVAS_COLOR_PALETTE.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => setDrawColor(c.hex)}
+                  className={cn(
+                    "w-5 h-5 rounded-full transition-transform hover:scale-115 relative cursor-pointer",
+                    drawColor === c.hex
+                      ? "ring-2 ring-white ring-offset-2 ring-offset-[#16171d] scale-110"
+                      : ""
+                  )}
+                  style={{ backgroundColor: c.hex }}
+                  title={c.label}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Shape Tool Sub-Bar (Matching benchmark shape toolbar) */}
+        {tool === "shape" && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none">
+            {/* Color picker dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowShapeColorMenu(!showShapeColorMenu)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-xl hover:bg-zinc-800 text-zinc-300 transition-colors"
+                title="Pick Shape Color"
+              >
+                <span
+                  className="w-4 h-4 rounded-full border border-white/20"
+                  style={{ backgroundColor: activeShapeColor }}
+                />
+                <ChevronDown size={11} className="text-zinc-500" />
+              </button>
+              {showShapeColorMenu && (
+                <div className="absolute bottom-full mb-2.5 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                  {CANVAS_COLOR_PALETTE.map((c) => (
+                    <button
+                      key={c.name}
+                      type="button"
+                      onClick={() => {
+                        setActiveShapeColor(c.hex);
+                        setShowShapeColorMenu(false);
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded-full transition-transform hover:scale-115 cursor-pointer",
+                        activeShapeColor === c.hex
+                          ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                          : ""
+                      )}
+                      style={{ backgroundColor: c.hex }}
+                      title={c.label}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <span className="w-px h-4 bg-zinc-800 mx-1" />
+
+            {/* Shape Buttons */}
+            {(
+              [
+                "rectangle",
+                "circle",
+                "diamond",
+                "triangle",
+                "inverted",
+                "oval",
+                "star",
+              ] as ShapeKind[]
+            ).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setActiveShapeKind(kind)}
+                className={cn(
+                  "p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer",
+                  activeShapeKind === kind
+                    ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+                )}
+                title={`Shape ${kind}`}
+              >
+                {kind === "rectangle" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3" /></svg>
+                )}
+                {kind === "circle" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /></svg>
+                )}
+                {kind === "diamond" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 22,12 12,22 2,12" /></svg>
+                )}
+                {kind === "triangle" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,3 22,21 2,21" /></svg>
+                )}
+                {kind === "inverted" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="2,3 22,3 12,21" /></svg>
+                )}
+                {kind === "oval" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="6" /></svg>
+                )}
+                {kind === "star" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" /></svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Note Tool Sub-Bar (Matching benchmark note tones toolbar) */}
+        {tool === "note" && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none">
+            <span className="text-[11px] text-zinc-400 font-medium px-1">Note tone:</span>
+            {Object.entries(NOTE_TONE_CONFIG).map(([toneKey, cfg]) => (
+              <button
+                key={toneKey}
+                type="button"
+                onClick={() => setActiveNoteTone(toneKey)}
+                className={cn(
+                  "w-5 h-5 rounded-full transition-transform hover:scale-115 cursor-pointer",
+                  activeNoteTone === toneKey
+                    ? "ring-2 ring-white ring-offset-2 ring-offset-[#16171d] scale-110"
+                    : ""
+                )}
+                style={{ backgroundColor: cfg.preview }}
+                title={cfg.label}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Main Floating Dock: Tools, Shapes, Search, Add Node */}
+        <div className="ui-dock-main fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40">
+          <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
             <button
               type="button"
               onClick={() => setTool("select")}
               className={cn(
-                "p-2 rounded-xl transition-colors",
+                "w-8 h-8 rounded-xl transition-colors flex items-center justify-center",
                 tool === "select" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Select tool"
+              title="Pointer / Select (V)"
             >
               <MousePointer2 size={16} />
             </button>
@@ -2387,173 +5617,231 @@ export function WorkflowCanvas({
               type="button"
               onClick={() => setTool("pan")}
               className={cn(
-                "p-2 rounded-xl transition-colors",
+                "w-8 h-8 rounded-xl transition-colors flex items-center justify-center",
                 tool === "pan" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Hand / Pan tool"
+              title="Hand / Pan canvas (H)"
             >
               <Hand size={16} />
             </button>
-            <button
-              type="button"
-              onClick={() => setTool(tool === "draw" ? "select" : "draw")}
-              className={cn(
-                "p-2 rounded-xl transition-colors",
-                tool === "draw" ? "bg-purple-900 text-purple-200" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
-              )}
-              title="Pencil / Draw annotations"
-            >
-              <PenTool size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddNode("note", "amber")}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
-              title="Orange Sticky Note"
-            >
-              <div className="w-4 h-4 rounded-md bg-amber-500 shadow-sm" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddNode("note", "neutral")}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
-              title="White Sticky Note"
-            >
-              <div className="w-4 h-4 rounded-md bg-zinc-200 shadow-sm" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddNode("note", "neutral")}
-              className="p-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors"
-              title="Text Tool"
-            >
-              <Type size={16} />
-            </button>
+          </div>
+
+          <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
+            {/* Draw / Pencil Tool Button with Hover Tooltip */}
+            <div className="relative group/drawtip">
+              <button
+                type="button"
+                onClick={() => {
+                  setTool(tool === "draw" ? "select" : "draw");
+                  setShowAddMenu(false);
+                }}
+                className={cn(
+                  "w-8 h-8 rounded-xl transition-all relative flex items-center justify-center",
+                  tool === "draw"
+                    ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+                )}
+                title="Draw (P)"
+              >
+                <DrawArt color={drawColor} eraser={drawMode === "eraser"} />
+              </button>
+              {/* Tooltip matching benchmark "Draw P" */}
+              <div className="absolute -top-9 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-lg bg-[#18181b] border border-zinc-700/80 text-[11px] text-zinc-100 font-medium shadow-xl pointer-events-none whitespace-nowrap opacity-0 group-hover/drawtip:opacity-100 transition-opacity flex items-center gap-1.5 z-50">
+                <span>Draw</span>
+                <span className="text-[10px] text-zinc-400 font-mono">P</span>
+              </div>
+            </div>
+
+            {/* Sticky Note Tool Button */}
             <button
               type="button"
               onClick={() => {
-                setShowAddMenu(!showAddMenu);
-                setNodeSearch("");
+                setTool(tool === "note" ? "select" : "note");
+                setShowAddMenu(false);
               }}
               className={cn(
-                "p-2 rounded-xl transition-colors",
-                showAddMenu ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+                "w-8 h-8 rounded-xl transition-all relative flex items-center justify-center",
+                tool === "note"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Search and add nodes"
+              title="Sticky Note (N)"
             >
-              <Search size={16} />
+              <StickyArt tone={NOTE_TONE_CONFIG[activeNoteTone]?.preview || "#ff9412"} />
+            </button>
+
+            {/* Shapes Tool Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setTool(tool === "shape" ? "select" : "shape");
+                setShowAddMenu(false);
+              }}
+              className={cn(
+                "w-8 h-8 rounded-xl transition-all relative flex items-center justify-center",
+                tool === "shape"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+              )}
+              title="Shapes (R)"
+            >
+              <ShapesArt shape={activeShapeKind} color={activeShapeColor} />
+            </button>
+
+            {/* Text Label Tool Button */}
+            <button
+              type="button"
+              onClick={() => handleAddNode("text")}
+              className="w-8 h-8 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors font-serif font-bold text-base leading-none flex items-center justify-center select-none"
+              title="Add Text Label (T)"
+            >
+              T
             </button>
           </div>
 
-          <div className="relative">
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => {
-                setShowAddMenu(!showAddMenu);
-                setNodeSearch("");
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-100 shadow-md transition-all active:scale-95"
+              onClick={() => setShowSearchPalette(!showSearchPalette)}
+              className={cn(
+                "w-8 h-8 rounded-xl transition-colors flex items-center justify-center",
+                showSearchPalette ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+              )}
+              title="Search canvas nodes (Ctrl+F)"
             >
-              <Plus size={15} />
-              <span>Add node</span>
+              <Search size={16} />
             </button>
 
-            {showAddMenu && (
-              <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-64 rounded-2xl border border-zinc-700/80 bg-[#14151a] shadow-2xl backdrop-blur-xl p-2 z-50 flex flex-col gap-1">
-                <div className="px-2 py-1 border-b border-zinc-800 flex items-center gap-1.5 mb-1">
-                  <Search size={13} className="text-zinc-500" />
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Search node types..."
-                    value={nodeSearch}
-                    onChange={(e) => setNodeSearch(e.target.value)}
-                    className="bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
-                  />
-                </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddMenu(!showAddMenu);
+                  setNodeSearch("");
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-zinc-950 font-semibold text-xs hover:bg-zinc-100 shadow-md transition-all active:scale-95"
+              >
+                <Plus size={15} />
+                <span>Add node</span>
+              </button>
 
-                {(!nodeSearch || "trigger node".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("trigger"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <Zap size={15} className="text-amber-400 fill-amber-400" />
-                    <span>Trigger Node</span>
-                  </button>
-                )}
-                {(!nodeSearch || "llm step".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("llm"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <Sparkles size={15} className="text-purple-400" />
-                    <span>LLM Step</span>
-                  </button>
-                )}
-                {(!nodeSearch || "agent step".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("agent"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <Bot size={15} className="text-blue-400" />
-                    <span>Agent Step</span>
-                  </button>
-                )}
-                {(!nodeSearch || "condition branch".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("condition"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <GitBranch size={15} className="text-amber-400" />
-                    <span>Condition Branch</span>
-                  </button>
-                )}
-                {(!nodeSearch || "human approval".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("approval"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <ShieldAlert size={15} className="text-rose-400" />
-                    <span>Human Approval</span>
-                  </button>
-                )}
-                {(!nodeSearch || "orange sticky note".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("note", "amber"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <div className="w-3.5 h-3.5 rounded bg-amber-500" />
-                    <span>Orange Sticky Note</span>
-                  </button>
-                )}
-                {(!nodeSearch || "white sticky note".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("note", "neutral"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <div className="w-3.5 h-3.5 rounded bg-zinc-200" />
-                    <span>White Sticky Note</span>
-                  </button>
-                )}
-                {(!nodeSearch || "end completion".includes(nodeSearch.toLowerCase())) && (
-                  <button
-                    type="button"
-                    onClick={() => { handleAddNode("end"); setShowAddMenu(false); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
-                  >
-                    <CheckCircle2 size={15} className="text-emerald-400" />
-                    <span>End</span>
-                  </button>
-                )}
-              </div>
-            )}
+              {showAddMenu && (
+                <div className="absolute bottom-full mb-3 right-0 w-64 rounded-2xl border border-zinc-700/80 bg-[#14151a] shadow-2xl backdrop-blur-xl p-2 z-50 flex flex-col gap-1">
+                  <div className="px-2 py-1 border-b border-zinc-800 flex items-center gap-1.5 mb-1">
+                    <Search size={13} className="text-zinc-500" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search node types..."
+                      value={nodeSearch}
+                      onChange={(e) => setNodeSearch(e.target.value)}
+                      className="bg-transparent border-none text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none w-full"
+                    />
+                  </div>
+
+                  {(!nodeSearch || "trigger node".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("trigger"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Zap size={15} className="text-amber-400 fill-amber-400" />
+                      <span>Trigger Node</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "llm step".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("llm"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Sparkles size={15} className="text-purple-400" />
+                      <span>LLM Step</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "agent step".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("agent"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Bot size={15} className="text-blue-400" />
+                      <span>Agent Step</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "condition branch".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("condition"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <GitBranch size={15} className="text-amber-400" />
+                      <span>Condition Branch</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "human approval".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("approval"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <ShieldAlert size={15} className="text-rose-400" />
+                      <span>Human Approval</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "orange sticky note".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("note", "amber"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <div className="w-3.5 h-3.5 rounded bg-amber-500" />
+                      <span>Orange Sticky Note</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "white sticky note".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("note", "neutral"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <div className="w-3.5 h-3.5 rounded bg-zinc-200" />
+                      <span>White Sticky Note</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "section frame shape group".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("section"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Layers size={15} className="text-zinc-400" />
+                      <span>Section Frame</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "text label annotation".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("text"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <Type size={15} className="text-zinc-400" />
+                      <span>Text Label</span>
+                    </button>
+                  )}
+                  {(!nodeSearch || "end completion".includes(nodeSearch.toLowerCase())) && (
+                    <button
+                      type="button"
+                      onClick={() => { handleAddNode("end"); setShowAddMenu(false); }}
+                      className="w-full px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-200 hover:bg-zinc-800 flex items-center gap-2.5 text-left"
+                    >
+                      <CheckCircle2 size={15} className="text-emerald-400" />
+                      <span>End</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
