@@ -10,7 +10,7 @@
 // Everything that can be tested without Electron is in src/. This file only
 // connects those pieces to Electron.
 
-const { app, BrowserWindow, Menu, dialog, safeStorage, session, ipcMain, shell, systemPreferences, clipboard, Notification } = require("electron");
+const { app, BrowserWindow, WebContentsView, Menu, dialog, safeStorage, session, ipcMain, shell, systemPreferences, clipboard, Notification, net } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -29,6 +29,8 @@ const { NativeControl, registerNativeControl } = require("./src/native-control")
 const { createUpdater } = require("./src/updater");
 const { registerUpdates } = require("./src/updates-ipc");
 const { registerApplicationMenu } = require("./src/application-menu");
+const { createHostedWorkspace, createWorkspaceStore, PLAN_URL } = require("./src/hosted-workspace");
+const { HEADER } = require("./src/origin");
 
 const mode = process.argv.includes("--mode=dev") ? "dev" : "start";
 // Running from source: use the app icon for the window and the dock. Installers carry the icon in the
@@ -312,7 +314,89 @@ async function main() {
     const replaced = error?.code === "ERR_ABORTED" && window && sameOrigin(window.webContents.getURL(), started.origin);
     if (!quitting && !replaced) throw error;
   }
+  setUpWorkspaces(token);
   startUpdateChecks();
+}
+
+// Local and hosted workspaces share this one window (BL-143). The local page stays the window's own
+// contents; the hosted page is a separate sandboxed view with no preload, no token and its own session.
+function setUpWorkspaces(token) {
+  // Behind a flag until staging and packaged checks pass (plan step 7). Off means no hosted view and no menu.
+  if (process.env.OPEN_DOTS_HOSTED_WORKSPACE !== "1") return;
+  const win = window;
+  const store = createWorkspaceStore(path.join(app.getPath("userData"), "workspace.json"));
+  const state = { signedIn: false, email: null, status: "" };
+  let hosted = null;
+  const renderMenu = () =>
+    registerApplicationMenu({
+      Menu,
+      appName: app.getName(),
+      platform: process.platform,
+      getWindow: () => window,
+      getOrigin: () => backendOrigin,
+      workspace: {
+        active: hosted?.current() ?? "local",
+        signedIn: state.signedIn,
+        email: state.email,
+        status: state.status,
+        onSelect: async (which) => {
+          // Re-ask the backend at the moment of choosing, so a sign-in made after the last check counts.
+          if (which === "hosted" && !state.signedIn) await refresh(true);
+          if (which === "hosted" && !state.signedIn) {
+            void shell.openExternal(PLAN_URL);
+            renderMenu(); // put the radio back on the workspace that is still shown
+            return;
+          }
+          hosted.show(which);
+        },
+        onSignOut: () => void hosted.signOut(),
+      },
+    });
+  hosted = createHostedWorkspace({
+    window: win,
+    WebContentsView,
+    session,
+    openExternal: (url) => shell.openExternal(url),
+    store,
+    // The title says which data is on screen: native chrome the hosted page cannot read or draw.
+    onChange: (which) => {
+      win.setTitle(which === "hosted" ? "Open Duet \u2014 Hosted workspace (cloud data; local agents are not shown here)" : mode === "dev" ? "Open Duet (dev)" : "Open Duet");
+      renderMenu();
+    },
+    onStatus: (status) => {
+      if (status === state.status) return;
+      state.status = status;
+      renderMenu();
+    },
+  });
+  win.on("closed", () => hosted.destroy());
+
+  // Account state comes from the local backend with the launch token; the hosted page never sees either.
+  let lastRefresh = 0;
+  const refresh = async (force = false) => {
+    if (!force && Date.now() - lastRefresh < 60_000) return;
+    lastRefresh = Date.now();
+    try {
+      const response = await net.fetch(`${backendOrigin}/api/v1/desktop-account/status`, { headers: { [HEADER]: token } });
+      const body = response.ok ? await response.json() : null;
+      if (!response.ok) console.error("hosted workspace: account status returned", response.status);
+      const signedIn = body?.signed_in === true;
+      const email = signedIn && typeof body.email === "string" ? body.email : null;
+      if (signedIn !== state.signedIn || email !== state.email) {
+        state.signedIn = signedIn;
+        state.email = email;
+        renderMenu();
+      }
+    } catch (error) {
+      // Offline or unavailable: keep the last known state.
+      console.error("hosted workspace: account status check failed:", error?.message ?? error);
+    }
+  };
+  win.on("focus", () => void refresh());
+  renderMenu();
+  void refresh().then(() => {
+    if (state.signedIn && store.read() === "hosted") hosted.show("hosted");
+  });
 }
 
 // Background checks only run in an installed app, and can be switched off.
