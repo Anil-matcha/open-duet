@@ -1,0 +1,15 @@
+{
+  "slug": "pixeltable-docs",
+  "name": "Pixeltable Docs",
+  "version": "1.0.0",
+  "summary": "Hosted MCP server for the Pixeltable documentation. Search the docs and read pages for Pixeltable, the open-source Python library for multimodal AI data: tables, computed columns, embedding indexes, and AI integrations. Read-only, public content, no account or API key needed.",
+  "publisher": "Pixeltable",
+  "source_repo": "https://github.com/pixeltable/pixeltable",
+  "endpoint": "https://docs.pixeltable.com/mcp",
+  "auth_mode": "none",
+  "privacy_url": "https://www.pixeltable.com/privacy",
+  "terms_url": "https://www.pixeltable.com/terms",
+  "license": "Apache-2.0",
+  "setup_instructions": "Connect this listing in Open Dots. No authentication is required. The server exposes search_pixeltable_documentation (search the docs), query_docs_filesystem_pixeltable_documentation (read documentation pages), and submit_feedback (send feedback about a docs page). Grant only the tools each agent needs; search and read are enough for answering Pixeltable questions. Documentation: https://docs.pixeltable.com",
+  "test_instructions": "Grant search_pixeltable_documentation to an agent and call it once with a short query such as \"create a table with an embedding index\". A successful call returns matching documentation pages with titles, URLs, and excerpts. Remove the grant if the agent does not need the search tool."
+}
