@@ -175,6 +175,156 @@ interface DraggingConnection {
   snappedTargetId: string | null;
   snappedInputPort?: "text" | "image" | "file";
   snappedOutputPort?: "out" | "true" | "false" | "approve" | "reject";
+  validationResult?: ConnectionValidationResult;
+}
+
+export type WorkflowPortType = "text" | "image" | "file";
+
+export interface ConnectionValidationResult {
+  valid: boolean;
+  error?: string;
+  sourceType: WorkflowPortType;
+  targetType: WorkflowPortType;
+}
+
+export function hasPathInWorkflow(
+  startId: string,
+  endId: string,
+  steps: WorkflowStep[]
+): boolean {
+  if (startId === endId) return true;
+  const visited = new Set<string>();
+  const queue = [startId];
+  visited.add(startId);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    if (currentId === endId) return true;
+
+    const step = steps.find((s) => s.id === currentId);
+    if (!step) continue;
+
+    const neighbors: string[] = [];
+    if (step.next_step_id) neighbors.push(step.next_step_id);
+    if (step.if_true) neighbors.push(step.if_true);
+    if (step.if_false) neighbors.push(step.if_false);
+    if (step.on_approve) neighbors.push(step.on_approve);
+    if (step.on_reject) neighbors.push(step.on_reject);
+
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return false;
+}
+
+export function getOutputPortDataType(
+  step: WorkflowStep,
+  port: "out" | "true" | "false" | "approve" | "reject"
+): WorkflowPortType {
+  // Trigger, LLM, Agent, Action, Condition, and Approval output text data
+  return "text";
+}
+
+export function getInputPortDataType(
+  step: WorkflowStep,
+  port: "text" | "image" | "file"
+): WorkflowPortType {
+  return port;
+}
+
+export function getOutputPortLabel(
+  port: "out" | "true" | "false" | "approve" | "reject"
+): string {
+  if (port === "true") return "True";
+  if (port === "false") return "False";
+  if (port === "approve") return "Approve";
+  if (port === "reject") return "Reject";
+  return "Text";
+}
+
+export function validateConnection(
+  sourceId: string,
+  sourcePort: "out" | "true" | "false" | "approve" | "reject",
+  targetId: string,
+  targetInputPort: "text" | "image" | "file",
+  steps: WorkflowStep[]
+): ConnectionValidationResult {
+  const sourceStep = steps.find((s) => s.id === sourceId);
+  const targetStep = steps.find((s) => s.id === targetId);
+
+  const sourceType = sourceStep ? getOutputPortDataType(sourceStep, sourcePort) : "text";
+  const targetType = targetStep ? getInputPortDataType(targetStep, targetInputPort) : targetInputPort;
+
+  // 1. Self connection limitation
+  if (sourceId === targetId) {
+    return {
+      valid: false,
+      error: "Cannot connect node to itself",
+      sourceType,
+      targetType,
+    };
+  }
+
+  // 2. Already connected
+  if (sourceStep) {
+    let existingTarget: string | null | undefined = null;
+    let existingTargetPort: string | undefined = "text";
+    if (sourcePort === "out") {
+      existingTarget = sourceStep.next_step_id;
+      existingTargetPort = sourceStep.target_port || "text";
+    } else if (sourcePort === "true") {
+      existingTarget = sourceStep.if_true;
+      existingTargetPort = sourceStep.if_true_target_port || "text";
+    } else if (sourcePort === "false") {
+      existingTarget = sourceStep.if_false;
+      existingTargetPort = sourceStep.if_false_target_port || "text";
+    } else if (sourcePort === "approve") {
+      existingTarget = sourceStep.on_approve;
+      existingTargetPort = sourceStep.on_approve_target_port || "text";
+    } else if (sourcePort === "reject") {
+      existingTarget = sourceStep.on_reject;
+      existingTargetPort = sourceStep.on_reject_target_port || "text";
+    }
+
+    if (existingTarget === targetId && existingTargetPort === targetInputPort) {
+      return {
+        valid: false,
+        error: "Already connected",
+        sourceType,
+        targetType,
+      };
+    }
+  }
+
+  // 3. Cyclical connection limitation
+  if (hasPathInWorkflow(targetId, sourceId, steps)) {
+    return {
+      valid: false,
+      error: "Cannot create cyclical loop",
+      sourceType,
+      targetType,
+    };
+  }
+
+  // 4. Data type compatibility limitation ("Gives text, not image", etc.)
+  if (sourceType !== targetType) {
+    return {
+      valid: false,
+      error: `Gives ${sourceType}, not ${targetType}`,
+      sourceType,
+      targetType,
+    };
+  }
+
+  return {
+    valid: true,
+    sourceType,
+    targetType,
+  };
 }
 
 interface FreehandStroke {
@@ -774,7 +924,7 @@ export function WorkflowCanvas({
         let snappedOutput: "out" | "true" | "false" | "approve" | "reject" = "out";
         let snapX = curX;
         let snapY = curY;
-        let minDistance = 32;
+        let minDistance = 38;
 
         effectiveSteps.forEach((st) => {
           if (st.id === draggingWire.fromStepId) return;
@@ -803,6 +953,16 @@ export function WorkflowCanvas({
           }
         });
 
+        const validation = snappedSource
+          ? validateConnection(
+              snappedSource,
+              snappedOutput,
+              draggingWire.fromStepId,
+              draggingWire.targetInputPort || "text",
+              effectiveSteps
+            )
+          : undefined;
+
         setDraggingWire((prev) =>
           prev
             ? {
@@ -811,6 +971,7 @@ export function WorkflowCanvas({
                 currentY: snapY,
                 snappedTargetId: snappedSource,
                 snappedOutputPort: snappedSource ? snappedOutput : undefined,
+                validationResult: validation,
               }
             : null
         );
@@ -820,7 +981,7 @@ export function WorkflowCanvas({
         let snappedPort: "text" | "image" | "file" = "text";
         let snapX = curX;
         let snapY = curY;
-        let minDistance = 32;
+        let minDistance = 38;
 
         effectiveSteps.forEach((st) => {
           if (st.id === draggingWire.fromStepId) return;
@@ -846,6 +1007,16 @@ export function WorkflowCanvas({
           }
         });
 
+        const validation = snappedTarget
+          ? validateConnection(
+              draggingWire.fromStepId,
+              draggingWire.fromPort,
+              snappedTarget,
+              snappedPort,
+              effectiveSteps
+            )
+          : undefined;
+
         setDraggingWire((prev) =>
           prev
             ? {
@@ -854,6 +1025,7 @@ export function WorkflowCanvas({
                 currentY: snapY,
                 snappedTargetId: snappedTarget,
                 snappedInputPort: snappedTarget ? snappedPort : undefined,
+                validationResult: validation,
               }
             : null
         );
@@ -899,19 +1071,26 @@ export function WorkflowCanvas({
 
     if (draggingWire) {
       if (draggingWire.snappedTargetId) {
-        if (draggingWire.fromDirection === "input") {
-          const sourceId = draggingWire.snappedTargetId;
-          const targetId = draggingWire.fromStepId;
-          const outPort = draggingWire.snappedOutputPort || "out";
-          const inPort = draggingWire.targetInputPort || "text";
+        const sourceId =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.snappedTargetId
+            : draggingWire.fromStepId;
+        const targetId =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.fromStepId
+            : draggingWire.snappedTargetId;
+        const outPort =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.snappedOutputPort || "out"
+            : draggingWire.fromPort;
+        const inPort =
+          draggingWire.fromDirection === "input"
+            ? draggingWire.targetInputPort || "text"
+            : draggingWire.snappedInputPort || "text";
+
+        const val = validateConnection(sourceId, outPort, targetId, inPort, effectiveSteps);
+        if (val.valid) {
           handleConnect(sourceId, outPort, targetId, inPort);
-        } else {
-          handleConnect(
-            draggingWire.fromStepId,
-            draggingWire.fromPort,
-            draggingWire.snappedTargetId,
-            draggingWire.snappedInputPort || "text"
-          );
         }
       }
       setDraggingWire(null);
@@ -1193,6 +1372,15 @@ export function WorkflowCanvas({
   ) => {
     if (fromStepId === targetStepId) return;
 
+    const val = validateConnection(
+      fromStepId,
+      fromPort,
+      targetStepId,
+      targetInputPort,
+      effectiveSteps
+    );
+    if (!val.valid) return;
+
     const base = effectiveSteps;
     const updated = base.map((s) => {
       if (s.id !== fromStepId) return s;
@@ -1331,20 +1519,40 @@ export function WorkflowCanvas({
     });
   };
 
-  // Smooth Bezier curve path with forward & backward loop handling
-  const getCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+  // Control points calculation for cubic Bezier curve with forward & backward loop handling
+  const getCurveControlPoints = (x1: number, y1: number, x2: number, y2: number) => {
     const dx = x2 - x1;
     const dy = y2 - y1;
+    let cx1: number, cy1: number, cx2: number, cy2: number;
     if (dx >= 0) {
       const cx = Math.max(40, dx * 0.5);
-      return `M ${x1} ${y1} C ${x1 + cx} ${y1}, ${x2 - cx} ${y2}, ${x2} ${y2}`;
+      cx1 = x1 + cx;
+      cy1 = y1;
+      cx2 = x2 - cx;
+      cy2 = y2;
     } else {
       // Smooth backward loop when target is behind source
       const cx = Math.max(50, Math.min(180, Math.abs(dx) * 0.6));
       const cy = Math.abs(dy) < 40 ? 40 : Math.min(100, Math.abs(dy) * 0.4);
       const signY = dy >= 0 ? 1 : -1;
-      return `M ${x1} ${y1} C ${x1 + cx} ${y1 + cy * signY}, ${x2 - cx} ${y2 - cy * signY}, ${x2} ${y2}`;
+      cx1 = x1 + cx;
+      cy1 = y1 + cy * signY;
+      cx2 = x2 - cx;
+      cy2 = y2 - cy * signY;
     }
+    return { cx1, cy1, cx2, cy2 };
+  };
+
+  const getCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const { cx1, cy1, cx2, cy2 } = getCurveControlPoints(x1, y1, x2, y2);
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  };
+
+  const getCurveMidpoint = (x1: number, y1: number, x2: number, y2: number) => {
+    const { cx1, cy1, cx2, cy2 } = getCurveControlPoints(x1, y1, x2, y2);
+    const midX = 0.125 * x1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * x2;
+    const midY = 0.125 * y1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * y2;
+    return { midX, midY };
   };
 
   // Execute workflow live across canvas
@@ -1676,8 +1884,7 @@ export function WorkflowCanvas({
                 const isSelectedOrHovered = isSelected || isHovered;
 
                 const pathData = getCurvePath(srcX, srcY, tgtX, tgtY);
-                const midX = (srcX + tgtX) / 2;
-                const midY = (srcY + tgtY) / 2;
+                const { midX, midY } = getCurveMidpoint(srcX, srcY, tgtX, tgtY);
 
                 return (
                   <g
@@ -1769,30 +1976,52 @@ export function WorkflowCanvas({
             })}
 
             {/* Currently Dragged Elastic Wire */}
-            {draggingWire && (
-              <path
-                d={
-                  draggingWire.fromDirection === "input"
-                    ? getCurvePath(
-                        draggingWire.currentX,
-                        draggingWire.currentY,
-                        draggingWire.startX,
-                        draggingWire.startY
-                      )
-                    : getCurvePath(
-                        draggingWire.startX,
-                        draggingWire.startY,
-                        draggingWire.currentX,
-                        draggingWire.currentY
-                      )
-                }
-                fill="none"
-                stroke={draggingWire.snappedTargetId ? "#10b981" : "#a855f7"}
-                strokeWidth={3}
-                strokeDasharray="5 4"
-                className="wire-animating"
-              />
-            )}
+            {draggingWire && (() => {
+              const x1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentX
+                  : draggingWire.startX;
+              const y1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentY
+                  : draggingWire.startY;
+              const x2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startX
+                  : draggingWire.currentX;
+              const y2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startY
+                  : draggingWire.currentY;
+
+              const pathData = getCurvePath(x1, y1, x2, y2);
+              const isSnapped = !!draggingWire.snappedTargetId;
+              const isInvalid =
+                isSnapped &&
+                draggingWire.validationResult &&
+                !draggingWire.validationResult.valid;
+              const isValid =
+                isSnapped &&
+                (!draggingWire.validationResult ||
+                  draggingWire.validationResult.valid);
+
+              const strokeColor = isInvalid
+                ? "#ef4444"
+                : isValid
+                ? "#10b981"
+                : "rgba(255, 255, 255, 0.4)";
+
+              return (
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={strokeColor}
+                  strokeWidth={2.5}
+                  strokeDasharray="5 4"
+                  className={isValid ? "wire-animating" : ""}
+                />
+              );
+            })()}
 
             {/* Freehand Pencil Drawing Layer */}
             {strokes.map((st) => (
@@ -1817,6 +2046,42 @@ export function WorkflowCanvas({
               />
             )}
           </svg>
+
+          {/* Connection Limitation Badge on Dragged Wire ("Gives text, not image", etc.) */}
+          {draggingWire &&
+            draggingWire.snappedTargetId &&
+            draggingWire.validationResult &&
+            !draggingWire.validationResult.valid && (() => {
+              const x1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentX
+                  : draggingWire.startX;
+              const y1 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.currentY
+                  : draggingWire.startY;
+              const x2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startX
+                  : draggingWire.currentX;
+              const y2 =
+                draggingWire.fromDirection === "input"
+                  ? draggingWire.startY
+                  : draggingWire.currentY;
+              const { midX, midY } = getCurveMidpoint(x1, y1, x2, y2);
+
+              return (
+                <div
+                  style={{
+                    left: `${midX}px`,
+                    top: `${midY}px`,
+                  }}
+                  className="absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-[#18181b] border border-red-500/90 shadow-xl shadow-black/80 text-red-400 text-xs font-medium whitespace-nowrap z-50 select-none animate-in fade-in zoom-in-95 duration-100 flex items-center justify-center"
+                >
+                  {draggingWire.validationResult.error}
+                </div>
+              );
+            })()}
 
           {/* Workflow Canvas Nodes (including draggable Trigger nodes) */}
           {effectiveSteps.map((step) => {
@@ -1996,9 +2261,26 @@ export function WorkflowCanvas({
                         {(() => {
                           const incoming = getIncomingWire(step.id, "text");
                           const isSnapped =
-                            draggingWire?.fromDirection !== "input" &&
-                            isTargetSnapped &&
-                            (draggingWire?.snappedInputPort === "text" || !draggingWire?.snappedInputPort);
+                            (draggingWire?.fromDirection !== "input" &&
+                              isTargetSnapped &&
+                              (draggingWire?.snappedInputPort === "text" || !draggingWire?.snappedInputPort)) ||
+                            (draggingWire?.fromDirection === "input" &&
+                              draggingWire?.fromStepId === step.id &&
+                              (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort));
+                          const isInvalid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            draggingWire?.validationResult &&
+                            !draggingWire.validationResult.valid;
+                          const isValid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                          const isReverseDraggingThis =
+                            draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort);
+
                           return (
                             <div
                               style={{ top: "48px" }}
@@ -2017,8 +2299,12 @@ export function WorkflowCanvas({
                               }}
                               className={cn(
                                 "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
-                                isSnapped
+                                isInvalid
+                                  ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                  : isValid
                                   ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : isReverseDraggingThis
+                                  ? "border-white bg-zinc-800 text-white scale-115"
                                   : incoming
                                   ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
                                   : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
@@ -2030,6 +2316,11 @@ export function WorkflowCanvas({
                               }
                             >
                               T
+                              {isReverseDraggingThis && (
+                                <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                  Text
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2038,9 +2329,26 @@ export function WorkflowCanvas({
                         {(() => {
                           const incoming = getIncomingWire(step.id, "image");
                           const isSnapped =
-                            draggingWire?.fromDirection !== "input" &&
-                            isTargetSnapped &&
-                            draggingWire?.snappedInputPort === "image";
+                            (draggingWire?.fromDirection !== "input" &&
+                              isTargetSnapped &&
+                              draggingWire?.snappedInputPort === "image") ||
+                            (draggingWire?.fromDirection === "input" &&
+                              draggingWire?.fromStepId === step.id &&
+                              draggingWire?.targetInputPort === "image");
+                          const isInvalid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            draggingWire?.validationResult &&
+                            !draggingWire.validationResult.valid;
+                          const isValid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                          const isReverseDraggingThis =
+                            draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            draggingWire?.targetInputPort === "image";
+
                           return (
                             <div
                               style={{ top: "82px" }}
@@ -2059,8 +2367,12 @@ export function WorkflowCanvas({
                               }}
                               className={cn(
                                 "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
-                                isSnapped
+                                isInvalid
+                                  ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                  : isValid
                                   ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : isReverseDraggingThis
+                                  ? "border-white bg-zinc-800 text-white scale-115"
                                   : incoming
                                   ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
                                   : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
@@ -2072,6 +2384,11 @@ export function WorkflowCanvas({
                               }
                             >
                               <ImageIcon size={11} strokeWidth={2} />
+                              {isReverseDraggingThis && (
+                                <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                  Image
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2080,9 +2397,26 @@ export function WorkflowCanvas({
                         {(() => {
                           const incoming = getIncomingWire(step.id, "file");
                           const isSnapped =
-                            draggingWire?.fromDirection !== "input" &&
-                            isTargetSnapped &&
-                            draggingWire?.snappedInputPort === "file";
+                            (draggingWire?.fromDirection !== "input" &&
+                              isTargetSnapped &&
+                              draggingWire?.snappedInputPort === "file") ||
+                            (draggingWire?.fromDirection === "input" &&
+                              draggingWire?.fromStepId === step.id &&
+                              draggingWire?.targetInputPort === "file");
+                          const isInvalid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            draggingWire?.validationResult &&
+                            !draggingWire.validationResult.valid;
+                          const isValid =
+                            isSnapped &&
+                            draggingWire?.snappedTargetId &&
+                            (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                          const isReverseDraggingThis =
+                            draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            draggingWire?.targetInputPort === "file";
+
                           return (
                             <div
                               style={{ top: "116px" }}
@@ -2101,8 +2435,12 @@ export function WorkflowCanvas({
                               }}
                               className={cn(
                                 "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
-                                isSnapped
+                                isInvalid
+                                  ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                  : isValid
                                   ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : isReverseDraggingThis
+                                  ? "border-white bg-zinc-800 text-white scale-115"
                                   : incoming
                                   ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
                                   : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
@@ -2114,6 +2452,11 @@ export function WorkflowCanvas({
                               }
                             >
                               <FileText size={11} strokeWidth={2} />
+                              {isReverseDraggingThis && (
+                                <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                  File
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2122,7 +2465,25 @@ export function WorkflowCanvas({
                       /* Single Input Port for Condition, Approval, End */
                       (() => {
                         const incoming = getIncomingWire(step.id, "text");
-                        const isSnapped = draggingWire?.fromDirection !== "input" && isTargetSnapped;
+                        const isSnapped =
+                          (draggingWire?.fromDirection !== "input" && isTargetSnapped) ||
+                          (draggingWire?.fromDirection === "input" &&
+                            draggingWire?.fromStepId === step.id &&
+                            (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort));
+                        const isInvalid =
+                          isSnapped &&
+                          draggingWire?.snappedTargetId &&
+                          draggingWire?.validationResult &&
+                          !draggingWire.validationResult.valid;
+                        const isValid =
+                          isSnapped &&
+                          draggingWire?.snappedTargetId &&
+                          (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+                        const isReverseDraggingThis =
+                          draggingWire?.fromDirection === "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          (draggingWire?.targetInputPort === "text" || !draggingWire?.targetInputPort);
+
                         return (
                           <div
                             style={{ top: "48px" }}
@@ -2141,8 +2502,12 @@ export function WorkflowCanvas({
                             }}
                             className={cn(
                               "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
-                              isSnapped
+                              isInvalid
+                                ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                : isValid
                                 ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                : isReverseDraggingThis
+                                ? "border-white bg-zinc-800 text-white scale-115"
                                 : incoming
                                 ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
                                 : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
@@ -2159,6 +2524,11 @@ export function WorkflowCanvas({
                               <CheckCircle2 size={11} className="text-emerald-400" />
                             ) : (
                               "T"
+                            )}
+                            {isReverseDraggingThis && (
+                              <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-700 text-zinc-100 text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30">
+                                Text
+                              </div>
                             )}
                           </div>
                         );
@@ -3138,99 +3508,269 @@ export function WorkflowCanvas({
                 {/* Right Output Ports */}
                 {step.type === "condition" ? (
                   <>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "true", pos.x + nodeW, pos.y + 46)
-                      }
-                      style={{ top: "46px" }}
-                      className={cn(
-                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
-                        draggingWire?.fromDirection === "input" &&
+                    {(() => {
+                      const isTrueActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "true") ||
+                        (draggingWire?.fromDirection === "input" &&
                           draggingWire?.snappedTargetId === step.id &&
-                          draggingWire?.snappedOutputPort === "true" &&
-                          "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
-                      )}
-                      title="True branch port"
-                    >
-                      <Check size={11} strokeWidth={2.5} />
-                    </div>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "false", pos.x + nodeW, pos.y + 74)
-                      }
-                      style={{ top: "74px" }}
-                      className={cn(
-                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-amber-950 border border-amber-500/90 text-amber-300 hover:bg-amber-900 hover:scale-115 hover:border-amber-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
-                        draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedOutputPort === "true");
+                      const isTrueInvalid =
+                        isTrueActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isTrueValid =
+                        isTrueActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "true", pos.x + nodeW, pos.y + 46)
+                          }
+                          style={{ top: "46px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isTrueInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isTrueValid
+                              ? "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
+                              : isTrueActive
+                              ? "border-white bg-emerald-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="True branch port"
+                        >
+                          <Check size={11} strokeWidth={2.5} />
+                          {isTrueActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isTrueInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              True
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {(() => {
+                      const isFalseActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "false") ||
+                        (draggingWire?.fromDirection === "input" &&
                           draggingWire?.snappedTargetId === step.id &&
-                          draggingWire?.snappedOutputPort === "false" &&
-                          "scale-125 ring-4 ring-amber-500/40 shadow-lg border-amber-300"
-                      )}
-                      title="False branch port"
-                    >
-                      <X size={11} strokeWidth={2.5} />
-                    </div>
+                          draggingWire?.snappedOutputPort === "false");
+                      const isFalseInvalid =
+                        isFalseActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isFalseValid =
+                        isFalseActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "false", pos.x + nodeW, pos.y + 74)
+                          }
+                          style={{ top: "74px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-amber-950 border border-amber-500/90 text-amber-300 hover:bg-amber-900 hover:scale-115 hover:border-amber-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isFalseInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isFalseValid
+                              ? "scale-125 ring-4 ring-amber-500/40 shadow-lg border-amber-300"
+                              : isFalseActive
+                              ? "border-white bg-amber-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="False branch port"
+                        >
+                          <X size={11} strokeWidth={2.5} />
+                          {isFalseActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isFalseInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              False
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : step.type === "approval" ? (
                   <>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "approve", pos.x + nodeW, pos.y + 46)
-                      }
-                      style={{ top: "46px" }}
-                      className={cn(
-                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
-                        draggingWire?.fromDirection === "input" &&
+                    {(() => {
+                      const isApproveActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "approve") ||
+                        (draggingWire?.fromDirection === "input" &&
                           draggingWire?.snappedTargetId === step.id &&
-                          draggingWire?.snappedOutputPort === "approve" &&
-                          "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
-                      )}
-                      title="Approve branch port"
-                    >
-                      <Check size={11} strokeWidth={2.5} />
-                    </div>
-                    <div
-                      onPointerDown={(e) =>
-                        handlePortPointerDown(e, step.id, "reject", pos.x + nodeW, pos.y + 74)
-                      }
-                      style={{ top: "74px" }}
-                      className={cn(
-                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-rose-950 border border-rose-500/90 text-rose-300 hover:bg-rose-900 hover:scale-115 hover:border-rose-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
-                        draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedOutputPort === "approve");
+                      const isApproveInvalid =
+                        isApproveActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isApproveValid =
+                        isApproveActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "approve", pos.x + nodeW, pos.y + 46)
+                          }
+                          style={{ top: "46px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isApproveInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isApproveValid
+                              ? "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
+                              : isApproveActive
+                              ? "border-white bg-emerald-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="Approve branch port"
+                        >
+                          <Check size={11} strokeWidth={2.5} />
+                          {isApproveActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isApproveInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              Approve
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {(() => {
+                      const isRejectActive =
+                        (draggingWire?.fromDirection !== "input" &&
+                          draggingWire?.fromStepId === step.id &&
+                          draggingWire?.fromPort === "reject") ||
+                        (draggingWire?.fromDirection === "input" &&
                           draggingWire?.snappedTargetId === step.id &&
-                          draggingWire?.snappedOutputPort === "reject" &&
-                          "scale-125 ring-4 ring-rose-500/40 shadow-lg border-rose-300"
-                      )}
-                      title="Reject branch port"
-                    >
-                      <X size={11} strokeWidth={2.5} />
-                    </div>
+                          draggingWire?.snappedOutputPort === "reject");
+                      const isRejectInvalid =
+                        isRejectActive &&
+                        draggingWire?.snappedTargetId &&
+                        draggingWire?.validationResult &&
+                        !draggingWire.validationResult.valid;
+                      const isRejectValid =
+                        isRejectActive &&
+                        draggingWire?.snappedTargetId &&
+                        (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                      return (
+                        <div
+                          onPointerDown={(e) =>
+                            handlePortPointerDown(e, step.id, "reject", pos.x + nodeW, pos.y + 74)
+                          }
+                          style={{ top: "74px" }}
+                          className={cn(
+                            "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-rose-950 border border-rose-500/90 text-rose-300 hover:bg-rose-900 hover:scale-115 hover:border-rose-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                            isRejectInvalid
+                              ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                              : isRejectValid
+                              ? "scale-125 ring-4 ring-rose-500/40 shadow-lg border-rose-300"
+                              : isRejectActive
+                              ? "border-white bg-rose-900 text-white scale-115"
+                              : ""
+                          )}
+                          title="Reject branch port"
+                        >
+                          <X size={11} strokeWidth={2.5} />
+                          {isRejectActive && (
+                            <div
+                              className={cn(
+                                "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                                isRejectInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                              )}
+                            >
+                              Reject
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : step.type !== "end" && step.type !== "note" ? (
-                  <div
-                    onPointerDown={(e) =>
-                      handlePortPointerDown(
-                        e,
-                        step.id,
-                        "out",
-                        pos.x + nodeW,
-                        pos.y + (step.type === "trigger" ? getTriggerPortOffsetY(step) : 48)
-                      )
-                    }
-                    style={{
-                      top: `${step.type === "trigger" ? getTriggerPortOffsetY(step) : 48}px`,
-                    }}
-                    className={cn(
-                      "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800 transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
-                      draggingWire?.fromDirection === "input" &&
+                  (() => {
+                    const isOutActive =
+                      (draggingWire?.fromDirection !== "input" &&
+                        draggingWire?.fromStepId === step.id &&
+                        draggingWire?.fromPort === "out") ||
+                      (draggingWire?.fromDirection === "input" &&
                         draggingWire?.snappedTargetId === step.id &&
-                        draggingWire?.snappedOutputPort === "out" &&
-                        "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
-                    )}
-                    title={step.type === "trigger" ? "Trigger output (drag to connect)" : "Output text (drag to connect)"}
-                  >
-                    T
-                  </div>
+                        draggingWire?.snappedOutputPort === "out");
+                    const isOutInvalid =
+                      isOutActive &&
+                      draggingWire?.snappedTargetId &&
+                      draggingWire?.validationResult &&
+                      !draggingWire.validationResult.valid;
+                    const isOutValid =
+                      isOutActive &&
+                      draggingWire?.snappedTargetId &&
+                      (!draggingWire?.validationResult || draggingWire.validationResult.valid);
+
+                    return (
+                      <div
+                        onPointerDown={(e) =>
+                          handlePortPointerDown(
+                            e,
+                            step.id,
+                            "out",
+                            pos.x + nodeW,
+                            pos.y + (step.type === "trigger" ? getTriggerPortOffsetY(step) : 48)
+                          )
+                        }
+                        style={{
+                          top: `${step.type === "trigger" ? getTriggerPortOffsetY(step) : 48}px`,
+                        }}
+                        className={cn(
+                          "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                          isOutInvalid
+                            ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
+                            : isOutValid
+                            ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                            : isOutActive
+                            ? "border-white bg-zinc-800 text-white scale-115"
+                            : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                        )}
+                        title={step.type === "trigger" ? "Trigger output (drag to connect)" : "Output text (drag to connect)"}
+                      >
+                        T
+                        {isOutActive && (
+                          <div
+                            className={cn(
+                              "absolute left-[calc(100%+8px)] top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-[#18181b] border text-[11px] font-medium whitespace-nowrap shadow-md pointer-events-none select-none z-30 transition-all",
+                              isOutInvalid ? "border-red-500/80 text-red-300" : "border-zinc-700 text-zinc-100"
+                            )}
+                          >
+                            Text
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : null}
               </div>
             );
