@@ -137,7 +137,7 @@ def test_good_arguments_for_the_new_tools_are_rebuilt_as_given():
     closed = {"owner": O, "repo": R, "issue_number": 7, "state_reason": "not_planned"}
     assert tools.clean_arguments(tool("github_close_issue"), {**closed, "account": "work"}) == (closed, "work")
     assert tools.clean_arguments(tool("github_get_file"), {"owner": O, "repo": R, "path": "docs/guide.md", "ref": "feature/x-1"})[0]["path"] == "docs/guide.md"
-    assert "path" not in tools.clean_arguments(tool("github_get_file"), {"owner": O, "repo": R})[0]  # repo root
+    assert tools.clean_arguments(tool("github_get_file"), {"owner": O, "repo": R})[0]["path"] == ""  # repo root: Composio needs the field
     assert tools.clean_arguments(tool("github_search_issues"), {"q": "repo:o/r is:open label:bug"})[0] == {"q": "repo:o/r is:open label:bug", "per_page": 10}
     assert tools.clean_arguments(tool("github_list_commits"), {"owner": O, "repo": R})[0]["per_page"] == 10
 

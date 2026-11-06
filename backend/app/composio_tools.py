@@ -493,6 +493,8 @@ def clean_arguments(tool: Tool, arguments: object) -> tuple[dict, str | None]:
         sent["sha"] = sent.pop("from_sha")
     if tool.name == "github_commit_file":
         sent["content"] = base64.b64encode(sent["content"].encode("utf-8")).decode("ascii")
+    if tool.name == "github_get_file":
+        sent.setdefault("path", "")  # Composio requires the field; empty means the repository root
     if "per_page" in tool.properties:
         sent.setdefault("per_page", 10)
     if tool.name == "googlecalendar_list_events":
