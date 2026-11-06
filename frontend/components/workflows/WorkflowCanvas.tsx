@@ -166,12 +166,15 @@ interface ResizingNodeState {
 interface DraggingConnection {
   fromStepId: string;
   fromPort: "out" | "true" | "false" | "approve" | "reject";
+  fromDirection?: "output" | "input";
+  targetInputPort?: "text" | "image" | "file";
   startX: number;
   startY: number;
   currentX: number;
   currentY: number;
   snappedTargetId: string | null;
   snappedInputPort?: "text" | "image" | "file";
+  snappedOutputPort?: "out" | "true" | "false" | "approve" | "reject";
 }
 
 interface FreehandStroke {
@@ -263,6 +266,35 @@ export function WorkflowCanvas({
       return 48;
     },
     [getTriggerPortOffsetY]
+  );
+
+  // Helper to find any active wire plugged into a specific input port
+  const getIncomingWire = useCallback(
+    (targetStepId: string, targetPort: "text" | "image" | "file" = "text") => {
+      for (const s of effectiveSteps) {
+        if (s.type === "condition") {
+          if (s.if_true === targetStepId && (s.if_true_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "true" as const };
+          }
+          if (s.if_false === targetStepId && (s.if_false_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "false" as const };
+          }
+        } else if (s.type === "approval") {
+          if (s.on_approve === targetStepId && (s.on_approve_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "approve" as const };
+          }
+          if (s.on_reject === targetStepId && (s.on_reject_target_port || "text") === targetPort) {
+            return { fromStep: s, port: "reject" as const };
+          }
+        } else if (s.type !== "end" && s.type !== "note") {
+          if (s.next_step_id === targetStepId && (s.target_port || "text") === targetPort) {
+            return { fromStep: s, port: "out" as const };
+          }
+        }
+      }
+      return null;
+    },
+    [effectiveSteps]
   );
 
   const computeNextRun = useCallback((step: WorkflowStep): string => {
@@ -414,6 +446,23 @@ export function WorkflowCanvas({
   const [draggingWire, setDraggingWire] = useState<DraggingConnection | null>(null);
   const [hoveredWire, setHoveredWire] = useState<SelectedWire | null>(null);
   const [selectedWire, setSelectedWire] = useState<SelectedWire | null>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleWirePointerEnter = useCallback((wire: SelectedWire) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredWire(wire);
+  }, []);
+
+  const handleWirePointerLeave = useCallback((e: React.PointerEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related && related.closest && related.closest(".wire-interactive")) return;
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredWire(null);
+    }, 150);
+  }, []);
 
   // Freehand drawing state
   const [strokes, setStrokes] = useState<FreehandStroke[]>([]);
@@ -719,47 +768,96 @@ export function WorkflowCanvas({
       const curX = (e.clientX - rect.left - pan.x) / zoom;
       const curY = (e.clientY - rect.top - pan.y) / zoom;
 
-      let snappedTarget: string | null = null;
-      let snappedPort: "text" | "image" | "file" = "text";
-      let snapX = curX;
-      let snapY = curY;
-      let minDistance = 32;
+      if (draggingWire.fromDirection === "input") {
+        // Dragging FROM an input port, snapping TO an output port on candidate source nodes
+        let snappedSource: string | null = null;
+        let snappedOutput: "out" | "true" | "false" | "approve" | "reject" = "out";
+        let snapX = curX;
+        let snapY = curY;
+        let minDistance = 32;
 
-      effectiveSteps.forEach((st) => {
-        if (st.id === draggingWire.fromStepId) return;
-        if (st.type === "trigger" || st.type === "note") return; // Triggers and Notes have no input ports
-        const pos = nodePositions[st.id] || { x: 420, y: 140 };
-        const portX = pos.x;
+        effectiveSteps.forEach((st) => {
+          if (st.id === draggingWire.fromStepId) return;
+          if (st.type === "end" || st.type === "note") return; // End and Note have no output ports
+          const pos = nodePositions[st.id] || { x: 420, y: 140 };
+          const { width: nodeW } = getNodeSize(st);
+          const portX = pos.x + nodeW;
 
-        const candidatePorts: Array<"text" | "image" | "file"> =
-          st.type === "llm" || st.type === "agent" || st.type === "action"
-            ? ["text", "image", "file"]
-            : ["text"];
+          const candidateOutputs: Array<"out" | "true" | "false" | "approve" | "reject"> =
+            st.type === "condition"
+              ? ["true", "false"]
+              : st.type === "approval"
+              ? ["approve", "reject"]
+              : ["out"];
 
-        for (const p of candidatePorts) {
-          const portY = pos.y + getInputPortOffsetY(st, p);
-          const dist = Math.hypot(curX - portX, curY - portY);
-          if (dist < minDistance) {
-            minDistance = dist;
-            snappedTarget = st.id;
-            snappedPort = p;
-            snapX = portX;
-            snapY = portY;
-          }
-        }
-      });
-
-      setDraggingWire((prev) =>
-        prev
-          ? {
-              ...prev,
-              currentX: snapX,
-              currentY: snapY,
-              snappedTargetId: snappedTarget,
-              snappedInputPort: snappedTarget ? snappedPort : undefined,
+          for (const p of candidateOutputs) {
+            const portY = pos.y + getOutputPortOffsetY(st, p);
+            const dist = Math.hypot(curX - portX, curY - portY);
+            if (dist < minDistance) {
+              minDistance = dist;
+              snappedSource = st.id;
+              snappedOutput = p;
+              snapX = portX;
+              snapY = portY;
             }
-          : null
-      );
+          }
+        });
+
+        setDraggingWire((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentX: snapX,
+                currentY: snapY,
+                snappedTargetId: snappedSource,
+                snappedOutputPort: snappedSource ? snappedOutput : undefined,
+              }
+            : null
+        );
+      } else {
+        // Dragging FROM an output port, snapping TO an input port on candidate target nodes
+        let snappedTarget: string | null = null;
+        let snappedPort: "text" | "image" | "file" = "text";
+        let snapX = curX;
+        let snapY = curY;
+        let minDistance = 32;
+
+        effectiveSteps.forEach((st) => {
+          if (st.id === draggingWire.fromStepId) return;
+          if (st.type === "trigger" || st.type === "note") return; // Triggers and Notes have no input ports
+          const pos = nodePositions[st.id] || { x: 420, y: 140 };
+          const portX = pos.x;
+
+          const candidatePorts: Array<"text" | "image" | "file"> =
+            st.type === "llm" || st.type === "agent" || st.type === "action"
+              ? ["text", "image", "file"]
+              : ["text"];
+
+          for (const p of candidatePorts) {
+            const portY = pos.y + getInputPortOffsetY(st, p);
+            const dist = Math.hypot(curX - portX, curY - portY);
+            if (dist < minDistance) {
+              minDistance = dist;
+              snappedTarget = st.id;
+              snappedPort = p;
+              snapX = portX;
+              snapY = portY;
+            }
+          }
+        });
+
+        setDraggingWire((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentX: snapX,
+                currentY: snapY,
+                snappedTargetId: snappedTarget,
+                snappedInputPort: snappedTarget ? snappedPort : undefined,
+              }
+            : null
+        );
+      }
     }
   };
 
@@ -801,12 +899,20 @@ export function WorkflowCanvas({
 
     if (draggingWire) {
       if (draggingWire.snappedTargetId) {
-        handleConnect(
-          draggingWire.fromStepId,
-          draggingWire.fromPort,
-          draggingWire.snappedTargetId,
-          draggingWire.snappedInputPort || "text"
-        );
+        if (draggingWire.fromDirection === "input") {
+          const sourceId = draggingWire.snappedTargetId;
+          const targetId = draggingWire.fromStepId;
+          const outPort = draggingWire.snappedOutputPort || "out";
+          const inPort = draggingWire.targetInputPort || "text";
+          handleConnect(sourceId, outPort, targetId, inPort);
+        } else {
+          handleConnect(
+            draggingWire.fromStepId,
+            draggingWire.fromPort,
+            draggingWire.snappedTargetId,
+            draggingWire.snappedInputPort || "text"
+          );
+        }
       }
       setDraggingWire(null);
     }
@@ -1071,17 +1177,7 @@ export function WorkflowCanvas({
         return next;
       });
 
-      const existing = [...effectiveSteps];
-      if (
-        type !== "trigger" &&
-        type !== "note" &&
-        existing.length > 0 &&
-        existing[existing.length - 1].type !== "note" &&
-        !existing[existing.length - 1].next_step_id
-      ) {
-        existing[existing.length - 1].next_step_id = newId;
-      }
-      void onUpdateWorkflow({ steps: [...existing, newStep] });
+      void onUpdateWorkflow({ steps: [...effectiveSteps, newStep] });
       setSelectedNodeId(newId);
       setShowAddMenu(false);
     },
@@ -1124,7 +1220,7 @@ export function WorkflowCanvas({
 
   // Disconnect wire
   const handleDisconnectWire = (fromId: string, port: string) => {
-    const updated = (workflow.steps || []).map((s) => {
+    const updated = effectiveSteps.map((s) => {
       if (s.id !== fromId) return s;
       const copy = { ...s };
       if (port === "out") {
@@ -1150,7 +1246,7 @@ export function WorkflowCanvas({
     setHoveredWire(null);
   };
 
-  // Start wire drag
+  // Start wire drag from Output port (Right edge)
   const handlePortPointerDown = (
     e: React.PointerEvent,
     stepId: string,
@@ -1159,9 +1255,13 @@ export function WorkflowCanvas({
     portY: number
   ) => {
     e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
     setDraggingWire({
       fromStepId: stepId,
       fromPort: port,
+      fromDirection: "output",
       startX: portX,
       startY: portY,
       currentX: portX,
@@ -1170,10 +1270,81 @@ export function WorkflowCanvas({
     });
   };
 
-  // Bezier curve path
+  // Start wire drag / detaching from Input port (Left edge)
+  const handleInputPortPointerDown = (
+    e: React.PointerEvent,
+    stepId: string,
+    port: "text" | "image" | "file",
+    portX: number,
+    portY: number
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    // 1. Check if an incoming wire is already plugged into this input port
+    const existingIncoming = getIncomingWire(stepId, port);
+
+    if (existingIncoming) {
+      const fromStep = existingIncoming.fromStep;
+      const fromPort = existingIncoming.port;
+
+      // Select this wire immediately
+      setSelectedWire({
+        fromStepId: fromStep.id,
+        toStepId: stepId,
+        port: fromPort,
+      });
+
+      // Detach the connection from this port and begin dragging from source output
+      const srcPos = nodePositions[fromStep.id] || { x: 420, y: 140 };
+      const { width: srcW } = getNodeSize(fromStep);
+      const srcX = srcPos.x + srcW;
+      const srcY = srcPos.y + getOutputPortOffsetY(fromStep, fromPort);
+
+      handleDisconnectWire(fromStep.id, fromPort);
+
+      setDraggingWire({
+        fromStepId: fromStep.id,
+        fromPort: fromPort,
+        fromDirection: "output",
+        startX: srcX,
+        startY: srcY,
+        currentX: portX,
+        currentY: portY,
+        snappedTargetId: null,
+      });
+      return;
+    }
+
+    // 2. Otherwise start reverse drag from this input port to an output port
+    setDraggingWire({
+      fromStepId: stepId,
+      fromPort: "out",
+      fromDirection: "input",
+      targetInputPort: port,
+      startX: portX,
+      startY: portY,
+      currentX: portX,
+      currentY: portY,
+      snappedTargetId: null,
+    });
+  };
+
+  // Smooth Bezier curve path with forward & backward loop handling
   const getCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
-    const dx = Math.max(50, Math.abs(x2 - x1) * 0.45);
-    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (dx >= 0) {
+      const cx = Math.max(40, dx * 0.5);
+      return `M ${x1} ${y1} C ${x1 + cx} ${y1}, ${x2 - cx} ${y2}, ${x2} ${y2}`;
+    } else {
+      // Smooth backward loop when target is behind source
+      const cx = Math.max(50, Math.min(180, Math.abs(dx) * 0.6));
+      const cy = Math.abs(dy) < 40 ? 40 : Math.min(100, Math.abs(dy) * 0.4);
+      const signY = dy >= 0 ? 1 : -1;
+      return `M ${x1} ${y1} C ${x1 + cx} ${y1 + cy * signY}, ${x2 - cx} ${y2 - cy * signY}, ${x2} ${y2}`;
+    }
   };
 
   // Execute workflow live across canvas
@@ -1512,17 +1683,20 @@ export function WorkflowCanvas({
                   <g
                     key={`${step.id}-${port}-${targetId}`}
                     className="wire-interactive pointer-events-auto cursor-pointer group"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedWire({ fromStepId: step.id, toStepId: targetId, port });
                     }}
                     onPointerEnter={() =>
-                      setHoveredWire({ fromStepId: step.id, toStepId: targetId, port })
+                      handleWirePointerEnter({ fromStepId: step.id, toStepId: targetId, port })
                     }
-                    onPointerLeave={() => setHoveredWire(null)}
+                    onPointerLeave={handleWirePointerLeave}
                   >
                     {/* Transparent fat hit-test path for easy hovering/clicking */}
-                    <path d={pathData} fill="none" stroke="transparent" strokeWidth={26} />
+                    <path d={pathData} fill="none" stroke="transparent" strokeWidth={28} />
 
                     {/* Visible Wire */}
                     <path
@@ -1544,13 +1718,27 @@ export function WorkflowCanvas({
                     {isSelectedOrHovered && (
                       <g
                         transform={`translate(${midX}, ${midY})`}
-                        onClick={(e) => {
+                        onPointerDown={(e) => {
                           e.stopPropagation();
+                          e.preventDefault();
                           handleDisconnectWire(step.id, port);
                         }}
-                        className="cursor-pointer hover:scale-125 transition-transform"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handleDisconnectWire(step.id, port);
+                        }}
+                        className="cursor-pointer group/btn"
                       >
-                        <circle r={12} fill="#ef4444" stroke="#991b1b" strokeWidth={1.5} />
+                        {/* Generous invisible hit-circle for effortless clicking */}
+                        <circle r={20} fill="transparent" />
+                        <circle
+                          r={12}
+                          fill="#ef4444"
+                          stroke="#991b1b"
+                          strokeWidth={1.5}
+                          className="group-hover/btn:scale-125 transition-transform duration-150 drop-shadow-md"
+                        />
                         <line x1={-4} y1={-4} x2={4} y2={4} stroke="#ffffff" strokeWidth={2.5} strokeLinecap="round" />
                         <line x1={4} y1={-4} x2={-4} y2={4} stroke="#ffffff" strokeWidth={2.5} strokeLinecap="round" />
                       </g>
@@ -1561,7 +1749,7 @@ export function WorkflowCanvas({
 
               const elements: React.ReactNode[] = [];
 
-              if (step.next_step_id) {
+              if (step.type !== "condition" && step.type !== "approval" && step.next_step_id) {
                 elements.push(
                   renderWire(step.next_step_id, "out", step.target_port || "text", "rgba(255, 255, 255, 0.35)")
                 );
@@ -1583,12 +1771,21 @@ export function WorkflowCanvas({
             {/* Currently Dragged Elastic Wire */}
             {draggingWire && (
               <path
-                d={getCurvePath(
-                  draggingWire.startX,
-                  draggingWire.startY,
-                  draggingWire.currentX,
-                  draggingWire.currentY
-                )}
+                d={
+                  draggingWire.fromDirection === "input"
+                    ? getCurvePath(
+                        draggingWire.currentX,
+                        draggingWire.currentY,
+                        draggingWire.startX,
+                        draggingWire.startY
+                      )
+                    : getCurvePath(
+                        draggingWire.startX,
+                        draggingWire.startY,
+                        draggingWire.currentX,
+                        draggingWire.currentY
+                      )
+                }
                 fill="none"
                 stroke={draggingWire.snappedTargetId ? "#10b981" : "#a855f7"}
                 strokeWidth={3}
@@ -1796,66 +1993,176 @@ export function WorkflowCanvas({
                     {step.type === "llm" || step.type === "agent" || step.type === "action" ? (
                       <>
                         {/* 1. Text Input Port (T) */}
-                        <div
-                          style={{ top: "48px" }}
-                          className={cn(
-                            "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                        {(() => {
+                          const incoming = getIncomingWire(step.id, "text");
+                          const isSnapped =
+                            draggingWire?.fromDirection !== "input" &&
                             isTargetSnapped &&
-                              (draggingWire?.snappedInputPort === "text" || !draggingWire?.snappedInputPort)
-                              ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
-                              : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
-                          )}
-                          title="Text input (prompt template & variables)"
-                        >
-                          T
-                        </div>
+                            (draggingWire?.snappedInputPort === "text" || !draggingWire?.snappedInputPort);
+                          return (
+                            <div
+                              style={{ top: "48px" }}
+                              onPointerDown={(e) =>
+                                handleInputPortPointerDown(e, step.id, "text", pos.x, pos.y + 48)
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (incoming) {
+                                  setSelectedWire({
+                                    fromStepId: incoming.fromStep.id,
+                                    toStepId: step.id,
+                                    port: incoming.port,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                                isSnapped
+                                  ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : incoming
+                                  ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                  : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                              )}
+                              title={
+                                incoming
+                                  ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                  : "Text input (variables & prompt template). Drag to connect"
+                              }
+                            >
+                              T
+                            </div>
+                          );
+                        })()}
 
                         {/* 2. Image Input Port (ImageIcon) */}
-                        <div
-                          style={{ top: "82px" }}
-                          className={cn(
-                            "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
-                            isTargetSnapped && draggingWire?.snappedInputPort === "image"
-                              ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
-                              : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
-                          )}
-                          title="Image input (vision context)"
-                        >
-                          <ImageIcon size={11} strokeWidth={2} />
-                        </div>
+                        {(() => {
+                          const incoming = getIncomingWire(step.id, "image");
+                          const isSnapped =
+                            draggingWire?.fromDirection !== "input" &&
+                            isTargetSnapped &&
+                            draggingWire?.snappedInputPort === "image";
+                          return (
+                            <div
+                              style={{ top: "82px" }}
+                              onPointerDown={(e) =>
+                                handleInputPortPointerDown(e, step.id, "image", pos.x, pos.y + 82)
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (incoming) {
+                                  setSelectedWire({
+                                    fromStepId: incoming.fromStep.id,
+                                    toStepId: step.id,
+                                    port: incoming.port,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
+                                isSnapped
+                                  ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : incoming
+                                  ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                  : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                              )}
+                              title={
+                                incoming
+                                  ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                  : "Image input (vision context). Drag to connect"
+                              }
+                            >
+                              <ImageIcon size={11} strokeWidth={2} />
+                            </div>
+                          );
+                        })()}
 
                         {/* 3. File Input Port (FileText) */}
-                        <div
-                          style={{ top: "116px" }}
-                          className={cn(
-                            "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
-                            isTargetSnapped && draggingWire?.snappedInputPort === "file"
-                              ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
-                              : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
-                          )}
-                          title="File input (document & code context)"
-                        >
-                          <FileText size={11} strokeWidth={2} />
-                        </div>
+                        {(() => {
+                          const incoming = getIncomingWire(step.id, "file");
+                          const isSnapped =
+                            draggingWire?.fromDirection !== "input" &&
+                            isTargetSnapped &&
+                            draggingWire?.snappedInputPort === "file";
+                          return (
+                            <div
+                              style={{ top: "116px" }}
+                              onPointerDown={(e) =>
+                                handleInputPortPointerDown(e, step.id, "file", pos.x, pos.y + 116)
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (incoming) {
+                                  setSelectedWire({
+                                    fromStepId: incoming.fromStep.id,
+                                    toStepId: step.id,
+                                    port: incoming.port,
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
+                                isSnapped
+                                  ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                  : incoming
+                                  ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                  : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                              )}
+                              title={
+                                incoming
+                                  ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                  : "File input (document & code context). Drag to connect"
+                              }
+                            >
+                              <FileText size={11} strokeWidth={2} />
+                            </div>
+                          );
+                        })()}
                       </>
                     ) : (
                       /* Single Input Port for Condition, Approval, End */
-                      <div
-                        style={{ top: "48px" }}
-                        className={cn(
-                          "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
-                          isTargetSnapped
-                            ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
-                            : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
-                        )}
-                        title={step.type === "end" ? "Flow completion input" : "Input data"}
-                      >
-                        {step.type === "end" ? (
-                          <CheckCircle2 size={11} className="text-emerald-400" />
-                        ) : (
-                          "T"
-                        )}
-                      </div>
+                      (() => {
+                        const incoming = getIncomingWire(step.id, "text");
+                        const isSnapped = draggingWire?.fromDirection !== "input" && isTargetSnapped;
+                        return (
+                          <div
+                            style={{ top: "48px" }}
+                            onPointerDown={(e) =>
+                              handleInputPortPointerDown(e, step.id, "text", pos.x, pos.y + 48)
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (incoming) {
+                                setSelectedWire({
+                                  fromStepId: incoming.fromStep.id,
+                                  toStepId: step.id,
+                                  port: incoming.port,
+                                });
+                              }
+                            }}
+                            className={cn(
+                              "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                              isSnapped
+                                ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                                : incoming
+                                ? "border-zinc-400 text-zinc-100 bg-zinc-800 hover:border-white hover:scale-115"
+                                : "border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800"
+                            )}
+                            title={
+                              incoming
+                                ? `Connected from ${incoming.fromStep.name} (${incoming.port}). Click to select, or drag to re-route`
+                                : step.type === "end"
+                                ? "Flow completion input. Drag to connect"
+                                : "Input data. Drag to connect"
+                            }
+                          >
+                            {step.type === "end" ? (
+                              <CheckCircle2 size={11} className="text-emerald-400" />
+                            ) : (
+                              "T"
+                            )}
+                          </div>
+                        );
+                      })()
                     )}
                   </>
                 )}
@@ -2836,7 +3143,13 @@ export function WorkflowCanvas({
                         handlePortPointerDown(e, step.id, "true", pos.x + nodeW, pos.y + 46)
                       }
                       style={{ top: "46px" }}
-                      className="absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none"
+                      className={cn(
+                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                        draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "true" &&
+                          "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
+                      )}
                       title="True branch port"
                     >
                       <Check size={11} strokeWidth={2.5} />
@@ -2846,7 +3159,13 @@ export function WorkflowCanvas({
                         handlePortPointerDown(e, step.id, "false", pos.x + nodeW, pos.y + 74)
                       }
                       style={{ top: "74px" }}
-                      className="absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-amber-950 border border-amber-500/90 text-amber-300 hover:bg-amber-900 hover:scale-115 hover:border-amber-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none"
+                      className={cn(
+                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-amber-950 border border-amber-500/90 text-amber-300 hover:bg-amber-900 hover:scale-115 hover:border-amber-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                        draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "false" &&
+                          "scale-125 ring-4 ring-amber-500/40 shadow-lg border-amber-300"
+                      )}
                       title="False branch port"
                     >
                       <X size={11} strokeWidth={2.5} />
@@ -2859,7 +3178,13 @@ export function WorkflowCanvas({
                         handlePortPointerDown(e, step.id, "approve", pos.x + nodeW, pos.y + 46)
                       }
                       style={{ top: "46px" }}
-                      className="absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none"
+                      className={cn(
+                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-emerald-950 border border-emerald-500/90 text-emerald-300 hover:bg-emerald-900 hover:scale-115 hover:border-emerald-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                        draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "approve" &&
+                          "scale-125 ring-4 ring-emerald-500/40 shadow-lg border-emerald-300"
+                      )}
                       title="Approve branch port"
                     >
                       <Check size={11} strokeWidth={2.5} />
@@ -2869,7 +3194,13 @@ export function WorkflowCanvas({
                         handlePortPointerDown(e, step.id, "reject", pos.x + nodeW, pos.y + 74)
                       }
                       style={{ top: "74px" }}
-                      className="absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-rose-950 border border-rose-500/90 text-rose-300 hover:bg-rose-900 hover:scale-115 hover:border-rose-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none"
+                      className={cn(
+                        "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-rose-950 border border-rose-500/90 text-rose-300 hover:bg-rose-900 hover:scale-115 hover:border-rose-300 cursor-crosshair flex items-center justify-center z-20 shadow-md transition-all select-none",
+                        draggingWire?.fromDirection === "input" &&
+                          draggingWire?.snappedTargetId === step.id &&
+                          draggingWire?.snappedOutputPort === "reject" &&
+                          "scale-125 ring-4 ring-rose-500/40 shadow-lg border-rose-300"
+                      )}
                       title="Reject branch port"
                     >
                       <X size={11} strokeWidth={2.5} />
@@ -2889,7 +3220,13 @@ export function WorkflowCanvas({
                     style={{
                       top: `${step.type === "trigger" ? getTriggerPortOffsetY(step) : 48}px`,
                     }}
-                    className="absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800 transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md"
+                    className={cn(
+                      "absolute -right-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border border-zinc-600/90 text-zinc-400 hover:border-white hover:text-white hover:scale-115 hover:bg-zinc-800 transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
+                      draggingWire?.fromDirection === "input" &&
+                        draggingWire?.snappedTargetId === step.id &&
+                        draggingWire?.snappedOutputPort === "out" &&
+                        "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
+                    )}
                     title={step.type === "trigger" ? "Trigger output (drag to connect)" : "Output text (drag to connect)"}
                   >
                     T

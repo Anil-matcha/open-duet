@@ -34,7 +34,7 @@ class BaseStep(BaseModel):
 class ActionStep(BaseStep):
     type: Literal["action"] = "action"
     agent_id: int | None = None
-    prompt: str = Field(min_length=1, max_length=20_000)
+    prompt: str = Field(default="", max_length=20_000)
     approval_mode: ApprovalMode = "ask"
     next_step_id: str | None = None
 
@@ -61,19 +61,19 @@ class AgentStep(BaseStep):
 
 class ConditionStep(BaseStep):
     type: Literal["condition"] = "condition"
-    target: str = Field(min_length=1, max_length=200)
+    target: str = Field(default="", max_length=200)
     operator: ConditionOperator = "contains"
     value: str = ""
-    if_true: str = Field(min_length=1, max_length=64)
-    if_false: str = Field(min_length=1, max_length=64)
+    if_true: str | None = None
+    if_false: str | None = None
 
 
 class ApprovalStep(BaseStep):
     type: Literal["approval"] = "approval"
-    prompt: str = Field(min_length=1, max_length=2_000)
+    prompt: str = Field(default="", max_length=2_000)
     timeout_minutes: int = Field(default=60, ge=1, le=10_080)
-    on_approve: str = Field(min_length=1, max_length=64)
-    on_reject: str | None = Field(default=None, max_length=64)
+    on_approve: str | None = None
+    on_reject: str | None = None
 
 
 class EndStep(BaseStep):
