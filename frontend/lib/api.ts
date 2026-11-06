@@ -972,7 +972,7 @@ export type WebhookSecret = { routine: Routine; secret: string; path: string };
 export type WorkflowStep = {
   id: string;
   name: string;
-  type: "action" | "llm" | "agent" | "condition" | "approval" | "end" | "note" | "trigger";
+  type: "action" | "llm" | "agent" | "condition" | "approval" | "end" | "note" | "shape" | "trigger" | "section" | "text";
   trigger_type?: "manual" | "schedule" | "webhook" | "message";
   schedule_kind?: "daily" | "hourly" | "weekly" | "monthly" | "cron";
   schedule_days?: string;
@@ -984,24 +984,40 @@ export type WorkflowStep = {
   message_keyword?: string;
   agent_id?: number;
   prompt?: string;
+  text?: string;
+  font_size?: string;
+  shape?: "rectangle" | "circle" | "diamond" | "triangle" | "inverted" | "oval" | "star";
+  tone?: string;
+  ink?: string;
+  font?: string;
+  size?: string | number;
+  align?: string;
+  bold?: boolean;
   model?: string;
   effort?: string | null;
   system_prompt?: string | null;
   approval_mode?: ApprovalMode;
   next_step_id?: string | null;
+  target_port?: "text" | "image" | "file";
   target?: string;
   operator?: "contains" | "not_contains" | "equals" | "not_equals" | "matches_regex" | "is_empty" | "is_not_empty";
   value?: string;
   if_true?: string;
+  if_true_target_port?: "text" | "image" | "file";
   if_false?: string;
+  if_false_target_port?: "text" | "image" | "file";
   timeout_minutes?: number;
   on_approve?: string;
+  on_approve_target_port?: "text" | "image" | "file";
   on_reject?: string | null;
+  on_reject_target_port?: "text" | "image" | "file";
   status?: "completed" | "failed";
   message?: string;
   color?: string;
   x?: number;
   y?: number;
+  width?: number;
+  height?: number;
 };
 
 export type Workflow = {
@@ -1374,6 +1390,9 @@ export const api = {
   // as "computers are not available" and keep working. ---
 
   computersHealth: () => request<ComputerHealth>("/computers/health"),
+  muapiCredentialStatus: () => request<{ configured: boolean }>("/computers/muapi-credentials"),
+  saveMuapiCredential: (apiKey: string) => request<{ configured: boolean }>("/computers/muapi-credentials", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
+  deleteMuapiCredential: () => request<void>("/computers/muapi-credentials", { method: "DELETE" }),
   boatCredentialStatus: () => request<{ configured: boolean }>("/computers/boat-credentials"),
   saveBoatCredential: (apiKey: string) => request<{ configured: boolean }>("/computers/boat-credentials", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
   deleteBoatCredential: () => request<void>("/computers/boat-credentials", { method: "DELETE" }),
@@ -1392,7 +1411,7 @@ export const api = {
   releaseBrowserControl: (agentId: number, leaseId: string) => request<ControlSnapshot>(`/agents/${agentId}/browser/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
   browserControlHeartbeat: (agentId: number, leaseId: string) => request<void>(`/agents/${agentId}/browser/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
   computerScreenshot: (id: number) => requestBlobUrl(`/computers/${id}/screenshot`),
-  createAgentComputer: (agentId: number, settings: ComputerSettings & { provider?: "docker" | "boat"; kind?: ComputerKind; start?: boolean } = {}) =>
+  createAgentComputer: (agentId: number, settings: ComputerSettings & { provider?: "docker" | "muapi" | "boat"; kind?: ComputerKind; start?: boolean } = {}) =>
     request<Computer>(`/agents/${agentId}/computer`, { method: "POST", body: JSON.stringify(settings) }),
 
   getComputer: (computerId: number) => request<Computer>(`/computers/${computerId}`),

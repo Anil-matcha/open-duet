@@ -29,6 +29,7 @@ const DEFAULT_WORKFLOW_STEPS: WorkflowStep[] = [
     next_step_id: "step_1",
     x: 60,
     y: 120,
+    width: 320,
   },
   {
     id: "step_1",
@@ -38,8 +39,10 @@ const DEFAULT_WORKFLOW_STEPS: WorkflowStep[] = [
     model: "gemini-2.0-flash",
     effort: "medium",
     next_step_id: "step_2",
-    x: 360,
+    x: 440,
     y: 120,
+    width: 440,
+    height: 380,
   },
   {
     id: "step_2",
@@ -49,8 +52,10 @@ const DEFAULT_WORKFLOW_STEPS: WorkflowStep[] = [
     prompt: "Take action based on analysis: {{steps.step_1.output}}",
     approval_mode: "ask",
     next_step_id: "step_3",
-    x: 740,
+    x: 940,
     y: 120,
+    width: 440,
+    height: 380,
   },
   {
     id: "step_3",
@@ -61,8 +66,10 @@ const DEFAULT_WORKFLOW_STEPS: WorkflowStep[] = [
     value: "urgent",
     if_true: "step_4",
     if_false: "step_5",
-    x: 1120,
+    x: 1440,
     y: 120,
+    width: 360,
+    height: 240,
   },
   {
     id: "step_4",
@@ -72,8 +79,10 @@ const DEFAULT_WORKFLOW_STEPS: WorkflowStep[] = [
     timeout_minutes: 60,
     on_approve: "step_5",
     on_reject: null,
-    x: 1500,
+    x: 1860,
     y: 60,
+    width: 360,
+    height: 240,
   },
   {
     id: "step_5",
@@ -81,8 +90,9 @@ const DEFAULT_WORKFLOW_STEPS: WorkflowStep[] = [
     type: "end",
     status: "completed",
     message: "Workflow finished successfully.",
-    x: 1500,
-    y: 220,
+    x: 1860,
+    y: 340,
+    width: 280,
   },
 ];
 

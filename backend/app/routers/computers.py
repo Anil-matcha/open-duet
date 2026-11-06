@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.computers import docker_cli, grants, screen, mcp_server
-from app.computers.provider import ComputerError, Health, Status
+from app.computers.provider import CLOUD_PROVIDERS, ComputerError, Health, Status
 from app.computers.service import ComputerNotFound, ComputerService
 from app.db.models import Agent, Computer
 from app.desktop import computer_capabilities
@@ -368,7 +368,7 @@ async def provider_tool(computer_id: int, request: Request, rt: ThreadRuntime = 
         computer = await _computer_or_404(rt.computers, computer_id)
     except HTTPException:
         raise
-    if computer.provider != "boat":
+    if computer.provider not in CLOUD_PROVIDERS:
         raise HTTPException(status_code=404, detail={"error_code": "computer_not_found"})
     raw = await request.body()
     if len(raw) > 2_100_000:
@@ -390,7 +390,7 @@ async def provider_tool(computer_id: int, request: Request, rt: ThreadRuntime = 
         raise HTTPException(status_code=403, detail={"error_code": "computer_tool_not_approved"})
     try:
         result = await rt.computers._call(
-            rt.computers.provider("boat").tool, rt.computers.spec(computer), name, arguments
+            rt.computers.provider(computer.provider).tool, rt.computers.spec(computer), name, arguments
         )
     except ComputerError as exc:
         raise _refused(exc) from None

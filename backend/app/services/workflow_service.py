@@ -396,10 +396,16 @@ class WorkflowService:
                 })
                 break
 
-            elif step_type in ("trigger", "note"):
+            elif step_type in ("trigger", "note", "shape", "section", "text"):
                 step_states[step_id].update({
                     "status": "completed",
-                    "output": f"Trigger fired ({step.get('trigger_type', 'manual')})" if step_type == "trigger" else step.get("prompt", ""),
+                    "output": (
+                        f"Trigger fired ({step.get('trigger_type', 'manual')})"
+                        if step_type == "trigger"
+                        else step.get("text", "")
+                        if step_type == "text"
+                        else step.get("prompt", "")
+                    ),
                     "finished_at": utcnow().isoformat(),
                 })
                 run.current_step_id = step.get("next_step_id")

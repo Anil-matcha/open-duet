@@ -21,6 +21,11 @@ from app.computers import docker_cli
 from app.computers.docker_cli import Spec
 
 
+# Providers that run a computer in a remote cloud and are driven through the
+# local provider-tool bridge (as opposed to local Docker).
+CLOUD_PROVIDERS = frozenset({"boat", "muapi"})
+
+
 class ComputerError(Exception):
     """A lifecycle step that cannot be done, with a code a client can act on."""
 

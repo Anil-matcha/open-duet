@@ -84,6 +84,6 @@ async def test_parallel_search_task_launch(
 
 def test_parallel_search_is_opt_in(monkeypatch):
     monkeypatch.delenv("PARALLEL_SEARCH_ENABLED", raising=False)
-    assert Settings(_env_file=None).PARALLEL_SEARCH_ENABLED is False
+    assert Settings(_env_file=None, TOKEN_ENCRYPTION_KEYS="dummy-test-key").PARALLEL_SEARCH_ENABLED is False
     monkeypatch.setenv("PARALLEL_SEARCH_ENABLED", "true")
-    assert Settings(_env_file=None).PARALLEL_SEARCH_ENABLED is True
+    assert Settings(_env_file=None, TOKEN_ENCRYPTION_KEYS="dummy-test-key").PARALLEL_SEARCH_ENABLED is True

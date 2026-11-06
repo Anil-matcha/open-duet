@@ -16,13 +16,38 @@ from typing import Mapping
 
 import httpx
 
-APP_VERSION = "0.8.1"
+APP_VERSION = "0.8.3"
 RELEASES_URL = "https://api.github.com/repos/Anil-matcha/open-duet/releases?per_page=10"
 CACHE_TTL_SECONDS = 3600  # 1 hour in-memory cache
 
 SEMVER_REGEX = re.compile(
     r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
 )
+
+
+def get_current_version() -> str:
+    """Reads current app version from desktop/package.json or CHANGELOG.md if present, else APP_VERSION."""
+    root = find_project_root()
+    if root:
+        pkg = root / "desktop" / "package.json"
+        if pkg.is_file():
+            try:
+                import json
+                data = json.loads(pkg.read_text(encoding="utf-8"))
+                if isinstance(data.get("version"), str) and data["version"].strip():
+                    return data["version"].strip()
+            except Exception:
+                pass
+        changelog = root / "CHANGELOG.md"
+        if changelog.is_file():
+            try:
+                for line in changelog.read_text(encoding="utf-8").splitlines():
+                    m = re.match(r"^##\s+(\d+\.\d+\.\d+)", line)
+                    if m:
+                        return m.group(1)
+            except Exception:
+                pass
+    return APP_VERSION
 
 
 def parse_version(text: str | None) -> tuple[tuple[int, int, int], list[str]] | None:
@@ -219,6 +244,7 @@ async def get_version_info(
         if isinstance(cached_info, VersionInfo):
             return cached_info
 
+    current_ver = get_current_version()
     install_kind = detect_install_kind(environ)
     commit = get_git_commit()
     update_command = get_update_command(install_kind)
@@ -226,7 +252,7 @@ async def get_version_info(
     latest_tag, release_url = await fetch_latest_release(client)
 
     if latest_tag:
-        update_available = compare_versions(latest_tag, APP_VERSION) > 0
+        update_available = compare_versions(latest_tag, current_ver) > 0
         latest_version = latest_tag
         notes_url = (
             release_url
@@ -239,7 +265,7 @@ async def get_version_info(
         notes_url = "https://github.com/Anil-matcha/open-duet/releases"
 
     info = VersionInfo(
-        current_version=APP_VERSION,
+        current_version=current_ver,
         commit=commit,
         latest_version=latest_version,
         update_available=update_available,

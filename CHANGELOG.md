@@ -4,6 +4,7 @@
 
 ### Added
 
+- Muapi is now a cloud computer provider alongside Boat. In the computer panel choose **Cloud · Muapi** (listed first) or **Cloud · Boat**; each has its own encrypted, write-only API key on this device. Muapi computers are shell-only for now and are billed per second from your Muapi credits while running. Covered by new provider unit tests against a mocked Muapi API; not yet tried against the live Muapi service.
 - Open your paid hosted workspace from the desktop app. A new **Workspace** menu (Cmd/Ctrl+1 for this computer, +2 for hosted), a Settings → Account button and a sandboxed hosted view show your cloud workspace in the same window. You sign in to it separately with your hosted email and password, hosted sign-out clears only that view, and local data is never copied or changed. On by default; set `OPEN_DOTS_HOSTED_WORKSPACE=0` to turn it off. Checked with unit tests and a source-run Electron smoke; no packaged-build or staging-account check yet.
 
 ## 0.8.3 - 2026-11-06
