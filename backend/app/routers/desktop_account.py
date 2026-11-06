@@ -109,7 +109,7 @@ async def _refuse_while_running(db: AsyncSession, action: str) -> None:
 
 
 async def _refuse_while_cloud_computers_exist(db: AsyncSession) -> None:
-    cloud_computer = await db.scalar(select(Computer.id).where(Computer.provider == "boat").limit(1))
+    cloud_computer = await db.scalar(select(Computer.id).where(Computer.provider.in_(("boat", "muapi"))).limit(1))
     if cloud_computer is not None:
         raise HTTPException(
             409,

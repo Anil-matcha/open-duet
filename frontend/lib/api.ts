@@ -1374,6 +1374,9 @@ export const api = {
   // as "computers are not available" and keep working. ---
 
   computersHealth: () => request<ComputerHealth>("/computers/health"),
+  muapiCredentialStatus: () => request<{ configured: boolean }>("/computers/muapi-credentials"),
+  saveMuapiCredential: (apiKey: string) => request<{ configured: boolean }>("/computers/muapi-credentials", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
+  deleteMuapiCredential: () => request<void>("/computers/muapi-credentials", { method: "DELETE" }),
   boatCredentialStatus: () => request<{ configured: boolean }>("/computers/boat-credentials"),
   saveBoatCredential: (apiKey: string) => request<{ configured: boolean }>("/computers/boat-credentials", { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
   deleteBoatCredential: () => request<void>("/computers/boat-credentials", { method: "DELETE" }),
@@ -1392,7 +1395,7 @@ export const api = {
   releaseBrowserControl: (agentId: number, leaseId: string) => request<ControlSnapshot>(`/agents/${agentId}/browser/control`, { method: "POST", keepalive: true, body: JSON.stringify({ action: "release", lease_id: leaseId }) }),
   browserControlHeartbeat: (agentId: number, leaseId: string) => request<void>(`/agents/${agentId}/browser/control/heartbeat`, { method: "POST", body: JSON.stringify({ lease_id: leaseId }) }),
   computerScreenshot: (id: number) => requestBlobUrl(`/computers/${id}/screenshot`),
-  createAgentComputer: (agentId: number, settings: ComputerSettings & { provider?: "docker" | "boat"; kind?: ComputerKind; start?: boolean } = {}) =>
+  createAgentComputer: (agentId: number, settings: ComputerSettings & { provider?: "docker" | "muapi" | "boat"; kind?: ComputerKind; start?: boolean } = {}) =>
     request<Computer>(`/agents/${agentId}/computer`, { method: "POST", body: JSON.stringify(settings) }),
 
   getComputer: (computerId: number) => request<Computer>(`/computers/${computerId}`),
