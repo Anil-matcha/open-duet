@@ -13,7 +13,7 @@ from app.db.types import BigIntPK, UTCDateTime
 # a crash or a stopped Docker is finished later instead of leaving an orphan.
 COMPUTER_STATES = ("missing", "creating", "running", "stopped", "error", "deleting")
 COMPUTER_KINDS = ("shell", "desktop")
-COMPUTER_PROVIDERS = ("docker", "boat")
+COMPUTER_PROVIDERS = ("docker", "boat", "boxd")
 COMPUTER_NETWORKS = ("none", "default")
 
 

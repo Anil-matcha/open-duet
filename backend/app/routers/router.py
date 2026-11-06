@@ -13,6 +13,7 @@ from app.routers.decisions import router as decisions_router
 from app.routers.approval_rules import router as approval_rules_router
 from app.routers.sentinel import router as sentinel_router
 from app.routers.computers import router as computers_router
+from app.routers.computer_credentials import boxd_router as boxd_credentials_router
 from app.routers.computer_credentials import router as computer_credentials_router
 from app.routers.browser_viewer import router as browser_viewer_router
 from app.routers.computer_viewer import router as computer_viewer_router
@@ -52,8 +53,11 @@ router.include_router(settings_router)
 router.include_router(decisions_router)
 router.include_router(approval_rules_router)
 router.include_router(sentinel_router)
-router.include_router(computers_router)
+# Before computers_router: its /computers/{computer_id} would otherwise
+# answer GET and DELETE /computers/<provider>-credentials with a 422.
 router.include_router(computer_credentials_router)
+router.include_router(boxd_credentials_router)
+router.include_router(computers_router)
 router.include_router(computer_viewer_router)
 router.include_router(browser_viewer_router)
 router.include_router(engines_router)

@@ -5,7 +5,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.desktop import account, profile, boat_credentials
+from app.computers.provider import CLOUD_PROVIDERS
+from app.desktop import account, profile, boat_credentials, boxd_credentials
 from app.auth.routes import require_admin
 from app.services.local_access_policy import require_local_access
 from app.db.session import get_db
@@ -109,7 +110,7 @@ async def _refuse_while_running(db: AsyncSession, action: str) -> None:
 
 
 async def _refuse_while_cloud_computers_exist(db: AsyncSession) -> None:
-    cloud_computer = await db.scalar(select(Computer.id).where(Computer.provider == "boat").limit(1))
+    cloud_computer = await db.scalar(select(Computer.id).where(Computer.provider.in_(CLOUD_PROVIDERS)).limit(1))
     if cloud_computer is not None:
         raise HTTPException(
             409,
@@ -131,7 +132,7 @@ async def reset_profile(data: Confirm, db: AsyncSession = Depends(get_db)):
     manager = _manager()
     _require_confirm(data, "RESET")
     await _refuse_while_running(db, "resetting this profile")
-    async with boat_credentials.configuration_lock:
+    async with boat_credentials.configuration_lock, boxd_credentials.configuration_lock:
         await _refuse_while_cloud_computers_exist(db)
         try:
             return await manager.reset_profile(lambda: wipe_local_data(db))
@@ -145,7 +146,7 @@ async def delete_account(data: Confirm, db: AsyncSession = Depends(get_db)):
     manager = _manager()
     _require_confirm(data, "DELETE")
     await _refuse_while_running(db, "deleting your account")
-    async with boat_credentials.configuration_lock:
+    async with boat_credentials.configuration_lock, boxd_credentials.configuration_lock:
         await _refuse_while_cloud_computers_exist(db)
         try:
             return await manager.delete_account(lambda: wipe_local_data(db))

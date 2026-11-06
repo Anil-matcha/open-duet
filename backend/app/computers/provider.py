@@ -2,8 +2,8 @@
 
 A provider knows how to make, wake, sleep and remove one isolated machine for
 an agent, how to report what it finds, and how the agent's tools reach it (an
-MCP server launch). Docker provides local computers and Boat provides cloud
-computers in the Desktop app. A remote server over SSH remains a future
+MCP server launch). Docker provides local computers; Boat and boxd provide
+cloud computers in the Desktop app. A remote server over SSH remains a future
 provider (docs/COMPUTERS.md).
 
 Every method is synchronous and may block on the docker CLI: callers run them
@@ -19,6 +19,11 @@ from typing import Protocol
 
 from app.computers import docker_cli
 from app.computers.docker_cli import Spec
+
+
+# Providers whose machines live in a cloud account. Their tool calls go through
+# the local backend (`/computers/{id}/provider-tool`), which holds the key.
+CLOUD_PROVIDERS = ("boat", "boxd")
 
 
 class ComputerError(Exception):

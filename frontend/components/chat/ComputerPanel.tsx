@@ -9,6 +9,7 @@ import { LiveDesktop } from "./LiveDesktop";
 import { isDesktopApp } from "@/lib/desktop-notifications";
 import { DesktopPicture } from "./DesktopPicture";
 import { BoatDesktop } from "./BoatDesktop";
+import { BoxdCloudSettings } from "./BoxdCloudSettings";
 import { NativeComputer } from "./NativeComputer";
 import {
   ACTION_LABEL,
@@ -81,9 +82,10 @@ function DockerComputerView({
   const [kind, setKind] = useState<ComputerKind>("shell");
   const [advanced, setAdvanced] = useState(false);
   const [network, setNetwork] = useState<ComputerNetwork>("none");
-  const [provider, setProvider] = useState<"docker" | "boat">("docker");
+  const [provider, setProvider] = useState<"docker" | "boat" | "boxd">("docker");
   const [boatConfigured, setBoatConfigured] = useState<boolean | null>(null);
   const [boatKey, setBoatKey] = useState("");
+  const [boxdConfigured, setBoxdConfigured] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -123,6 +125,11 @@ function DockerComputerView({
       if (active) setBoatConfigured(result.configured);
     }).catch(() => {
       if (active) setBoatConfigured(false);
+    });
+    void api.boxdCredentialStatus().then((result) => {
+      if (active) setBoxdConfigured(result.configured);
+    }).catch(() => {
+      if (active) setBoxdConfigured(false);
     });
     return () => { active = false; };
   }, [phase.kind, phase.kind === "none" ? phase.health?.hosted : false]);
@@ -181,15 +188,21 @@ function DockerComputerView({
             <input type="radio" name="computer-provider" checked={provider === "docker"} onChange={() => setProvider("docker")} />
             Local
           </label>
-          <label className="inline-flex items-center gap-2">
+          <label className="mr-4 inline-flex items-center gap-2">
             <input type="radio" name="computer-provider" checked={provider === "boat"} onChange={() => setProvider("boat")} />
             Cloud
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="radio" name="computer-provider" checked={provider === "boxd"} onChange={() => setProvider("boxd")} />
+            Cloud (boxd)
           </label>
         </fieldset>
         {provider === "docker" && docker && !docker.available && (
           <p className="text-warning">Docker is not available: {docker.error}</p>
         )}
-        {provider === "docker" ? (
+        {provider === "boxd" ? (
+          <BoxdCloudSettings configured={boxdConfigured} busy={busy} onConfigured={setBoxdConfigured} onBusy={setBusy} onError={setError} />
+        ) : provider === "docker" ? (
           <p className="text-xs text-muted">Local uses an isolated Docker computer on this machine. Only its workspace folder is shared with the agent.</p>
         ) : (
           <div className="space-y-2 rounded-md border border-line p-3">
@@ -236,6 +249,7 @@ function DockerComputerView({
             </label>
           ))}
           {kind === "desktop" && provider === "docker" && <p className="text-xs text-muted">Linux desktop with a browser. Build the image locally first; see desktop-image/README.md. The first build downloads several hundred MB.</p>}
+          {kind === "desktop" && provider === "boxd" && <p className="text-xs text-muted">Cloud Linux desktop at 1280x800. The agent starts apps on it with commands; you see it here as screenshots.</p>}
           {kind === "desktop" && provider === "boat" && <p className="text-xs text-muted">Cloud Linux desktop. The first start provisions a remote desktop and installs its screen-control tools. The live view uses a secret provider link that Open Dots clears when you hand control back; the provider does not expose a link revocation control.</p>}
         </fieldset>
         {provider === "docker" && <fieldset className="space-y-1">
@@ -256,7 +270,7 @@ function DockerComputerView({
           </p>
         )}
         <button
-          disabled={busy || !createGate.enabled || (provider === "boat" && !boatConfigured)}
+          disabled={busy || !createGate.enabled || (provider === "boat" && !boatConfigured) || (provider === "boxd" && !boxdConfigured)}
           aria-describedby={!createGate.enabled ? capabilityHelpId : undefined}
           className={PRIMARY}
           onClick={() => act(() => api.createAgentComputer(agent.id, { provider, ...(provider === "docker" ? { network } : {}), kind }))}
@@ -287,7 +301,7 @@ function DockerComputerView({
   return (
     <div className="space-y-3 text-sm">
       {alert}
-      {computer.kind === "desktop" && <><DesktopPicture computer={computer} />{computer.provider === "boat" ? <BoatDesktop computerId={computer.id} /> : <LiveDesktop computerId={computer.id} />}</>}
+      {computer.kind === "desktop" && <><DesktopPicture computer={computer} />{computer.provider === "boat" ? <BoatDesktop computerId={computer.id} /> : computer.provider === "boxd" ? null : <LiveDesktop computerId={computer.id} />}</>}
       <div className="rounded-md border border-line p-3">
         <p className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{computerStateLabel(state)}</span>
@@ -299,7 +313,7 @@ function DockerComputerView({
           </span>}
         </p>
         <p className="mt-1 text-xs text-muted">
-          {computer.provider === "boat" ? "Cloud · Internet enabled · auto-archives after 1 hour · resources managed by provider" : `${computer.provider} · ${NETWORK_MODES.find((m) => m.value === computer.network)?.label ?? computer.network} · ${limitsText(computer)}`}
+          {computer.provider === "boat" ? "Cloud · Internet enabled · auto-archives after 1 hour · resources managed by provider" : computer.provider === "boxd" ? "boxd cloud · Internet enabled · hibernates when stopped · resources managed by boxd" : `${computer.provider} · ${NETWORK_MODES.find((m) => m.value === computer.network)?.label ?? computer.network} · ${limitsText(computer)}`}
           {computer.idle_minutes > 0 ? ` · stops after ${computer.idle_minutes} idle min` : " · never stops on its own"}
         </p>
         {computer.workspace_path && (
@@ -308,7 +322,7 @@ function DockerComputerView({
           </p>
         )}
         {computer.health && !computer.health.available && (
-          <p className="mt-2 text-xs text-warning">{computer.provider === "boat" ? "Cloud provider unavailable:" : "Docker is not available:"} {computer.health.error}</p>
+          <p className="mt-2 text-xs text-warning">{computer.provider === "boat" || computer.provider === "boxd" ? "Cloud provider unavailable:" : "Docker is not available:"} {computer.health.error}</p>
         )}
         {computer.problem && <p className="mt-2 text-xs text-warning">{computer.problem}</p>}
         {!computer.problem && computer.last_error && state !== "running" && (
@@ -416,7 +430,7 @@ function DockerComputerView({
       <div className="border-t border-line pt-3">
         {confirmRemove ? (
           <p className="flex flex-wrap items-center gap-2 text-xs">
-            {computer.provider === "boat" ? "Permanently remove the cloud computer and its provider data? Boat deletion runs in the background while Open Dots waits for confirmation." : "Remove the computer? Everything inside it is lost; the workspace folder stays."} {agent.name} then works on this machine again.
+            {computer.provider === "boat" ? "Permanently remove the cloud computer and its provider data? Boat deletion runs in the background while Open Dots waits for confirmation." : computer.provider === "boxd" ? "Permanently delete the boxd machine and its disk?" : "Remove the computer? Everything inside it is lost; the workspace folder stays."} {agent.name} then works on this machine again.
             <button disabled={busy} className={SMALL} onClick={() => act(() => api.deleteComputer(computer.id)).then(() => setConfirmRemove(false))}>
               Remove
             </button>

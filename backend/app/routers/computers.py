@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.computers import docker_cli, grants, screen, mcp_server
-from app.computers.provider import ComputerError, Health, Status
+from app.computers.provider import CLOUD_PROVIDERS, ComputerError, Health, Status
 from app.computers.service import ComputerNotFound, ComputerService
 from app.db.models import Agent, Computer
 from app.desktop import computer_capabilities
@@ -61,6 +61,25 @@ _STATUS = {
     "boat_invalid_response": 502,
     "boat_command_timeout": 504,
     "boat_screen_failed": 502,
+    "boxd_desktop_only": 409,
+    "boxd_sdk_missing": 503,
+    "boxd_key_missing": 409,
+    "boxd_key_unavailable": 503,
+    "boxd_auth_failed": 401,
+    "boxd_timeout": 503,
+    "boxd_unavailable": 503,
+    "boxd_provisioning": 503,
+    "boxd_stopping": 503,
+    "boxd_computer_missing": 404,
+    "boxd_computer_unavailable": 409,
+    "boxd_name_taken": 409,
+    "boxd_plan_restricted": 403,
+    "boxd_rate_limited": 429,
+    "boxd_setup_failed": 502,
+    "boxd_request_failed": 502,
+    "boxd_invalid_response": 502,
+    "boxd_command_timeout": 504,
+    "boxd_screen_failed": 502,
     "desktop_not_ready": 503,
 }
 
@@ -368,7 +387,7 @@ async def provider_tool(computer_id: int, request: Request, rt: ThreadRuntime = 
         computer = await _computer_or_404(rt.computers, computer_id)
     except HTTPException:
         raise
-    if computer.provider != "boat":
+    if computer.provider not in CLOUD_PROVIDERS:
         raise HTTPException(status_code=404, detail={"error_code": "computer_not_found"})
     raw = await request.body()
     if len(raw) > 2_100_000:
@@ -390,7 +409,7 @@ async def provider_tool(computer_id: int, request: Request, rt: ThreadRuntime = 
         raise HTTPException(status_code=403, detail={"error_code": "computer_tool_not_approved"})
     try:
         result = await rt.computers._call(
-            rt.computers.provider("boat").tool, rt.computers.spec(computer), name, arguments
+            rt.computers.provider(computer.provider).tool, rt.computers.spec(computer), name, arguments
         )
     except ComputerError as exc:
         raise _refused(exc) from None

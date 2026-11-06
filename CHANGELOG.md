@@ -5,6 +5,11 @@
 ### Added
 
 - Open your paid hosted workspace from the desktop app. A new **Workspace** menu (Cmd/Ctrl+1 for this computer, +2 for hosted), a Settings → Account button and a sandboxed hosted view show your cloud workspace in the same window. You sign in to it separately with your hosted email and password, hosted sign-out clears only that view, and local data is never copied or changed. On by default; set `OPEN_DOTS_HOSTED_WORKSPACE=0` to turn it off. Checked with unit tests and a source-run Electron smoke; no packaged-build or staging-account check yet.
+- Add boxd as a second Desktop cloud computer choice, **Cloud (boxd)**. Each agent computer is one boxd machine (a full Ubuntu VM): commands, files and the 1280x800 desktop's screen tools go through the boxd API, stopping hibernates the machine and starting wakes it in about a second, and removal deletes it. The boxd API key is stored like the Boat key, encrypted in the Desktop profile and used only by the local backend. The boxd SDK is an optional backend extra (`uv sync --extra boxd`) that the desktop package includes. See docs/COMPUTERS.md. Checked with unit tests (fake boxd client), a live provider check and a source-run desktop backend whose Claude turn used a real boxd computer; no packaged-app check.
+
+### Fixed
+
+- Serve `GET` and `DELETE /computers/boat-credentials` again in the full API. The computer routes were registered first, so `/computers/{computer_id}` answered them with a 422.
 
 ## 0.8.3 - 2026-11-06
 
