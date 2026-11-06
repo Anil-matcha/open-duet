@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { describeApiError, type Thread, type ThreadEvent } from './api';
 import { attachmentProblem, MAX_ATTACHMENTS, type Attachment } from './attachments';
 import { useAuth } from './auth-context';
+import { useRevoked } from './use-revoked';
 import { useWorkspace } from './workspace-context';
 import { pickFiles, pickPhotos } from './pick-attachments';
 import { followThread, type Connection } from './sse';
@@ -15,7 +16,8 @@ const FLUSH_MS = 40;
 
 export function useThread(threadId: number) {
   const api = useApi();
-  const { state, revoked } = useAuth();
+  const { state } = useAuth();
+  const revoked = useRevoked();
   const { unavailable } = useWorkspace();
   const [transcript, dispatch] = useReducer(applyEvents, undefined, emptyTranscript);
   const [thread, setThread] = useState<Thread | null>(null);

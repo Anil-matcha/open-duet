@@ -17,6 +17,18 @@ export const SIGNAL_MS = 2 * 60_000;
 
 const real: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The service answers a status read for an account with no plan, or no hours left, with an error, not a state. */
+async function readStatus(api: HostedApi, token: string): Promise<Workspace> {
+  try {
+    return await api.status(token);
+  } catch (error) {
+    if (error instanceof HostedError && (error.code === 'plan_required' || error.code === 'usage_limit')) {
+      return { plan: '', availability: error.code, retryAfter: null };
+    }
+    throw error;
+  }
+}
+
 function blocked(workspace: Workspace, error: HostedError): Workspace {
   return { ...workspace, availability: error.code === 'usage_limit' ? 'usage_limit' : 'plan_required' };
 }
@@ -45,7 +57,7 @@ export async function waitForWorkspace(
   const maxFailures = options.maxFailures ?? MAX_FAILED_READS;
   const update = (workspace: Workspace) => options.onUpdate?.(workspace);
 
-  let workspace = await api.status(token);
+  let workspace = await readStatus(api, token);
   update(workspace);
   if (workspace.availability === 'ready' || isBlocked(workspace.availability)) return workspace;
   if (!isStarting(workspace.availability)) {
@@ -78,7 +90,7 @@ export async function waitForWorkspace(
     waited += wait;
     if (options.isCancelled?.()) return workspace;
     try {
-      workspace = await api.status(token);
+      workspace = await readStatus(api, token);
       failures = 0;
     } catch (error) {
       if (error instanceof HostedError && error.code === 'session_invalid') throw error;

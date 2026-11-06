@@ -67,6 +67,25 @@ describe('waitForWorkspace', () => {
     }
   });
 
+  it('reads the service’s 402 on a status read as a blocked state, without waking or polling', async () => {
+    for (const code of ['plan_required', 'usage_limit'] as const) {
+      const f = fakeApi([new HostedError(402, code)]);
+      const c = clock();
+      const result = await waitForWorkspace(f.api, TOKEN, { wake: true, sleep: c.sleep });
+      expect(result.availability).toBe(code);
+      expect(f.wake).not.toHaveBeenCalled();
+      expect(f.status).toHaveBeenCalledTimes(1);
+      expect(c.waits).toEqual([]);
+    }
+  });
+
+  it('also reads a 402 that comes while it is waiting for the workspace to start', async () => {
+    const f = fakeApi([ws('sleeping'), new HostedError(402, 'usage_limit')]);
+    const result = await waitForWorkspace(f.api, TOKEN, { wake: true, sleep: clock().sleep });
+    expect(result.availability).toBe('usage_limit');
+    expect(f.status).toHaveBeenCalledTimes(2);
+  });
+
   it('stops when the wake itself is refused for the plan or the hours', async () => {
     for (const code of ['plan_required', 'usage_limit'] as const) {
       const f = fakeApi([ws('sleeping')], { wake: jest.fn(async () => { throw new HostedError(402, code); }) });

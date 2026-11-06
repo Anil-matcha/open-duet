@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 
 import { describeApiError, type ThreadEvent } from './api';
 import { useAuth } from './auth-context';
+import { useRevoked } from './use-revoked';
 import { useWorkspace } from './workspace-context';
 import { applyRoomEvents, emptyFeed, loadRoomApprovals, roomBusy, type Room, type RoomApproval } from './rooms';
 import { followThread, type Connection } from './sse';
@@ -17,7 +18,8 @@ const READ_MS = 800;
 
 export function useRoom(roomId: number) {
   const api = useApi();
-  const { state, revoked } = useAuth();
+  const { state } = useAuth();
+  const revoked = useRevoked();
   const { unavailable } = useWorkspace();
   const [room, setRoom] = useState<Room | null>(null);
   const [feed, dispatch] = useReducer(applyRoomEvents, undefined, emptyFeed);
