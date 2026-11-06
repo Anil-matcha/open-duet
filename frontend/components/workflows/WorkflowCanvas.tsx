@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  CopyPlus,
   Eraser,
   FileText,
   GitBranch,
@@ -569,37 +570,37 @@ function ShapeSurfaceSvg({
 }
 
 function DrawArt({ color = "#ffffff", eraser = false }: { color?: string; eraser?: boolean }) {
+  if (eraser) {
+    return (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="transition-transform group-hover:scale-110"
+        aria-hidden="true"
+      >
+        <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+        <path d="M22 21H7" />
+        <path d="m5 11 9 9" />
+      </svg>
+    );
+  }
   return (
     <svg
       width="18"
-      height="22"
-      viewBox="0 0 44 56"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
       className="transition-transform group-hover:scale-110"
       aria-hidden="true"
     >
-      {!eraser ? (
-        <g>
-          <polygon fill="#f59e0b" points="22,7 28,21 28,24 16,24 16,21" />
-          <polygon fill="#d97706" points="22,7 28,21 28,24 24,24" />
-          <polygon fill={color} points="22,7 24.4,12.6 19.6,12.6" />
-          <polygon fill="#18181b" points="22,7 24.4,12.6 22.8,12.6" />
-          <path fill="#f4f4f5" d="M16 60V21q2 4 4 0v39z" />
-          <path fill={color} d="M20 60V21q2 4 4 0v39z" />
-          <path fill="#71717a" d="M24 60V21q2 4 4 0v39z" />
-          <rect fill="rgba(255,255,255,0.6)" x="17" y="24" width="1" height="36" rx="0.5" />
-        </g>
-      ) : (
-        <g>
-          <rect fill="#f43f5e" x="16" y="7" width="12" height="11" rx="3" />
-          <path fill="#e11d48" d="M24 7h1a3 3 0 0 1 3 3v8h-4z" />
-          <rect fill="#a1a1aa" x="15.5" y="16" width="13" height="7" rx="1" />
-          <rect fill="#52525b" x="15.5" y="18" width="13" height="0.8" />
-          <rect fill="#52525b" x="15.5" y="20.4" width="13" height="0.8" />
-          <rect fill="#f4f4f5" x="16" y="23" width="4" height="37" />
-          <rect fill={color} x="20" y="23" width="4" height="37" />
-          <rect fill="#71717a" x="24" y="23" width="4" height="37" />
-        </g>
-      )}
+      <polygon points="12,2 15.5,8 8.5,8" fill="#f59e0b" />
+      <polygon points="12,2 13.5,4.5 10.5,4.5" fill="#18181b" />
+      <rect x="8.5" y="8" width="7" height="14" rx="0.5" fill={color || "#ffffff"} />
+      <rect x="10.8" y="8" width="2.4" height="14" fill="rgba(0,0,0,0.15)" />
     </svg>
   );
 }
@@ -607,28 +608,22 @@ function DrawArt({ color = "#ffffff", eraser = false }: { color?: string; eraser
 function StickyArt({ tone = "#ff9412" }: { tone?: string }) {
   return (
     <svg
-      width="20"
-      height="22"
-      viewBox="0 6 52 56"
+      width="18"
+      height="18"
+      viewBox="0 0 48 48"
       className="transition-transform group-hover:scale-110"
       aria-hidden="true"
     >
-      <g opacity="0.4">
-        <rect fill={tone} x="12" y="11" width="28" height="28" rx="2" />
-      </g>
-      <g opacity="0.7">
-        <rect fill={tone} x="12" y="10" width="28" height="28" rx="2" />
-      </g>
-      <g>
-        <path
-          d="M14 9h24a2 2 0 0 1 2 2v18l-9 9H14a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2z"
-          fill={tone}
-        />
-        <path
-          d="M40 29l-9 9c.6-3.6 1.5-5.6 2.9-6.6 1.4-1.1 3.3-1.8 6.1-2.4z"
-          fill="#fed7aa"
-        />
-      </g>
+      <rect fill={tone} opacity="0.35" x="8" y="10" width="30" height="30" rx="3" />
+      <rect fill={tone} opacity="0.65" x="9" y="9" width="30" height="30" rx="3" />
+      <path
+        d="M 10 8 L 32 8 L 40 16 L 40 37 A 3 3 0 0 1 37 40 L 13 40 A 3 3 0 0 1 10 37 Z"
+        fill={tone}
+      />
+      <path
+        d="M 32 8 L 32 15 A 1 1 0 0 0 33 16 L 40 16 Z"
+        fill="#fed7aa"
+      />
     </svg>
   );
 }
@@ -642,29 +637,24 @@ function ShapesArt({
 }) {
   return (
     <svg
-      width="20"
-      height="22"
-      viewBox="0 9 52 56"
+      width="18"
+      height="18"
+      viewBox="0 0 48 48"
       className="transition-transform group-hover:scale-110"
       aria-hidden="true"
     >
-      <g opacity="0.4">
-        <rect fill="#71717a" x="8" y="18" width="20" height="20" rx="3" />
-      </g>
-      <g opacity="0.7">
-        <circle fill="#a1a1aa" cx="38" cy="30" r="9" />
-      </g>
-      <g fill={color} stroke="#18181b" strokeWidth="1">
-        {shape === "rectangle" && <rect x="15" y="14" width="22" height="22" rx="3" />}
-        {shape === "circle" && <circle cx="26" cy="25" r="11.5" />}
-        {shape === "oval" && <rect x="12" y="18" width="28" height="15" rx="7.5" />}
-        {shape === "diamond" && <polygon points="26,12 39,25 26,38 13,25" />}
-        {shape === "triangle" && <polygon points="26,12 39,36 13,36" />}
-        {shape === "inverted" && <polygon points="13,14 39,14 26,38" />}
-        {shape === "star" && (
-          <polygon points="26,11 29.5,20.5 39.5,20.8 31.6,27 34.4,36.7 26,31 17.6,36.7 20.4,27 12.5,20.8 22.5,20.5" />
-        )}
-      </g>
+      <rect fill="#52525b" x="6" y="14" width="22" height="22" rx="4" />
+      <circle fill="#71717a" cx="34" cy="28" r="10" />
+      <rect
+        fill={color}
+        x="16"
+        y="8"
+        width="22"
+        height="22"
+        rx="4"
+        stroke="#18181b"
+        strokeWidth="1.5"
+      />
     </svg>
   );
 }
@@ -703,9 +693,45 @@ export function WorkflowCanvas({
   const [activeTriggerMenuStepId, setActiveTriggerMenuStepId] = useState<string | null>(null);
   const [activeChipMenu, setActiveChipMenu] = useState<{ stepId: string; type: "kind" | "days" | "time" | "hours" } | null>(null);
 
-  // Canvas steps directly from workflow model (no auto-resurrection on delete)
+  // Canvas steps directly from workflow model (no auto-resurrection on delete, with wire sanitization)
   const effectiveSteps = useMemo(() => {
-    return workflow.steps || [];
+    const rawSteps = workflow.steps || [];
+    const nonTargetIds = new Set(
+      rawSteps
+        .filter((s) => s.type === "note" || s.type === "shape" || s.type === "section" || s.type === "text")
+        .map((s) => s.id)
+    );
+    if (nonTargetIds.size === 0) return rawSteps;
+    return rawSteps.map((s) => {
+      let modified = false;
+      const next = { ...s };
+      if (next.next_step_id && nonTargetIds.has(next.next_step_id)) {
+        next.next_step_id = null;
+        next.target_port = undefined;
+        modified = true;
+      }
+      if (next.if_true && nonTargetIds.has(next.if_true)) {
+        next.if_true = undefined;
+        next.if_true_target_port = undefined;
+        modified = true;
+      }
+      if (next.if_false && nonTargetIds.has(next.if_false)) {
+        next.if_false = undefined;
+        next.if_false_target_port = undefined;
+        modified = true;
+      }
+      if (next.on_approve && nonTargetIds.has(next.on_approve)) {
+        next.on_approve = undefined;
+        next.on_approve_target_port = undefined;
+        modified = true;
+      }
+      if (next.on_reject && nonTargetIds.has(next.on_reject)) {
+        next.on_reject = undefined;
+        next.on_reject_target_port = undefined;
+        modified = true;
+      }
+      return modified ? next : s;
+    });
   }, [workflow.steps]);
 
   // Exact port Y offset matching each trigger card height
@@ -1116,6 +1142,24 @@ export function WorkflowCanvas({
     setTitleInput(workflow.name);
   }, [workflow.name]);
 
+  // Close note & shape popover menus on outside pointerdown
+  useEffect(() => {
+    const handleGlobalPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        !target.closest(".popover-dropdown") &&
+        !target.closest("[data-popover-trigger='true']")
+      ) {
+        setOpenNoteMenu(null);
+        setOpenShapeMenu(null);
+        setShowShapeColorMenu(false);
+      }
+    };
+    window.addEventListener("pointerdown", handleGlobalPointerDown);
+    return () => window.removeEventListener("pointerdown", handleGlobalPointerDown);
+  }, []);
+
   // Extract available models from engines
   const availableModels = useMemo(() => {
     const list: Array<{ id: string; label: string; provider: string }> = [];
@@ -1457,7 +1501,7 @@ export function WorkflowCanvas({
 
         effectiveSteps.forEach((st) => {
           if (st.id === draggingWire.fromStepId) return;
-          if (st.type === "end" || st.type === "note" || st.type === "section" || st.type === "text") return; // Non-output steps
+          if (st.type === "end" || st.type === "note" || st.type === "shape" || st.type === "section" || st.type === "text") return; // Non-output steps
           const pos = nodePositions[st.id] || { x: 420, y: 140 };
           const { width: nodeW } = getNodeSize(st);
           const portX = pos.x + nodeW;
@@ -1514,7 +1558,7 @@ export function WorkflowCanvas({
 
         effectiveSteps.forEach((st) => {
           if (st.id === draggingWire.fromStepId) return;
-          if (st.type === "trigger" || st.type === "note" || st.type === "section" || st.type === "text") return; // Non-input steps
+          if (st.type === "trigger" || st.type === "note" || st.type === "shape" || st.type === "section" || st.type === "text") return; // Non-input steps
           const pos = nodePositions[st.id] || { x: 420, y: 140 };
           const portX = pos.x;
 
@@ -2430,6 +2474,15 @@ export function WorkflowCanvas({
                 color: string = "rgba(255, 255, 255, 0.35)"
               ) => {
                 const targetStep = effectiveSteps.find((s) => s.id === targetId);
+                if (
+                  !targetStep ||
+                  targetStep.type === "note" ||
+                  targetStep.type === "shape" ||
+                  targetStep.type === "section" ||
+                  targetStep.type === "text"
+                ) {
+                  return null;
+                }
                 const targetPos = nodePositions[targetId] || { x: 420, y: 140 };
                 const srcY = srcPos.y + getOutputPortOffsetY(step, port);
                 const tgtX = targetPos.x;
@@ -2736,7 +2789,7 @@ export function WorkflowCanvas({
                 className={cn(
                   "workflow-node transition-shadow",
                   step.type === "note"
-                    ? "rounded-2xl border-2 shadow-2xl p-0 overflow-hidden flex flex-col select-none"
+                    ? "rounded-2xl border-2 shadow-2xl p-0 flex flex-col select-none"
                     : step.type === "shape"
                     ? "rounded-none border-0 shadow-none p-0 bg-transparent backdrop-blur-none flex items-center justify-center select-none"
                     : step.type === "section"
@@ -2787,6 +2840,16 @@ export function WorkflowCanvas({
                     step.type === "note"
                       ? step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12"
                       : undefined,
+                  zIndex:
+                    isSelected
+                      ? 40
+                      : step.type === "section"
+                      ? 0
+                      : step.type === "shape"
+                      ? 2
+                      : step.type === "note"
+                      ? 5
+                      : 10,
                   transition:
                     isResizingThis || isDraggingThis
                       ? "none"
@@ -2840,6 +2903,7 @@ export function WorkflowCanvas({
                     <div className="relative">
                       <button
                         type="button"
+                        data-popover-trigger="true"
                         onClick={() =>
                           setOpenNoteMenu(
                             openNoteMenu?.id === step.id && openNoteMenu.type === "tone"
@@ -2860,7 +2924,7 @@ export function WorkflowCanvas({
                         <ChevronDown size={11} className="text-zinc-500" />
                       </button>
                       {openNoteMenu?.id === step.id && openNoteMenu.type === "tone" && (
-                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
                           {Object.entries(NOTE_TONE_CONFIG).map(([toneKey, cfg]) => (
                             <button
                               key={toneKey}
@@ -2891,6 +2955,7 @@ export function WorkflowCanvas({
                     <div className="relative">
                       <button
                         type="button"
+                        data-popover-trigger="true"
                         onClick={() =>
                           setOpenNoteMenu(
                             openNoteMenu?.id === step.id && openNoteMenu.type === "ink"
@@ -2911,7 +2976,7 @@ export function WorkflowCanvas({
                         <ChevronDown size={11} className="text-zinc-500" />
                       </button>
                       {openNoteMenu?.id === step.id && openNoteMenu.type === "ink" && (
-                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
                           {INK_COLOR_LIST.map((c) => (
                             <button
                               key={c.name}
@@ -2940,6 +3005,7 @@ export function WorkflowCanvas({
                     <div className="relative">
                       <button
                         type="button"
+                        data-popover-trigger="true"
                         onClick={() =>
                           setOpenNoteMenu(
                             openNoteMenu?.id === step.id && openNoteMenu.type === "font"
@@ -2956,7 +3022,7 @@ export function WorkflowCanvas({
                         <ChevronDown size={11} className="text-zinc-500" />
                       </button>
                       {openNoteMenu?.id === step.id && openNoteMenu.type === "font" && (
-                        <div className="absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[90px] animate-in fade-in duration-100">
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[90px] animate-in fade-in duration-100">
                           <button
                             type="button"
                             onClick={() => {
@@ -3004,6 +3070,7 @@ export function WorkflowCanvas({
                     <div className="relative">
                       <button
                         type="button"
+                        data-popover-trigger="true"
                         onClick={() =>
                           setOpenNoteMenu(
                             openNoteMenu?.id === step.id && openNoteMenu.type === "size"
@@ -3018,7 +3085,7 @@ export function WorkflowCanvas({
                         <ChevronDown size={11} className="text-zinc-500" />
                       </button>
                       {openNoteMenu?.id === step.id && openNoteMenu.type === "size" && (
-                        <div className="absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[80px] animate-in fade-in duration-100">
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[80px] animate-in fade-in duration-100">
                           {[14, 18, 24, 32].map((sz) => (
                             <button
                               key={sz}
@@ -3043,6 +3110,7 @@ export function WorkflowCanvas({
                     <div className="relative">
                       <button
                         type="button"
+                        data-popover-trigger="true"
                         onClick={() =>
                           setOpenNoteMenu(
                             openNoteMenu?.id === step.id && openNoteMenu.type === "align"
@@ -3065,7 +3133,7 @@ export function WorkflowCanvas({
                         <ChevronDown size={11} className="text-zinc-500" />
                       </button>
                       {openNoteMenu?.id === step.id && openNoteMenu.type === "align" && (
-                        <div className="absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1 animate-in fade-in duration-100">
+                        <div className="popover-dropdown absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1 animate-in fade-in duration-100">
                           <button
                             type="button"
                             onClick={() => {
@@ -3151,7 +3219,7 @@ export function WorkflowCanvas({
                       className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30"
                       title="Duplicate note"
                     >
-                      <Copy size={13} />
+                      <CopyPlus size={14} />
                     </button>
 
                     {/* Lock */}
@@ -3311,7 +3379,7 @@ export function WorkflowCanvas({
                       className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30"
                       title="Duplicate shape"
                     >
-                      <Copy size={13} />
+                      <CopyPlus size={14} />
                     </button>
 
                     {/* Lock */}
@@ -3354,7 +3422,7 @@ export function WorkflowCanvas({
                       className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                       title="Duplicate node"
                     >
-                      <Copy size={13} />
+                      <CopyPlus size={14} />
                     </button>
                     <div className="w-[1px] h-3 bg-zinc-700/60 mx-0.5" />
                     <button
@@ -3397,12 +3465,7 @@ export function WorkflowCanvas({
                       height="15"
                       viewBox="0 0 15 15"
                       fill="none"
-                      className={cn(
-                        "transition-transform drop-shadow",
-                        step.type === "note"
-                          ? "text-zinc-900/60 group-hover/resize:text-zinc-900 group-hover/resize:scale-110"
-                          : "text-white/85 group-hover/resize:text-white group-hover/resize:scale-110"
-                      )}
+                      className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)] transition-transform group-hover/resize:scale-110"
                     >
                       <path
                         d="M 2 13 C 7 13 13 7 13 2"
@@ -3700,7 +3763,7 @@ export function WorkflowCanvas({
                 )}
 
                 {/* Node Title & Status Header for standard nodes */}
-                {step.type !== "trigger" && step.type !== "section" && step.type !== "text" && (
+                {step.type !== "trigger" && step.type !== "section" && step.type !== "text" && step.type !== "note" && step.type !== "shape" && (
                   <div className="flex items-center justify-between text-xs cursor-grab active:cursor-grabbing select-none" data-drag-handle="true">
                     <div className="flex items-center gap-2">
                       {step.type === "llm" && <Sparkles size={15} className="text-purple-400" />}
@@ -3709,7 +3772,6 @@ export function WorkflowCanvas({
                       )}
                       {step.type === "condition" && <GitBranch size={15} className="text-amber-400" />}
                       {step.type === "approval" && <ShieldAlert size={15} className="text-rose-400" />}
-                      {step.type === "note" && <StickyNote size={15} className="text-yellow-400" />}
                       {step.type === "end" && <CheckCircle2 size={15} className="text-emerald-400" />}
 
                       <span className="font-semibold text-zinc-200 text-xs">
@@ -3721,8 +3783,6 @@ export function WorkflowCanvas({
                           ? "Condition"
                           : step.type === "approval"
                           ? "Approval"
-                          : step.type === "note"
-                          ? "Note"
                           : "End"}
                       </span>
                     </div>
@@ -4577,12 +4637,22 @@ export function WorkflowCanvas({
 
                 {/* Note Node Body (Pastel Paper matching reference design) */}
                 {step.type === "note" && (
-                  <div className="relative w-full h-full flex flex-col">
+                  <div className="relative w-full h-full flex flex-col rounded-2xl overflow-hidden">
                     <textarea
-                      value={step.text ?? step.prompt ?? ""}
+                      value={
+                        step.text !== undefined && step.text !== null
+                          ? step.text
+                          : step.prompt && step.prompt !== "Workflow notes and documentation..."
+                          ? step.prompt
+                          : ""
+                      }
                       onChange={(e) =>
                         handleUpdateStep(step.id, { text: e.target.value, prompt: e.target.value })
                       }
+                      onFocus={() => {
+                        setSelectedNodeId(step.id);
+                        setSelectedWire(null);
+                      }}
                       placeholder="Write a note"
                       style={{
                         color: step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12",
@@ -5306,69 +5376,7 @@ export function WorkflowCanvas({
           </div>
         )}
 
-        {/* Floating Drawing Tool Palette */}
-        {tool === "draw" && (
-          <div
-            className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/70 shadow-2xl backdrop-blur-xl px-3 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <span className="text-[11px] font-medium text-zinc-400 pr-1 flex items-center gap-1">
-              <Pencil size={12} />
-              <span>Drawing:</span>
-            </span>
-            <div className="flex items-center gap-1.5 pr-2 border-r border-zinc-800">
-              {[
-                { name: "White", hex: "#ffffff", bg: "bg-white" },
-                { name: "Amber", hex: "#f59e0b", bg: "bg-amber-400" },
-                { name: "Purple", hex: "#a855f7", bg: "bg-purple-400" },
-                { name: "Emerald", hex: "#10b981", bg: "bg-emerald-400" },
-                { name: "Rose", hex: "#f43f5e", bg: "bg-rose-400" },
-                { name: "Blue", hex: "#3b82f6", bg: "bg-blue-400" },
-              ].map((c) => (
-                <button
-                  key={c.hex}
-                  type="button"
-                  onClick={() => setDrawColor(c.hex)}
-                  className={cn(
-                    "w-3.5 h-3.5 rounded-full transition-transform hover:scale-125",
-                    c.bg,
-                    drawColor === c.hex ? "ring-2 ring-white scale-110" : "opacity-60 hover:opacity-100"
-                  )}
-                  title={c.name}
-                />
-              ))}
-            </div>
 
-            <button
-              type="button"
-              disabled={strokes.length === 0}
-              onClick={() => setStrokes((prev) => prev.slice(0, -1))}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-              title="Undo last stroke"
-            >
-              <RotateCcw size={12} />
-              <span>Undo</span>
-            </button>
-            <button
-              type="button"
-              disabled={strokes.length === 0}
-              onClick={() => setStrokes([])}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-              title="Clear all drawings"
-            >
-              <Trash2 size={12} />
-              <span>Clear</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTool("select")}
-              className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 ml-1"
-              title="Exit draw tool"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
 
         {/* Left Floating Dock: Zoom Controls, Fit Screen, Minimap */}
         <div className="ui-dock-left fixed bottom-6 left-6 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs">
@@ -5427,29 +5435,40 @@ export function WorkflowCanvas({
               type="button"
               onClick={() => setDrawMode("pen")}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl font-medium transition-all",
+                "w-8 h-8 rounded-xl transition-all flex items-center justify-center",
                 drawMode === "pen"
                   ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
                   : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
               )}
               title="Draw (P)"
             >
-              <Pencil size={13} />
-              <span>Draw <span className="text-[10px] text-zinc-500 font-mono">P</span></span>
+              <Pencil size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setDrawMode("pen")}
+              className={cn(
+                "w-8 h-8 rounded-xl transition-all flex items-center justify-center",
+                drawMode === "pen"
+                  ? "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+              )}
+              title="Pen (P)"
+            >
+              <PenTool size={15} />
             </button>
             <button
               type="button"
               onClick={() => setDrawMode("eraser")}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl font-medium transition-all",
+                "w-8 h-8 rounded-xl transition-all flex items-center justify-center",
                 drawMode === "eraser"
                   ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
                   : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
               )}
               title="Eraser (E)"
             >
-              <Eraser size={13} />
-              <span>Eraser <span className="text-[10px] text-zinc-500 font-mono">E</span></span>
+              <Eraser size={15} />
             </button>
 
             <span className="w-px h-4 bg-zinc-800 mx-1" />
@@ -5590,16 +5609,16 @@ export function WorkflowCanvas({
         )}
 
         {/* Main Floating Dock: Tools, Shapes, Search, Add Node */}
-        <div className="ui-dock-main fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-3 py-2 rounded-2xl z-40">
+        <div className="ui-dock-main fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40">
           <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
             <button
               type="button"
               onClick={() => setTool("select")}
               className={cn(
-                "p-2 rounded-xl transition-colors",
+                "w-8 h-8 rounded-xl transition-colors flex items-center justify-center",
                 tool === "select" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Pointer / Select"
+              title="Pointer / Select (V)"
             >
               <MousePointer2 size={16} />
             </button>
@@ -5607,33 +5626,40 @@ export function WorkflowCanvas({
               type="button"
               onClick={() => setTool("pan")}
               className={cn(
-                "p-2 rounded-xl transition-colors",
+                "w-8 h-8 rounded-xl transition-colors flex items-center justify-center",
                 tool === "pan" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Hand / Pan canvas"
+              title="Hand / Pan canvas (H)"
             >
               <Hand size={16} />
             </button>
           </div>
 
           <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
-            {/* Draw / Pencil Tool Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setTool(tool === "draw" ? "select" : "draw");
-                setShowAddMenu(false);
-              }}
-              className={cn(
-                "group p-1.5 rounded-xl transition-all relative",
-                tool === "draw"
-                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
-              )}
-              title="Pencil / Draw (P)"
-            >
-              <DrawArt color={drawColor} eraser={drawMode === "eraser"} />
-            </button>
+            {/* Draw / Pencil Tool Button with Hover Tooltip */}
+            <div className="relative group/drawtip">
+              <button
+                type="button"
+                onClick={() => {
+                  setTool(tool === "draw" ? "select" : "draw");
+                  setShowAddMenu(false);
+                }}
+                className={cn(
+                  "w-8 h-8 rounded-xl transition-all relative flex items-center justify-center",
+                  tool === "draw"
+                    ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+                )}
+                title="Draw (P)"
+              >
+                <DrawArt color={drawColor} eraser={drawMode === "eraser"} />
+              </button>
+              {/* Tooltip matching benchmark "Draw P" */}
+              <div className="absolute -top-9 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-lg bg-[#18181b] border border-zinc-700/80 text-[11px] text-zinc-100 font-medium shadow-xl pointer-events-none whitespace-nowrap opacity-0 group-hover/drawtip:opacity-100 transition-opacity flex items-center gap-1.5 z-50">
+                <span>Draw</span>
+                <span className="text-[10px] text-zinc-400 font-mono">P</span>
+              </div>
+            </div>
 
             {/* Sticky Note Tool Button */}
             <button
@@ -5643,7 +5669,7 @@ export function WorkflowCanvas({
                 setShowAddMenu(false);
               }}
               className={cn(
-                "group p-1.5 rounded-xl transition-all relative",
+                "w-8 h-8 rounded-xl transition-all relative flex items-center justify-center",
                 tool === "note"
                   ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
                   : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
@@ -5661,7 +5687,7 @@ export function WorkflowCanvas({
                 setShowAddMenu(false);
               }}
               className={cn(
-                "group p-1.5 rounded-xl transition-all relative",
+                "w-8 h-8 rounded-xl transition-all relative flex items-center justify-center",
                 tool === "shape"
                   ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
                   : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
@@ -5675,19 +5701,19 @@ export function WorkflowCanvas({
             <button
               type="button"
               onClick={() => handleAddNode("text")}
-              className="p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors font-serif font-bold text-base leading-none w-8 h-8 flex items-center justify-center select-none"
+              className="w-8 h-8 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors font-serif font-bold text-base leading-none flex items-center justify-center select-none"
               title="Add Text Label (T)"
             >
               T
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => setShowSearchPalette(!showSearchPalette)}
               className={cn(
-                "p-2 rounded-xl transition-colors",
+                "w-8 h-8 rounded-xl transition-colors flex items-center justify-center",
                 showSearchPalette ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
               title="Search canvas nodes (Ctrl+F)"
