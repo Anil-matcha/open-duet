@@ -84,7 +84,7 @@ async def get_attachment(thread_id: int, attachment_id: str, rt: ThreadRuntime =
 
 @router.get("/audio/capabilities")
 async def audio_capabilities():
-    return audio_ingestion.capabilities()
+    return await asyncio.to_thread(audio_ingestion.capabilities)
 
 
 class DictationResponse(BaseModel):
