@@ -39,7 +39,7 @@ from sqlalchemy import delete, select
 
 from app.computers import docker_cli, grants, screen
 from app.computers.boat_provider import BoatProvider, BOAT_IMAGE
-from app.computers.muapi_provider import MuapiProvider, MUAPI_IMAGE
+from app.computers.muapi_provider import MuapiProvider, MUAPI_IMAGE, SIZE_BY_MEMORY_MB
 from app.computers.provider import CLOUD_PROVIDERS
 from app.computers.control import ControlRegistry
 from app.computers.docker_cli import Spec
@@ -383,7 +383,15 @@ class ComputerService:
         if provider_key == "muapi" and kind != "shell":
             raise ValueError("Muapi computers are shell-only for now")
         if provider_key in CLOUD_PROVIDERS:
-            unsupported = {key for key in ("cpus", "memory_mb", "pids_limit") if config.get(key) is not None}
+            if provider_key == "muapi":
+                # Muapi sizes: memory_mb selects small/default/large (4/8/16 GB); cpus follow it.
+                memory = config.get("memory_mb") if config.get("memory_mb") is not None else 8192
+                if memory not in SIZE_BY_MEMORY_MB:
+                    raise ValueError("Muapi computer size must be 4096, 8192 or 16384 MB")
+                config["memory_mb"] = memory
+                config["cpus"] = float(SIZE_BY_MEMORY_MB[memory][1])
+                config.pop("pids_limit", None)
+            unsupported = {key for key in ("cpus", "memory_mb", "pids_limit") if config.get(key) is not None and provider_key != "muapi"}
             if unsupported:
                 raise ValueError("Cloud computer resources are managed by the provider")
             if image is not None:

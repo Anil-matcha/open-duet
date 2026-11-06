@@ -25,6 +25,13 @@ from app.core.config import settings
 from app.desktop import muapi_credentials, profile
 
 MUAPI_IMAGE = "muapi/default"
+# The computer's existing `memory_mb` carries the size (no DB change): 4/8/16 GB -> small/default/large.
+SIZE_BY_MEMORY_MB = {4096: ("small", 2), 8192: ("default", 4), 16384: ("large", 8)}
+
+
+def profile_for(spec) -> str:
+    return SIZE_BY_MEMORY_MB.get(spec.memory_mb, ("default", 4))[0]
+
 _ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
@@ -128,7 +135,7 @@ class MuapiProvider(BoatProvider):
         sandbox_id = self._id(spec)
         if sandbox_id is None:
             # Muapi creates synchronously: it returns once the machine is ready.
-            data = self._request("POST", "/sandboxes", body={"profile": "default"}, timeout=180)
+            data = self._request("POST", "/sandboxes", body={"profile": profile_for(spec)}, timeout=180)
             new_id = data.get("id")
             if not isinstance(new_id, str) or not _ID.match(new_id):
                 raise ComputerError("Muapi did not return a valid computer ID.", "boat_invalid_response")

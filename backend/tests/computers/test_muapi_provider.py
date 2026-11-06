@@ -3,7 +3,7 @@ import pytest
 
 from app.computers import muapi_provider
 from app.computers.docker_cli import Spec
-from app.computers.muapi_provider import MuapiProvider, _muapi_refusal
+from app.computers.muapi_provider import MuapiProvider, _muapi_refusal, profile_for
 from app.computers.provider import CLOUD_PROVIDERS, ComputerError
 
 SID = "3f2b8c1e-5a4d-4e6f-9a7b-0c1d2e3f4a5b"
@@ -118,3 +118,18 @@ def test_refusal_codes_do_not_name_boat():
     for status in (401, 402, 403, 404, 429, 500, 503):
         code, message = _muapi_refusal(status)
         assert "boat" not in message.lower()
+
+
+@pytest.mark.parametrize("memory_mb,profile", [(4096, "small"), (8192, "default"), (16384, "large"), (1024, "default")])
+def test_size_comes_from_memory_mb(monkeypatch, memory_mb, profile):
+    from dataclasses import replace
+    assert profile_for(replace(spec(), memory_mb=memory_mb)) == profile
+
+    def handler(r):
+        if r.url.path.endswith("/sandboxes") and r.method == "POST":
+            return httpx.Response(200, json={"id": SID, "state": "running"})
+        return httpx.Response(200, json={"exitCode": 0})
+
+    p, seen = provider_with(monkeypatch, handler)
+    p.create(replace(spec(container_id=None), memory_mb=memory_mb))
+    assert b'"profile":"%s"' % profile.encode() in seen[0].content.replace(b" ", b"")

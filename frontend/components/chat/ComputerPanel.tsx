@@ -25,10 +25,16 @@ import {
   type ComputerAction,
 } from "@/lib/computers";
 
+const MUAPI_SIZES = [
+  { memory_mb: 4096, label: "Small", detail: "2 vCPU · 4 GB · $0.036/hour" },
+  { memory_mb: 8192, label: "Default", detail: "4 vCPU · 8 GB · $0.072/hour" },
+  { memory_mb: 16384, label: "Large", detail: "8 vCPU · 16 GB · $0.144/hour" },
+] as const;
+
 const CLOUD_PROVIDERS = {
   muapi: {
     label: "Muapi",
-    description: "Muapi cloud computers are shell-only for now. They have internet access and are billed per second from your Muapi credits while running ($0.072/hour); stopped computers are free, and idle ones auto-stop after 15 minutes. You need at least a $1 balance to start.",
+    description: "Muapi cloud computers are shell-only for now. They have internet access and are billed per second from your Muapi credits while running (from $0.036/hour by size); stopped computers are free, and idle ones auto-stop after 15 minutes. You need at least a $1 balance to start.",
     status: () => api.muapiCredentialStatus(),
     save: (key: string) => api.saveMuapiCredential(key),
     remove: () => api.deleteMuapiCredential(),
@@ -101,6 +107,7 @@ function DockerComputerView({
   const [provider, setProvider] = useState<"docker" | "muapi" | "boat">("docker");
   const [configured, setConfigured] = useState<Record<"muapi" | "boat", boolean | null>>({ muapi: null, boat: null });
   const [cloudKey, setCloudKey] = useState("");
+  const [muapiSize, setMuapiSize] = useState<number>(8192);
   const isCloud = provider !== "docker";
   const cloud = provider === "muapi" ? CLOUD_PROVIDERS.muapi : CLOUD_PROVIDERS.boat;
   const cloudConfigured = isCloud ? configured[provider] : null;
@@ -253,6 +260,17 @@ function DockerComputerView({
             )}
           </div>
         )}
+        {provider === "muapi" && (
+          <fieldset className="space-y-1">
+            <legend className="text-xs text-muted">Size (billed per second while running)</legend>
+            {MUAPI_SIZES.map((size) => (
+              <label key={size.memory_mb} className="mr-4 inline-flex items-center gap-2">
+                <input type="radio" name="muapi-size" checked={muapiSize === size.memory_mb} onChange={() => setMuapiSize(size.memory_mb)} />
+                {size.label} <span className="text-xs text-muted">{size.detail}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         <fieldset className="space-y-1">
           <legend className="text-xs text-muted">Computer</legend>
           {(["shell", "desktop"] as const).map((value) => (
@@ -285,7 +303,7 @@ function DockerComputerView({
           disabled={busy || !createGate.enabled || (isCloud && !cloudConfigured)}
           aria-describedby={!createGate.enabled ? capabilityHelpId : undefined}
           className={PRIMARY}
-          onClick={() => act(() => api.createAgentComputer(agent.id, { provider, ...(provider === "docker" ? { network } : {}), kind }))}
+          onClick={() => act(() => api.createAgentComputer(agent.id, { provider, ...(provider === "docker" ? { network } : {}), ...(provider === "muapi" ? { memory_mb: muapiSize } : {}), kind }))}
         >
           {busy ? "Working…" : "Give it a computer"}
         </button>
@@ -325,7 +343,7 @@ function DockerComputerView({
           </span>}
         </p>
         <p className="mt-1 text-xs text-muted">
-          {computer.provider === "muapi" ? "Cloud · Muapi · Internet enabled · billed per second from Muapi credits · auto-stops after 15 minutes idle" : computer.provider === "boat" ? "Cloud · Internet enabled · auto-archives after 1 hour · resources managed by provider" : `${computer.provider} · ${NETWORK_MODES.find((m) => m.value === computer.network)?.label ?? computer.network} · ${limitsText(computer)}`}
+          {computer.provider === "muapi" ? `Cloud · Muapi ${MUAPI_SIZES.find((s) => s.memory_mb === computer.memory_mb)?.label ?? "Default"} · Internet enabled · billed per second from Muapi credits · auto-stops after 15 minutes idle` : computer.provider === "boat" ? "Cloud · Internet enabled · auto-archives after 1 hour · resources managed by provider" : `${computer.provider} · ${NETWORK_MODES.find((m) => m.value === computer.network)?.label ?? computer.network} · ${limitsText(computer)}`}
           {computer.idle_minutes > 0 ? ` · stops after ${computer.idle_minutes} idle min` : " · never stops on its own"}
         </p>
         {computer.workspace_path && (
