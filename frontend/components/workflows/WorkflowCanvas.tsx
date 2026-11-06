@@ -242,7 +242,6 @@ export function WorkflowCanvas({
   const [expandedOutputStepIds, setExpandedOutputStepIds] = useState<Set<string>>(new Set());
   const [expandedSystemPromptStepIds, setExpandedSystemPromptStepIds] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState("");
-  const [triggerTypeMenuOpen, setTriggerTypeMenuOpen] = useState(false);
   const [executionNotice, setExecutionNotice] = useState<string | null>(null);
 
   // Execution states
@@ -346,7 +345,6 @@ export function WorkflowCanvas({
         setShowAddMenu(false);
         setShowWorkflowMenu(false);
         setActiveModelMenuStepId(null);
-        setTriggerTypeMenuOpen(false);
       } else if (e.key === " ") {
         setTool("pan");
       }
@@ -470,7 +468,6 @@ export function WorkflowCanvas({
     setActiveModelMenuStepId(null);
     setActiveTriggerMenuStepId(null);
     setActiveChipMenu(null);
-    setTriggerTypeMenuOpen(false);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
@@ -584,11 +581,11 @@ export function WorkflowCanvas({
     // If locked, prevent canvas dragging but keep node selected so toolbar with Unlock is visible
     if (lockedNodes.has(stepId)) return;
 
+    // Allow dragging unless the target is a text input, textarea, or clicking a popover dropdown item
     if (
       (e.target as HTMLElement).tagName === "INPUT" ||
       (e.target as HTMLElement).tagName === "TEXTAREA" ||
-      (e.target as HTMLElement).tagName === "SELECT" ||
-      (e.target as HTMLElement).tagName === "BUTTON"
+      (e.target as HTMLElement).closest(".popover-dropdown")
     ) {
       return;
     }
@@ -785,7 +782,13 @@ export function WorkflowCanvas({
       });
 
       const existing = [...effectiveSteps];
-      if (existing.length > 0 && !existing[existing.length - 1].next_step_id) {
+      if (
+        type !== "trigger" &&
+        type !== "note" &&
+        existing.length > 0 &&
+        existing[existing.length - 1].type !== "note" &&
+        !existing[existing.length - 1].next_step_id
+      ) {
         existing[existing.length - 1].next_step_id = newId;
       }
       void onUpdateWorkflow({ steps: [...existing, newStep] });
@@ -864,6 +867,7 @@ export function WorkflowCanvas({
   const handleTriggerFullRun = async () => {
     try {
       setIsExecutingWorkflow(true);
+      await onRunWorkflow();
       const run = await api.startWorkflowRun(
         workflow.id,
         { message: "Triggered from visual canvas" },
@@ -871,6 +875,7 @@ export function WorkflowCanvas({
       );
       setLiveRun(run);
       setSelectedRunId(run.id);
+      await onRefreshRuns();
     } catch (err) {
       setIsExecutingWorkflow(false);
       alert(`Run failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -1149,7 +1154,7 @@ export function WorkflowCanvas({
           </svg>
 
           {/* SVG Connection Wires Layer */}
-          <svg className="absolute inset-0 w-[10000px] h-[10000px] overflow-visible pointer-events-none -z-10">
+          <svg className="absolute inset-0 w-[10000px] h-[10000px] overflow-visible pointer-events-none z-[1]">
             <style>{`
               @keyframes wireFlow {
                 to { stroke-dashoffset: -24; }
@@ -1321,9 +1326,13 @@ export function WorkflowCanvas({
                   position: "absolute",
                   touchAction: "none",
                 }}
+                onPointerDownCapture={() => {
+                  setSelectedNodeId(step.id);
+                  setSelectedWire(null);
+                }}
                 onPointerDown={(e) => handleNodePointerDown(e, step.id)}
                 className={cn(
-                  "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow",
+                  "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow z-10",
                   step.type === "trigger" ? "w-[320px]" : "w-[360px]",
                   step.type === "note"
                     ? (step.color === "neutral" || step.color === "white"
@@ -1347,6 +1356,46 @@ export function WorkflowCanvas({
                     : "border-zinc-800/90 hover:border-zinc-700/80"
                 )}
               >
+                {/* Benchmark-matching Node Category Indicator above the card */}
+                <div className="absolute -top-5 left-1 flex items-center gap-1.5 text-zinc-400 font-medium text-[11px] select-none pointer-events-none">
+                  {step.type === "trigger" ? (
+                    <>
+                      <Zap size={11} className="text-amber-400 fill-amber-400" />
+                      <span>Trigger</span>
+                    </>
+                  ) : step.type === "llm" ? (
+                    <>
+                      <Sparkles size={11} className="text-purple-400" />
+                      <span>LLM</span>
+                    </>
+                  ) : step.type === "agent" || step.type === "action" ? (
+                    <>
+                      <Bot size={11} className="text-blue-400" />
+                      <span>Agent</span>
+                    </>
+                  ) : step.type === "condition" ? (
+                    <>
+                      <GitBranch size={11} className="text-amber-400" />
+                      <span>Condition</span>
+                    </>
+                  ) : step.type === "approval" ? (
+                    <>
+                      <ShieldAlert size={11} className="text-rose-400" />
+                      <span>Approval</span>
+                    </>
+                  ) : step.type === "note" ? (
+                    <>
+                      <StickyNote size={11} className="text-yellow-400" />
+                      <span>Note</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={11} className="text-emerald-400" />
+                      <span>End</span>
+                    </>
+                  )}
+                </div>
+
                 {/* Floating Action Bar above selected node (Matches workflow NodeToolbar) */}
                 {isSelected && (
                   <div
@@ -1366,22 +1415,22 @@ export function WorkflowCanvas({
                     <button
                       type="button"
                       onClick={() => handleToggleLock(step.id)}
-                      className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        isLocked ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20" : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
                       title={isLocked ? "Unlock node" : "Lock node"}
                     >
-                      {isLocked ? <Lock size={13} className="text-amber-400" /> : <Unlock size={13} />}
+                      {isLocked ? <Lock size={13} /> : <Unlock size={13} />}
                     </button>
-                    {/* Matching workflow: Delete is hidden when node is locked */}
-                    {!isLocked && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStep(step.id)}
-                        className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
-                        title="Delete node"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep(step.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
+                      title="Delete node"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 )}
 
@@ -1405,119 +1454,171 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Node Title & Status Header */}
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    {step.type === "trigger" && <Zap size={15} className="text-amber-400 fill-amber-400" />}
-                    {step.type === "llm" && <Sparkles size={15} className="text-purple-400" />}
-                    {(step.type === "agent" || step.type === "action") && (
-                      <Bot size={15} className="text-blue-400" />
-                    )}
-                    {step.type === "condition" && <GitBranch size={15} className="text-amber-400" />}
-                    {step.type === "approval" && <ShieldAlert size={15} className="text-rose-400" />}
-                    {step.type === "note" && <StickyNote size={15} className="text-yellow-400" />}
-                    {step.type === "end" && <CheckCircle2 size={15} className="text-emerald-400" />}
+                {/* Node Title & Status Header for non-trigger nodes */}
+                {step.type !== "trigger" && (
+                  <div className="flex items-center justify-between text-xs cursor-grab active:cursor-grabbing select-none" data-drag-handle="true">
+                    <div className="flex items-center gap-2">
+                      {step.type === "llm" && <Sparkles size={15} className="text-purple-400" />}
+                      {(step.type === "agent" || step.type === "action") && (
+                        <Bot size={15} className="text-blue-400" />
+                      )}
+                      {step.type === "condition" && <GitBranch size={15} className="text-amber-400" />}
+                      {step.type === "approval" && <ShieldAlert size={15} className="text-rose-400" />}
+                      {step.type === "note" && <StickyNote size={15} className="text-yellow-400" />}
+                      {step.type === "end" && <CheckCircle2 size={15} className="text-emerald-400" />}
 
-                    <span className="font-semibold text-zinc-200 text-xs">
-                      {step.type === "trigger"
-                        ? "Trigger"
-                        : step.type === "llm"
-                        ? "LLM"
-                        : step.type === "agent" || step.type === "action"
-                        ? "Agent"
-                        : step.type === "condition"
-                        ? "Condition"
-                        : step.type === "approval"
-                        ? "Approval"
-                        : step.type === "note"
-                        ? "Note"
-                        : "End"}
-                    </span>
-                  </div>
+                      <span className="font-semibold text-zinc-200 text-xs">
+                        {step.type === "llm"
+                          ? "LLM"
+                          : step.type === "agent" || step.type === "action"
+                          ? "Agent"
+                          : step.type === "condition"
+                          ? "Condition"
+                          : step.type === "approval"
+                          ? "Approval"
+                          : step.type === "note"
+                          ? "Note"
+                          : "End"}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center gap-1.5">
-                    {isRunningThis ? (
-                      <span className="flex items-center gap-1 text-[11px] text-purple-400 font-medium">
-                        <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                        Running...
-                      </span>
-                    ) : isCompleted ? (
-                      <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                        <CheckCircle2 size={12} />
-                        Done
-                      </span>
-                    ) : null}
+                    <div className="flex items-center gap-1.5">
+                      {isLocked && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleLock(step.id);
+                          }}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-medium hover:bg-amber-500/20 transition-colors"
+                          title="Click to unlock"
+                        >
+                          <Lock size={10} />
+                          <span>Unlock</span>
+                        </button>
+                      )}
+                      {step.type === "llm" && (
+                        <span className="text-[11px] font-mono text-zinc-500">{step.id}</span>
+                      )}
+                      {isRunningThis ? (
+                        <span className="flex items-center gap-1 text-[11px] text-purple-400 font-medium">
+                          <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                          Running...
+                        </span>
+                      ) : isCompleted ? (
+                        <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                          <CheckCircle2 size={12} />
+                          Done
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Trigger Node Form (Matches workflow WorkflowTriggerNode options) */}
                 {step.type === "trigger" && (
                   <div className="flex flex-col gap-3">
-                    {/* Trigger Type Selector Row */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveTriggerMenuStepId(activeTriggerMenuStepId === step.id ? null : step.id);
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900/90 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors shadow-sm disabled:opacity-50"
-                      >
-                        <div className="flex items-center gap-2">
-                          {step.trigger_type === "manual" ? (
-                            <MousePointerClick size={15} className="text-blue-400" />
-                          ) : step.trigger_type === "webhook" ? (
-                            <Webhook size={15} className="text-emerald-400" />
-                          ) : step.trigger_type === "message" ? (
-                            <MessageSquare size={15} className="text-purple-400" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                              <CalendarClock size={13} />
-                            </div>
-                          )}
-                          <span className="capitalize">{step.trigger_type || "Schedule"}</span>
-                        </div>
-                        <ChevronDown size={13} className="text-zinc-400" />
-                      </button>
+                    {/* Trigger Top Header Row with Trigger Type & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="relative flex-1">
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveTriggerMenuStepId(activeTriggerMenuStepId === step.id ? null : step.id);
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-700/80 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-2">
+                            {step.trigger_type === "manual" ? (
+                              <div className="w-5 h-5 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                                <MousePointerClick size={13} />
+                              </div>
+                            ) : step.trigger_type === "webhook" ? (
+                              <div className="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                <Webhook size={13} />
+                              </div>
+                            ) : step.trigger_type === "message" ? (
+                              <div className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                                <MessageSquare size={13} />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                                <CalendarClock size={13} />
+                              </div>
+                            )}
+                            <span className="capitalize">{step.trigger_type || "Schedule"}</span>
+                          </div>
+                          <ChevronDown size={13} className="text-zinc-400" />
+                        </button>
 
-                      {/* Dropdown Menu for Trigger Type */}
-                      {activeTriggerMenuStepId === step.id && !isLocked && (
-                        <div className="absolute top-full left-0 mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900/98 shadow-2xl p-1.5 z-50 flex flex-col gap-0.5 backdrop-blur-md">
-                          {[
-                            { id: "schedule", label: "Schedule", icon: CalendarClock, color: "text-amber-400" },
-                            { id: "manual", label: "Manual", icon: MousePointerClick, color: "text-blue-400" },
-                            { id: "webhook", label: "Webhook", icon: Webhook, color: "text-emerald-400" },
-                            { id: "message", label: "Chat Message", icon: MessageSquare, color: "text-purple-400" },
-                          ].map((tItem) => {
-                            const TIcon = tItem.icon;
-                            return (
-                              <button
-                                key={tItem.id}
-                                type="button"
-                                onClick={() => {
-                                  handleUpdateStep(step.id, { trigger_type: tItem.id as "manual" | "schedule" | "webhook" | "message" });
-                                  setActiveTriggerMenuStepId(null);
-                                }}
-                                className={cn(
-                                  "w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors",
-                                  (step.trigger_type || "schedule") === tItem.id
-                                    ? "bg-zinc-800 text-white font-medium"
-                                    : "text-zinc-300 hover:bg-zinc-800/60"
-                                )}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <TIcon size={14} className={tItem.color} />
-                                  <span>{tItem.label}</span>
-                                </div>
-                                {(step.trigger_type || "schedule") === tItem.id && (
-                                  <Check size={12} className="text-accent" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                        {/* Dropdown Menu for Trigger Type */}
+                        {activeTriggerMenuStepId === step.id && !isLocked && (
+                          <div className="popover-dropdown absolute top-full left-0 mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900/98 shadow-2xl p-1.5 z-50 flex flex-col gap-0.5 backdrop-blur-md">
+                            {[
+                              { id: "schedule", label: "Schedule", icon: CalendarClock, color: "text-amber-400" },
+                              { id: "manual", label: "Manual", icon: MousePointerClick, color: "text-blue-400" },
+                              { id: "webhook", label: "Webhook", icon: Webhook, color: "text-emerald-400" },
+                              { id: "message", label: "Chat Message", icon: MessageSquare, color: "text-purple-400" },
+                            ].map((tItem) => {
+                              const TIcon = tItem.icon;
+                              return (
+                                <button
+                                  key={tItem.id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateStep(step.id, { trigger_type: tItem.id as "manual" | "schedule" | "webhook" | "message" });
+                                    setActiveTriggerMenuStepId(null);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors",
+                                    (step.trigger_type || "schedule") === tItem.id
+                                      ? "bg-zinc-800 text-white font-medium"
+                                      : "text-zinc-300 hover:bg-zinc-800/60"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <TIcon size={14} className={tItem.color} />
+                                    <span>{tItem.label}</span>
+                                  </div>
+                                  {(step.trigger_type || "schedule") === tItem.id && (
+                                    <Check size={12} className="text-accent" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isLocked && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleLock(step.id);
+                            }}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-medium hover:bg-amber-500/20 transition-colors"
+                            title="Click to unlock"
+                          >
+                            <Lock size={10} />
+                            <span>Unlock</span>
+                          </button>
+                        )}
+                        {isRunningThis ? (
+                          <span className="flex items-center gap-1 text-[11px] text-purple-400 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                            Running...
+                          </span>
+                        ) : isCompleted ? (
+                          <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                            <CheckCircle2 size={12} />
+                            Done
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     {/* Schedule Configuration (Matching workflow RoutineSchedulePicker Sentence Chips) */}
@@ -1543,7 +1644,7 @@ export function WorkflowCanvas({
                               <ChevronDown size={11} className="text-zinc-400" />
                             </button>
                             {activeChipMenu?.stepId === step.id && activeChipMenu?.type === "kind" && !isLocked && (
-                              <div className="absolute top-full left-0 mt-1 w-28 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
+                              <div className="popover-dropdown absolute top-full left-0 mt-1 w-28 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
                                 {["daily", "hourly", "weekly", "monthly", "cron"].map((k) => (
                                   <button
                                     key={k}
@@ -1589,7 +1690,7 @@ export function WorkflowCanvas({
                                   <ChevronDown size={11} className="text-zinc-400" />
                                 </button>
                                 {activeChipMenu?.stepId === step.id && activeChipMenu?.type === "days" && !isLocked && (
-                                  <div className="absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
+                                  <div className="popover-dropdown absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
                                     {[
                                       { id: "every_day", label: "Every day" },
                                       { id: "weekdays", label: "Weekdays" },
@@ -1727,7 +1828,7 @@ export function WorkflowCanvas({
                                   <ChevronDown size={11} className="text-zinc-400" />
                                 </button>
                                 {activeChipMenu?.stepId === step.id && activeChipMenu?.type === "days" && !isLocked && (
-                                  <div className="absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
+                                  <div className="popover-dropdown absolute top-full left-0 mt-1 w-32 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1 z-50 flex flex-col gap-0.5">
                                     {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((wDay) => (
                                       <button
                                         key={wDay}

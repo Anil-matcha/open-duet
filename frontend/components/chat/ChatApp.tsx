@@ -310,7 +310,10 @@ export function ChatApp() {
         });
       }
     }).catch(() => { if (!cancelled) setEngines(null); });
-    api.getLocalStatus()
+    const statusTimeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("status_timeout")), 8000)
+    );
+    Promise.race([api.getLocalStatus(), statusTimeout])
       .then((status) => {
         if (cancelled) return;
         setGate({ phase: "ready", status });
