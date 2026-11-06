@@ -396,7 +396,7 @@ class WorkflowService:
                 })
                 break
 
-            elif step_type in ("trigger", "note", "section", "text"):
+            elif step_type in ("trigger", "note", "shape", "section", "text"):
                 step_states[step_id].update({
                     "status": "completed",
                     "output": (

@@ -972,7 +972,7 @@ export type WebhookSecret = { routine: Routine; secret: string; path: string };
 export type WorkflowStep = {
   id: string;
   name: string;
-  type: "action" | "llm" | "agent" | "condition" | "approval" | "end" | "note" | "trigger" | "section" | "text";
+  type: "action" | "llm" | "agent" | "condition" | "approval" | "end" | "note" | "shape" | "trigger" | "section" | "text";
   trigger_type?: "manual" | "schedule" | "webhook" | "message";
   schedule_kind?: "daily" | "hourly" | "weekly" | "monthly" | "cron";
   schedule_days?: string;
@@ -986,6 +986,13 @@ export type WorkflowStep = {
   prompt?: string;
   text?: string;
   font_size?: string;
+  shape?: "rectangle" | "circle" | "diamond" | "triangle" | "inverted" | "oval" | "star";
+  tone?: string;
+  ink?: string;
+  font?: string;
+  size?: string | number;
+  align?: string;
+  bold?: boolean;
   model?: string;
   effort?: string | null;
   system_prompt?: string | null;

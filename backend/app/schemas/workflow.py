@@ -85,7 +85,23 @@ class EndStep(BaseStep):
 class NoteStep(BaseStep):
     type: Literal["note"] = "note"
     prompt: str = Field(default="", max_length=20_000)
-    color: str | None = "amber"
+    text: str | None = None
+    color: str | None = "yellow"
+    tone: str | None = "yellow"
+    ink: str | None = "ink"
+    font: str | None = "sans"
+    size: str | int | None = "18"
+    align: str | None = "start"
+    bold: bool | None = False
+    next_step_id: str | None = None
+
+
+class ShapeStep(BaseStep):
+    type: Literal["shape"] = "shape"
+    shape: str | None = "rectangle"
+    color: str | None = "ink"
+    text: str | None = ""
+    prompt: str = Field(default="", max_length=20_000)
     next_step_id: str | None = None
 
 
@@ -127,6 +143,7 @@ WorkflowStep = Annotated[
         ApprovalStep,
         EndStep,
         NoteStep,
+        ShapeStep,
         SectionStep,
         TextStep,
         TriggerStep,

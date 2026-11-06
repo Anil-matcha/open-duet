@@ -2,13 +2,19 @@
 
 import {
   AlertTriangle,
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   ArrowLeft,
+  Bold,
   Bot,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Copy,
+  Eraser,
   FileText,
   GitBranch,
   Hand,
@@ -26,6 +32,7 @@ import {
   RotateCcw,
   Scan,
   Search,
+  Shapes,
   ShieldAlert,
   Sparkles,
   StickyNote,
@@ -75,7 +82,8 @@ export interface WorkflowCanvasProps {
   onRefreshRuns: () => Promise<void>;
 }
 
-type ToolMode = "select" | "pan" | "draw" | "note" | "text" | "search";
+type ToolMode = "select" | "pan" | "draw" | "note" | "shape" | "text" | "search";
+export type ShapeKind = "rectangle" | "circle" | "diamond" | "triangle" | "inverted" | "oval" | "star";
 
 export interface NodeSizeLimits {
   defaultWidth: number;
@@ -140,12 +148,21 @@ export const NODE_SIZE_CONFIG: Record<string, NodeSizeLimits> = {
     resizable: true,
   },
   note: {
-    defaultWidth: 300,
-    defaultHeight: 200,
-    minWidth: 220,
-    maxWidth: 600,
+    defaultWidth: 240,
+    defaultHeight: 240,
+    minWidth: 160,
+    maxWidth: 640,
     minHeight: 140,
-    maxHeight: 600,
+    maxHeight: 640,
+    resizable: true,
+  },
+  shape: {
+    defaultWidth: 208,
+    defaultHeight: 128,
+    minWidth: 48,
+    maxWidth: 960,
+    minHeight: 48,
+    maxHeight: 960,
     resizable: true,
   },
   section: {
@@ -362,53 +379,292 @@ interface SelectedWire {
   port: "out" | "true" | "false" | "approve" | "reject";
 }
 
-function DockPencilIcon({ active }: { active?: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="18"
-      viewBox="0 0 16 18"
-      fill="none"
-      className="transition-transform group-hover:scale-105"
-    >
-      <rect x="5" y="6" width="6" height="12" rx="1" fill="#f4f4f5" />
-      <polygon points="5,6 11,6 8,1" fill="#fed7aa" />
-      <polygon points="7,3 9,3 8,1" fill="#18181b" />
-      <line x1="8" y1="6" x2="8" y2="18" stroke="#e4e4e7" strokeWidth="0.8" />
-    </svg>
-  );
-}
+export const SHAPE_DEFAULT_SIZES: Record<ShapeKind, { width: number; height: number }> = {
+  rectangle: { width: 208, height: 128 },
+  circle: { width: 144, height: 144 },
+  diamond: { width: 160, height: 160 },
+  triangle: { width: 160, height: 144 },
+  inverted: { width: 160, height: 144 },
+  oval: { width: 208, height: 128 },
+  star: { width: 160, height: 152 },
+};
 
-function DockNoteIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 20 20"
-      fill="none"
-      className="transition-transform group-hover:scale-105"
-    >
-      <path d="M4 6h12v12H4z" fill="#9a3412" rx="2" opacity="0.6" />
-      <path
-        d="M2 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v9l-5 5H4a2 2 0 0 1-2-2V3z"
-        fill="#f97316"
+export const NOTE_TONE_CONFIG: Record<
+  string,
+  { paper: string; edge: string; ink: string; label: string; preview: string }
+> = {
+  yellow: {
+    paper: "#fde68a",
+    edge: "#f59e0b",
+    ink: "#713f12",
+    label: "Yellow",
+    preview: "#f59e0b",
+  },
+  orange: {
+    paper: "#fed7aa",
+    edge: "#f97316",
+    ink: "#7c2d12",
+    label: "Orange",
+    preview: "#f97316",
+  },
+  red: {
+    paper: "#fecdd3",
+    edge: "#f43f5e",
+    ink: "#881337",
+    label: "Red",
+    preview: "#f43f5e",
+  },
+  pink: {
+    paper: "#fbcfe8",
+    edge: "#ec4899",
+    ink: "#831843",
+    label: "Pink",
+    preview: "#ec4899",
+  },
+  blue: {
+    paper: "#bfdbfe",
+    edge: "#3b82f6",
+    ink: "#1e3a8a",
+    label: "Blue",
+    preview: "#3b82f6",
+  },
+  teal: {
+    paper: "#99f6e4",
+    edge: "#14b8a6",
+    ink: "#134e4a",
+    label: "Teal",
+    preview: "#14b8a6",
+  },
+  green: {
+    paper: "#bbf7d0",
+    edge: "#10b981",
+    ink: "#14532d",
+    label: "Green",
+    preview: "#10b981",
+  },
+  neutral: {
+    paper: "#f4f4f5",
+    edge: "#d4d4d8",
+    ink: "#18181b",
+    label: "White",
+    preview: "#e4e4e7",
+  },
+};
+
+export const INK_COLOR_LIST: { name: string; hex: string; label: string }[] = [
+  { name: "ink", hex: "#18181b", label: "Dark" },
+  { name: "orange", hex: "#ea580c", label: "Orange" },
+  { name: "yellow", hex: "#d97706", label: "Yellow" },
+  { name: "red", hex: "#dc2626", label: "Red" },
+  { name: "pink", hex: "#db2777", label: "Pink" },
+  { name: "blue", hex: "#2563eb", label: "Blue" },
+  { name: "teal", hex: "#0d9488", label: "Teal" },
+  { name: "green", hex: "#16a34a", label: "Green" },
+];
+
+export const CANVAS_COLOR_PALETTE: { name: string; hex: string; label: string }[] = [
+  { name: "ink", hex: "#ffffff", label: "White" },
+  { name: "orange", hex: "#ff9412", label: "Orange" },
+  { name: "peach", hex: "#f0a06a", label: "Peach" },
+  { name: "red", hex: "#fd2f3b", label: "Red" },
+  { name: "pink", hex: "#d98ac9", label: "Pink" },
+  { name: "blue", hex: "#74b9ff", label: "Blue" },
+  { name: "teal", hex: "#6bc7d9", label: "Teal" },
+  { name: "green", hex: "#31cf76", label: "Green" },
+];
+
+const STAR_POINTS = Array.from({ length: 10 }, (_, index) => {
+  const reach = index % 2 === 0 ? 1 : 0.4;
+  const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+  return `${(50 + 50 * reach * Math.cos(angle)).toFixed(1)},${(55 + 55 * reach * Math.sin(angle)).toFixed(1)}`;
+}).join(" ");
+
+const SHAPE_POLYGONS: Partial<Record<ShapeKind, string>> = {
+  diamond: "50,0 100,50 50,100 0,50",
+  triangle: "50,0 100,100 0,100",
+  inverted: "0,0 100,0 50,100",
+  star: STAR_POINTS,
+};
+
+function ShapeSurfaceSvg({
+  shape,
+  color = "#ffffff",
+  width,
+  height,
+  dashed,
+}: {
+  shape: ShapeKind;
+  color?: string;
+  width: number;
+  height: number;
+  dashed?: boolean;
+}) {
+  const poly = SHAPE_POLYGONS[shape];
+  const strokeColor = color === "ink" ? "#ffffff" : color;
+
+  if (poly) {
+    return (
+      <svg
+        width={width}
+        height={height}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="absolute inset-0 w-full h-full pointer-events-none overflow-visible drop-shadow-md"
+      >
+        <polygon
+          points={poly}
+          fill="rgba(255,255,255,0.06)"
+          stroke={strokeColor}
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          strokeDasharray={dashed ? "6 6" : undefined}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    );
+  }
+
+  if (shape === "circle") {
+    return (
+      <div
+        className={cn(
+          "absolute inset-0 rounded-full border-2 transition-all drop-shadow-md",
+          dashed && "border-dashed"
+        )}
+        style={{
+          borderColor: strokeColor,
+          backgroundColor: "rgba(255,255,255,0.06)",
+        }}
       />
-      <path d="M11 12h5l-5 5v-5z" fill="#fdba74" opacity="0.9" />
+    );
+  }
+
+  if (shape === "oval") {
+    return (
+      <div
+        className={cn(
+          "absolute inset-0 rounded-full border-2 transition-all drop-shadow-md",
+          dashed && "border-dashed"
+        )}
+        style={{
+          borderColor: strokeColor,
+          backgroundColor: "rgba(255,255,255,0.06)",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 rounded-2xl border-2 transition-all drop-shadow-md",
+        dashed && "border-dashed"
+      )}
+      style={{
+        borderColor: strokeColor,
+        backgroundColor: "rgba(255,255,255,0.06)",
+      }}
+    />
+  );
+}
+
+function DrawArt({ color = "#ffffff", eraser = false }: { color?: string; eraser?: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="22"
+      viewBox="0 0 44 56"
+      className="transition-transform group-hover:scale-110"
+      aria-hidden="true"
+    >
+      {!eraser ? (
+        <g>
+          <polygon fill="#f59e0b" points="22,7 28,21 28,24 16,24 16,21" />
+          <polygon fill="#d97706" points="22,7 28,21 28,24 24,24" />
+          <polygon fill={color} points="22,7 24.4,12.6 19.6,12.6" />
+          <polygon fill="#18181b" points="22,7 24.4,12.6 22.8,12.6" />
+          <path fill="#f4f4f5" d="M16 60V21q2 4 4 0v39z" />
+          <path fill={color} d="M20 60V21q2 4 4 0v39z" />
+          <path fill="#71717a" d="M24 60V21q2 4 4 0v39z" />
+          <rect fill="rgba(255,255,255,0.6)" x="17" y="24" width="1" height="36" rx="0.5" />
+        </g>
+      ) : (
+        <g>
+          <rect fill="#f43f5e" x="16" y="7" width="12" height="11" rx="3" />
+          <path fill="#e11d48" d="M24 7h1a3 3 0 0 1 3 3v8h-4z" />
+          <rect fill="#a1a1aa" x="15.5" y="16" width="13" height="7" rx="1" />
+          <rect fill="#52525b" x="15.5" y="18" width="13" height="0.8" />
+          <rect fill="#52525b" x="15.5" y="20.4" width="13" height="0.8" />
+          <rect fill="#f4f4f5" x="16" y="23" width="4" height="37" />
+          <rect fill={color} x="20" y="23" width="4" height="37" />
+          <rect fill="#71717a" x="24" y="23" width="4" height="37" />
+        </g>
+      )}
     </svg>
   );
 }
 
-function DockShapeIcon() {
+function StickyArt({ tone = "#ff9412" }: { tone?: string }) {
   return (
     <svg
-      width="18"
-      height="18"
-      viewBox="0 0 22 22"
-      fill="none"
-      className="transition-transform group-hover:scale-105"
+      width="20"
+      height="22"
+      viewBox="0 6 52 56"
+      className="transition-transform group-hover:scale-110"
+      aria-hidden="true"
     >
-      <circle cx="15" cy="15" r="5.5" fill="#71717a" opacity="0.8" />
-      <rect x="2" y="2" width="12" height="12" rx="3" fill="#ffffff" />
+      <g opacity="0.4">
+        <rect fill={tone} x="12" y="11" width="28" height="28" rx="2" />
+      </g>
+      <g opacity="0.7">
+        <rect fill={tone} x="12" y="10" width="28" height="28" rx="2" />
+      </g>
+      <g>
+        <path
+          d="M14 9h24a2 2 0 0 1 2 2v18l-9 9H14a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2z"
+          fill={tone}
+        />
+        <path
+          d="M40 29l-9 9c.6-3.6 1.5-5.6 2.9-6.6 1.4-1.1 3.3-1.8 6.1-2.4z"
+          fill="#fed7aa"
+        />
+      </g>
+    </svg>
+  );
+}
+
+function ShapesArt({
+  shape = "rectangle",
+  color = "#ffffff",
+}: {
+  shape?: string;
+  color?: string;
+}) {
+  return (
+    <svg
+      width="20"
+      height="22"
+      viewBox="0 9 52 56"
+      className="transition-transform group-hover:scale-110"
+      aria-hidden="true"
+    >
+      <g opacity="0.4">
+        <rect fill="#71717a" x="8" y="18" width="20" height="20" rx="3" />
+      </g>
+      <g opacity="0.7">
+        <circle fill="#a1a1aa" cx="38" cy="30" r="9" />
+      </g>
+      <g fill={color} stroke="#18181b" strokeWidth="1">
+        {shape === "rectangle" && <rect x="15" y="14" width="22" height="22" rx="3" />}
+        {shape === "circle" && <circle cx="26" cy="25" r="11.5" />}
+        {shape === "oval" && <rect x="12" y="18" width="28" height="15" rx="7.5" />}
+        {shape === "diamond" && <polygon points="26,12 39,25 26,38 13,25" />}
+        {shape === "triangle" && <polygon points="26,12 39,36 13,36" />}
+        {shape === "inverted" && <polygon points="13,14 39,14 26,38" />}
+        {shape === "star" && (
+          <polygon points="26,11 29.5,20.5 39.5,20.8 31.6,27 34.4,36.7 26,31 17.6,36.7 20.4,27 12.5,20.8 22.5,20.5" />
+        )}
+      </g>
     </svg>
   );
 }
@@ -709,7 +965,15 @@ export function WorkflowCanvas({
   const [showSearchPalette, setShowSearchPalette] = useState(false);
   const [canvasSearchQuery, setCanvasSearchQuery] = useState("");
   const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
+  const [drawMode, setDrawMode] = useState<"pen" | "eraser">("pen");
   const [drawColor, setDrawColor] = useState<string>("#ffffff");
+  const [activeShapeKind, setActiveShapeKind] = useState<ShapeKind>("rectangle");
+  const [activeShapeColor, setActiveShapeColor] = useState<string>("#ffffff");
+  const [showShapeColorMenu, setShowShapeColorMenu] = useState(false);
+  const [activeNoteTone, setActiveNoteTone] = useState<string>("orange");
+  const [openNoteMenu, setOpenNoteMenu] = useState<{ id: string; type: "tone" | "ink" | "font" | "size" | "align" } | null>(null);
+  const [openShapeMenu, setOpenShapeMenu] = useState<{ id: string; type: "kind" | "color" } | null>(null);
+  const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
 
   // Execution states
   const [runningStepId, setRunningStepId] = useState<string | null>(null);
@@ -793,23 +1057,57 @@ export function WorkflowCanvas({
     [nodePositions, effectiveSteps, zoom, getNodeSize]
   );
 
-  // Global Ctrl+F / Cmd+F shortcut to open Canvas Search Palette
+  // Global Keyboard shortcuts matching benchmark design
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag !== "INPUT" && tag !== "TEXTAREA") {
-          e.preventDefault();
-          setShowSearchPalette(true);
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") {
+        if (e.key === "Escape") {
+          (e.target as HTMLElement)?.blur();
         }
+        return;
       }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setShowSearchPalette(true);
+        return;
+      }
+
       if (e.key === "Escape") {
         setShowSearchPalette(false);
+        setTool("select");
+        setOpenNoteMenu(null);
+        setOpenShapeMenu(null);
+        setShowShapeColorMenu(false);
+        setGhostPos(null);
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (key === "v") {
+        setTool("select");
+        setGhostPos(null);
+      } else if (key === "h") {
+        setTool("pan");
+        setGhostPos(null);
+      } else if (key === "p") {
+        setTool("draw");
+        setDrawMode("pen");
+        setGhostPos(null);
+      } else if (key === "e") {
+        if (tool === "draw") {
+          setDrawMode("eraser");
+        }
+      } else if (key === "n") {
+        setTool("note");
+      } else if (key === "r") {
+        setTool("shape");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [tool]);
 
 
 
@@ -962,17 +1260,91 @@ export function WorkflowCanvas({
       return;
     }
 
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ptX = (e.clientX - rect.left - pan.x) / zoom;
+    const ptY = (e.clientY - rect.top - pan.y) / zoom;
+
     if (tool === "draw") {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const ptX = (e.clientX - rect.left - pan.x) / zoom;
-      const ptY = (e.clientY - rect.top - pan.y) / zoom;
-      setCurrentStroke({
-        id: `stroke_${Date.now()}`,
-        points: [{ x: ptX, y: ptY }],
-        color: drawColor || "#ffffff",
-      });
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      if (drawMode === "pen") {
+        setCurrentStroke({
+          id: `stroke_${Date.now()}`,
+          points: [{ x: ptX, y: ptY }],
+          color: drawColor || "#ffffff",
+        });
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      } else {
+        // Eraser: delete strokes intersecting pointer
+        setStrokes((prev) =>
+          prev.filter(
+            (st) =>
+              !st.points.some(
+                (p) => Math.hypot(p.x - ptX, p.y - ptY) < 22
+              )
+          )
+        );
+      }
+      return;
+    }
+
+    if (tool === "shape") {
+      const shapeDef = SHAPE_DEFAULT_SIZES[activeShapeKind] || { width: 208, height: 128 };
+      const newId = `step_${Date.now().toString(36)}`;
+      const posX = Math.round(ptX - shapeDef.width / 2);
+      const posY = Math.round(ptY - shapeDef.height / 2);
+
+      const newStep: WorkflowStep = {
+        id: newId,
+        name: "Shape",
+        type: "shape",
+        shape: activeShapeKind,
+        color: activeShapeColor || "#ffffff",
+        text: "",
+        x: posX,
+        y: posY,
+        width: shapeDef.width,
+        height: shapeDef.height,
+      };
+
+      setNodePositions((prev) => ({ ...prev, [newId]: { x: posX, y: posY } }));
+      setNodeSizes((prev) => ({ ...prev, [newId]: { width: shapeDef.width, height: shapeDef.height } }));
+      void onUpdateWorkflow({ steps: [...effectiveSteps, newStep] });
+      setSelectedNodeId(newId);
+      setTool("select");
+      setGhostPos(null);
+      return;
+    }
+
+    if (tool === "note") {
+      const newId = `step_${Date.now().toString(36)}`;
+      const posX = Math.round(ptX - 120);
+      const posY = Math.round(ptY - 120);
+      const tone = activeNoteTone || "orange";
+
+      const newStep: WorkflowStep = {
+        id: newId,
+        name: "Note",
+        type: "note",
+        tone: tone,
+        color: tone,
+        ink: NOTE_TONE_CONFIG[tone]?.ink || "#7c2d12",
+        font: "sans",
+        size: 18,
+        align: "left",
+        bold: false,
+        text: "",
+        x: posX,
+        y: posY,
+        width: 240,
+        height: 240,
+      };
+
+      setNodePositions((prev) => ({ ...prev, [newId]: { x: posX, y: posY } }));
+      setNodeSizes((prev) => ({ ...prev, [newId]: { width: 240, height: 240 } }));
+      void onUpdateWorkflow({ steps: [...effectiveSteps, newStep] });
+      setSelectedNodeId(newId);
+      setTool("select");
+      setGhostPos(null);
       return;
     }
 
@@ -992,6 +1364,28 @@ export function WorkflowCanvas({
 
   // High-performance pointer move (60fps local update)
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const ptX = rect ? (e.clientX - rect.left - pan.x) / zoom : 0;
+    const ptY = rect ? (e.clientY - rect.top - pan.y) / zoom : 0;
+
+    if (tool === "shape" || tool === "note") {
+      setGhostPos({ x: ptX, y: ptY });
+    }
+
+    if (tool === "draw" && drawMode === "eraser") {
+      setGhostPos({ x: ptX, y: ptY });
+      if (e.buttons === 1) {
+        setStrokes((prev) =>
+          prev.filter(
+            (st) =>
+              !st.points.some(
+                (p) => Math.hypot(p.x - ptX, p.y - ptY) < 22
+              )
+          )
+        );
+      }
+      return;
+    }
     if (resizingNode) {
       const dx = (e.clientX - resizingNode.startPointerX) / zoom;
       const dy = (e.clientY - resizingNode.startPointerY) / zoom;
@@ -1449,14 +1843,37 @@ export function WorkflowCanvas({
           y: centerY,
         };
       } else if (type === "note") {
+        const tone = noteColor || activeNoteTone || "orange";
         newStep = {
           id: newId,
-          name: "Sticky Note",
+          name: "Note",
           type: "note",
-          prompt: "Workflow notes and documentation...",
-          color: noteColor,
+          tone: tone,
+          color: tone,
+          ink: NOTE_TONE_CONFIG[tone]?.ink || "#7c2d12",
+          font: "sans",
+          size: 18,
+          align: "left",
+          bold: false,
+          text: "",
           x: centerX,
           y: centerY,
+          width: 240,
+          height: 240,
+        };
+      } else if (type === "shape") {
+        const shapeDef = SHAPE_DEFAULT_SIZES[activeShapeKind] || { width: 208, height: 128 };
+        newStep = {
+          id: newId,
+          name: "Shape",
+          type: "shape",
+          shape: activeShapeKind,
+          color: activeShapeColor || "#ffffff",
+          text: "",
+          x: centerX,
+          y: centerY,
+          width: shapeDef.width,
+          height: shapeDef.height,
         };
       } else if (type === "section") {
         newStep = {
@@ -2104,6 +2521,7 @@ export function WorkflowCanvas({
                 step.type !== "section" &&
                 step.type !== "text" &&
                 step.type !== "note" &&
+                step.type !== "shape" &&
                 step.next_step_id
               ) {
                 elements.push(
@@ -2232,6 +2650,65 @@ export function WorkflowCanvas({
               );
             })()}
 
+          {/* Ghost Preview Layer (for shapes & notes placement & eraser cursor) */}
+          {ghostPos && tool === "shape" && (() => {
+            const shapeDef = SHAPE_DEFAULT_SIZES[activeShapeKind] || { width: 208, height: 128 };
+            return (
+              <div
+                style={{
+                  transform: `translate(${ghostPos.x - shapeDef.width / 2}px, ${ghostPos.y - shapeDef.height / 2}px)`,
+                  width: `${shapeDef.width}px`,
+                  height: `${shapeDef.height}px`,
+                  position: "absolute",
+                  pointerEvents: "none",
+                  opacity: 0.65,
+                  zIndex: 35,
+                }}
+              >
+                <ShapeSurfaceSvg
+                  shape={activeShapeKind}
+                  color={activeShapeColor}
+                  width={shapeDef.width}
+                  height={shapeDef.height}
+                  dashed
+                />
+              </div>
+            );
+          })()}
+
+          {ghostPos && tool === "note" && (
+            <div
+              style={{
+                transform: `translate(${ghostPos.x - 120}px, ${ghostPos.y - 120}px)`,
+                width: "240px",
+                height: "240px",
+                position: "absolute",
+                pointerEvents: "none",
+                opacity: 0.65,
+                zIndex: 35,
+                backgroundColor: NOTE_TONE_CONFIG[activeNoteTone]?.paper || "#fed7aa",
+                borderColor: NOTE_TONE_CONFIG[activeNoteTone]?.edge || "#f97316",
+              }}
+              className="rounded-2xl border-2 border-dashed shadow-xl p-4 flex items-center justify-center text-sm font-medium"
+            >
+              <span style={{ color: NOTE_TONE_CONFIG[activeNoteTone]?.ink || "#7c2d12" }}>
+                Click to place note
+              </span>
+            </div>
+          )}
+
+          {tool === "draw" && drawMode === "eraser" && ghostPos && (
+            <div
+              style={{
+                transform: `translate(${ghostPos.x}px, ${ghostPos.y}px)`,
+                position: "absolute",
+                pointerEvents: "none",
+                zIndex: 35,
+              }}
+              className="-translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-2 border-dashed border-red-400 bg-red-500/10"
+            />
+          )}
+
           {/* Workflow Canvas Nodes (including draggable Trigger nodes) */}
           {effectiveSteps.map((step) => {
             const pos = nodePositions[step.id] || { x: 420, y: 140 };
@@ -2251,6 +2728,43 @@ export function WorkflowCanvas({
             return (
               <div
                 key={step.id}
+                onPointerDownCapture={() => {
+                  setSelectedNodeId(step.id);
+                  setSelectedWire(null);
+                }}
+                onPointerDown={(e) => handleNodePointerDown(e, step.id)}
+                className={cn(
+                  "workflow-node transition-shadow",
+                  step.type === "note"
+                    ? "rounded-2xl border-2 shadow-2xl p-0 overflow-hidden flex flex-col select-none"
+                    : step.type === "shape"
+                    ? "rounded-none border-0 shadow-none p-0 bg-transparent backdrop-blur-none flex items-center justify-center select-none"
+                    : step.type === "section"
+                    ? (step.color === "amber"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-amber-950/20 border-amber-600/50 border-dashed text-amber-200 z-0"
+                        : step.color === "emerald"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-emerald-950/20 border-emerald-600/50 border-dashed text-emerald-200 z-0"
+                        : step.color === "blue"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-blue-950/20 border-blue-600/50 border-dashed text-blue-200 z-0"
+                        : step.color === "purple"
+                        ? "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-purple-950/20 border-purple-600/50 border-dashed text-purple-200 z-0"
+                        : "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-zinc-900/30 border-zinc-700/60 border-dashed text-zinc-200 z-0")
+                    : step.type === "text"
+                    ? "rounded-2xl border border-transparent hover:border-zinc-700/50 p-2 shadow-none backdrop-blur-none z-10 flex flex-col gap-3"
+                    : "rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 bg-[#16171d] z-10",
+                  isSelected
+                    ? step.type === "note"
+                      ? "ring-2 ring-black/30"
+                      : "border-zinc-300 ring-2 ring-zinc-300/20"
+                    : isRunningThis
+                    ? "border-purple-500 shadow-purple-500/20 ring-2 ring-purple-500/30 animate-pulse"
+                    : isTargetSnapped
+                    ? "border-emerald-400 ring-2 ring-emerald-400/40"
+                    : step.type === "note" || step.type === "shape" || step.type === "section" || step.type === "text"
+                    ? ""
+                    : "border-zinc-800/90 hover:border-zinc-700/80",
+                  pulsingNodeId === step.id && "ring-4 ring-purple-400 shadow-xl shadow-purple-500/50 scale-[1.03]"
+                )}
                 style={{
                   transform: `translate(${pos.x}px, ${pos.y}px)`,
                   position: "absolute",
@@ -2261,107 +2775,576 @@ export function WorkflowCanvas({
                   maxWidth: `${cfg.maxWidth}px`,
                   minHeight: cfg.minHeight ? `${cfg.minHeight}px` : undefined,
                   maxHeight: cfg.maxHeight ? `${cfg.maxHeight}px` : undefined,
+                  backgroundColor:
+                    step.type === "note"
+                      ? NOTE_TONE_CONFIG[step.tone || "orange"]?.paper || "#fed7aa"
+                      : undefined,
+                  borderColor:
+                    step.type === "note"
+                      ? NOTE_TONE_CONFIG[step.tone || "orange"]?.edge || "#f97316"
+                      : undefined,
+                  color:
+                    step.type === "note"
+                      ? step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12"
+                      : undefined,
                   transition:
                     isResizingThis || isDraggingThis
                       ? "none"
                       : "width 0.18s cubic-bezier(0.16, 1, 0.3, 1), height 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
-                onPointerDownCapture={() => {
-                  setSelectedNodeId(step.id);
-                  setSelectedWire(null);
-                }}
-                onPointerDown={(e) => handleNodePointerDown(e, step.id)}
-                className={cn(
-                  "workflow-node rounded-2xl border shadow-2xl backdrop-blur-md p-4 flex flex-col gap-3 transition-shadow",
-                  step.type === "section"
-                    ? (step.color === "amber"
-                        ? "bg-amber-950/20 border-amber-600/50 border-dashed text-amber-200 z-0"
-                        : step.color === "emerald"
-                        ? "bg-emerald-950/20 border-emerald-600/50 border-dashed text-emerald-200 z-0"
-                        : step.color === "blue"
-                        ? "bg-blue-950/20 border-blue-600/50 border-dashed text-blue-200 z-0"
-                        : step.color === "purple"
-                        ? "bg-purple-950/20 border-purple-600/50 border-dashed text-purple-200 z-0"
-                        : "bg-zinc-900/30 border-zinc-700/60 border-dashed text-zinc-200 z-0")
-                    : step.type === "text"
-                    ? "bg-transparent border border-transparent hover:border-zinc-700/50 p-2 shadow-none backdrop-blur-none z-10"
-                    : step.type === "note"
-                    ? (step.color === "neutral" || step.color === "white"
-                        ? "bg-[#22242c]/95 border-zinc-600/60 text-zinc-100 z-10"
-                        : step.color === "emerald"
-                        ? "bg-[#092419]/95 border-emerald-600/60 text-emerald-100 z-10"
-                        : step.color === "rose"
-                        ? "bg-[#2d0e19]/95 border-rose-600/60 text-rose-100 z-10"
-                        : step.color === "blue"
-                        ? "bg-[#0c1f35]/95 border-blue-600/60 text-blue-100 z-10"
-                        : "bg-[#291b0a]/95 border-amber-600/60 text-amber-100 z-10")
-                    : "bg-[#16171d] z-10",
-                  isSelected
-                    ? "border-zinc-300 ring-2 ring-zinc-300/20"
-                    : isRunningThis
-                    ? "border-purple-500 shadow-purple-500/20 ring-2 ring-purple-500/30 animate-pulse"
-                    : isTargetSnapped
-                    ? "border-emerald-400 ring-2 ring-emerald-400/40"
-                    : step.type === "note" || step.type === "section" || step.type === "text"
-                    ? ""
-                    : "border-zinc-800/90 hover:border-zinc-700/80",
-                  pulsingNodeId === step.id && "ring-4 ring-purple-400 shadow-xl shadow-purple-500/50 scale-[1.03]"
-                )}
               >
-                {/* Benchmark-matching Node Category Indicator above the card */}
-                <div className="absolute -top-5 left-1 flex items-center gap-1.5 text-zinc-400 font-medium text-[11px] select-none pointer-events-none">
-                  {step.type === "trigger" ? (
-                    <>
-                      <Zap size={11} className="text-amber-400 fill-amber-400" />
-                      <span>Trigger</span>
-                    </>
-                  ) : step.type === "llm" ? (
-                    <>
-                      <Sparkles size={11} className="text-purple-400" />
-                      <span>LLM</span>
-                    </>
-                  ) : step.type === "agent" || step.type === "action" ? (
-                    <>
-                      <Bot size={11} className="text-blue-400" />
-                      <span>Agent</span>
-                    </>
-                  ) : step.type === "condition" ? (
-                    <>
-                      <GitBranch size={11} className="text-amber-400" />
-                      <span>Condition</span>
-                    </>
-                  ) : step.type === "approval" ? (
-                    <>
-                      <ShieldAlert size={11} className="text-rose-400" />
-                      <span>Approval</span>
-                    </>
-                  ) : step.type === "note" ? (
-                    <>
-                      <StickyNote size={11} className="text-yellow-400" />
-                      <span>Note</span>
-                    </>
-                  ) : step.type === "section" ? (
-                    <>
-                      <Layers size={11} className="text-zinc-400" />
-                      <span>Section</span>
-                    </>
-                  ) : step.type === "text" ? (
-                    <>
-                      <Type size={11} className="text-zinc-400" />
-                      <span>Text</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={11} className="text-emerald-400" />
-                      <span>End</span>
-                    </>
-                  )}
-                </div>
+                {/* Node Category Indicator above the card for standard flow nodes */}
+                {step.type !== "note" && step.type !== "shape" && step.type !== "section" && step.type !== "text" && (
+                  <div className="absolute -top-5 left-1 flex items-center gap-1.5 text-zinc-400 font-medium text-[11px] select-none pointer-events-none">
+                    {step.type === "trigger" ? (
+                      <>
+                        <Zap size={11} className="text-amber-400 fill-amber-400" />
+                        <span>Trigger</span>
+                      </>
+                    ) : step.type === "llm" ? (
+                      <>
+                        <Sparkles size={11} className="text-purple-400" />
+                        <span>LLM</span>
+                      </>
+                    ) : step.type === "agent" || step.type === "action" ? (
+                      <>
+                        <Bot size={11} className="text-blue-400" />
+                        <span>Agent</span>
+                      </>
+                    ) : step.type === "condition" ? (
+                      <>
+                        <GitBranch size={11} className="text-amber-400" />
+                        <span>Condition</span>
+                      </>
+                    ) : step.type === "approval" ? (
+                      <>
+                        <ShieldAlert size={11} className="text-rose-400" />
+                        <span>Approval</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={11} className="text-emerald-400" />
+                        <span>End</span>
+                      </>
+                    )}
+                  </div>
+                )}
 
-                {/* Floating Action Bar above selected node (Matches workflow NodeToolbar) */}
-                {isSelected && (
+                {/* Floating Action Bar above selected Note Node (Matching benchmark Note toolbar) */}
+                {isSelected && step.type === "note" && (
                   <div
-                    className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1a1b22] border border-zinc-700 rounded-xl px-2 py-1 shadow-2xl z-30"
+                    className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181b]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-50 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    {/* Tone Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "tone"
+                              ? null
+                              : { id: step.id, type: "tone" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Pick note paper tone"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-black/20"
+                          style={{
+                            backgroundColor:
+                              NOTE_TONE_CONFIG[step.tone || "orange"]?.preview || "#f97316",
+                          }}
+                        />
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "tone" && (
+                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                          {Object.entries(NOTE_TONE_CONFIG).map(([toneKey, cfg]) => (
+                            <button
+                              key={toneKey}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, {
+                                  tone: toneKey,
+                                  color: toneKey,
+                                  ink: cfg.ink,
+                                });
+                                setOpenNoteMenu(null);
+                              }}
+                              className={cn(
+                                "w-5 h-5 rounded-full transition-transform hover:scale-115",
+                                (step.tone || "orange") === toneKey
+                                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                                  : ""
+                              )}
+                              style={{ backgroundColor: cfg.preview }}
+                              title={cfg.label}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Ink Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "ink"
+                              ? null
+                              : { id: step.id, type: "ink" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Pick ink color"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-black/20"
+                          style={{
+                            backgroundColor:
+                              step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12",
+                          }}
+                        />
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "ink" && (
+                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                          {INK_COLOR_LIST.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { ink: c.hex });
+                                setOpenNoteMenu(null);
+                              }}
+                              className={cn(
+                                "w-5 h-5 rounded-full transition-transform hover:scale-115",
+                                (step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink) === c.hex
+                                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                                  : ""
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.label}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-[1px] h-3.5 bg-zinc-700/80 mx-0.5" />
+
+                    {/* Font Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "font"
+                              ? null
+                              : { id: step.id, type: "font" }
+                          )
+                        }
+                        className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 font-medium text-xs transition-colors"
+                        title="Font family"
+                      >
+                        <span>
+                          {step.font === "mono" ? "Mono" : step.font === "serif" ? "Serif" : "Aa"}
+                        </span>
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "font" && (
+                        <div className="absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[90px] animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { font: "sans" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "px-2 py-1 text-left rounded-lg text-xs font-sans hover:bg-zinc-800 text-zinc-200",
+                              (!step.font || step.font === "sans") && "bg-zinc-800 font-bold"
+                            )}
+                          >
+                            Sans (Aa)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { font: "mono" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "px-2 py-1 text-left rounded-lg text-xs font-mono hover:bg-zinc-800 text-zinc-200",
+                              step.font === "mono" && "bg-zinc-800 font-bold"
+                            )}
+                          >
+                            Mono
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { font: "serif" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "px-2 py-1 text-left rounded-lg text-xs font-serif hover:bg-zinc-800 text-zinc-200",
+                              step.font === "serif" && "bg-zinc-800 font-bold"
+                            )}
+                          >
+                            Serif
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Font Size Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "size"
+                              ? null
+                              : { id: step.id, type: "size" }
+                          )
+                        }
+                        className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 font-medium text-xs transition-colors"
+                        title="Font size"
+                      >
+                        <span>{step.size || 18}px</span>
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "size" && (
+                        <div className="absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex flex-col gap-0.5 min-w-[80px] animate-in fade-in duration-100">
+                          {[14, 18, 24, 32].map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { size: sz });
+                                setOpenNoteMenu(null);
+                              }}
+                              className={cn(
+                                "px-2 py-1 text-left rounded-lg text-xs hover:bg-zinc-800 text-zinc-200",
+                                (step.size || 18) === sz && "bg-zinc-800 font-bold"
+                              )}
+                            >
+                              {sz}px
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Text Alignment Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenNoteMenu(
+                            openNoteMenu?.id === step.id && openNoteMenu.type === "align"
+                              ? null
+                              : { id: step.id, type: "align" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Text alignment"
+                      >
+                        {step.align === "center" ? (
+                          <AlignCenter size={13} />
+                        ) : step.align === "right" ? (
+                          <AlignRight size={13} />
+                        ) : step.align === "justify" ? (
+                          <AlignJustify size={13} />
+                        ) : (
+                          <AlignLeft size={13} />
+                        )}
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openNoteMenu?.id === step.id && openNoteMenu.type === "align" && (
+                        <div className="absolute top-full mt-2 left-0 p-1 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1 animate-in fade-in duration-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "left" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              (!step.align || step.align === "left") && "bg-zinc-800"
+                            )}
+                            title="Left"
+                          >
+                            <AlignLeft size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "center" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              step.align === "center" && "bg-zinc-800"
+                            )}
+                            title="Center"
+                          >
+                            <AlignCenter size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "right" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              step.align === "right" && "bg-zinc-800"
+                            )}
+                            title="Right"
+                          >
+                            <AlignRight size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateStep(step.id, { align: "justify" });
+                              setOpenNoteMenu(null);
+                            }}
+                            className={cn(
+                              "p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-200",
+                              step.align === "justify" && "bg-zinc-800"
+                            )}
+                            title="Justify"
+                          >
+                            <AlignJustify size={13} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bold Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateStep(step.id, { bold: !step.bold })}
+                      className={cn(
+                        "px-2 py-1 rounded-lg font-bold text-xs transition-colors",
+                        step.bold
+                          ? "bg-zinc-700 text-white"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
+                      title="Bold"
+                    >
+                      B
+                    </button>
+
+                    <div className="w-[1px] h-3.5 bg-zinc-700/80 mx-0.5" />
+
+                    {/* Duplicate */}
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => handleDuplicateStep(step.id)}
+                      className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30"
+                      title="Duplicate note"
+                    >
+                      <Copy size={13} />
+                    </button>
+
+                    {/* Lock */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLock(step.id)}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        isLocked
+                          ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
+                      title={isLocked ? "Unlock note" : "Lock note"}
+                    >
+                      {isLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep(step.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
+                      title="Delete note"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Floating Action Bar above selected Shape Node */}
+                {isSelected && step.type === "shape" && (
+                  <div
+                    className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#18181b]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-50 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    {/* Shape Kind Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenShapeMenu(
+                            openShapeMenu?.id === step.id && openShapeMenu.type === "kind"
+                              ? null
+                              : { id: step.id, type: "kind" }
+                          )
+                        }
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors capitalize font-medium"
+                        title="Pick shape geometry"
+                      >
+                        <span>{step.shape || "rectangle"}</span>
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openShapeMenu?.id === step.id && openShapeMenu.type === "kind" && (
+                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1 animate-in fade-in duration-100">
+                          {(
+                            [
+                              "rectangle",
+                              "circle",
+                              "diamond",
+                              "triangle",
+                              "inverted",
+                              "oval",
+                              "star",
+                            ] as ShapeKind[]
+                          ).map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { shape: k });
+                                setOpenShapeMenu(null);
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-all",
+                                (step.shape || "rectangle") === k && "bg-zinc-800 text-white"
+                              )}
+                              title={k}
+                            >
+                              {k === "rectangle" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3" /></svg>
+                              )}
+                              {k === "circle" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /></svg>
+                              )}
+                              {k === "diamond" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 22,12 12,22 2,12" /></svg>
+                              )}
+                              {k === "triangle" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,3 22,21 2,21" /></svg>
+                              )}
+                              {k === "inverted" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="2,3 22,3 12,21" /></svg>
+                              )}
+                              {k === "oval" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="6" /></svg>
+                              )}
+                              {k === "star" && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" /></svg>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Color Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenShapeMenu(
+                            openShapeMenu?.id === step.id && openShapeMenu.type === "color"
+                              ? null
+                              : { id: step.id, type: "color" }
+                          )
+                        }
+                        className="flex items-center gap-1 p-1 rounded-lg hover:bg-zinc-800 text-zinc-300 transition-colors"
+                        title="Pick shape outline color"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-white/20"
+                          style={{ backgroundColor: step.color || "#ffffff" }}
+                        />
+                        <ChevronDown size={11} className="text-zinc-500" />
+                      </button>
+                      {openShapeMenu?.id === step.id && openShapeMenu.type === "color" && (
+                        <div className="absolute top-full mt-2 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                          {CANVAS_COLOR_PALETTE.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => {
+                                handleUpdateStep(step.id, { color: c.hex });
+                                setOpenShapeMenu(null);
+                              }}
+                              className={cn(
+                                "w-5 h-5 rounded-full transition-transform hover:scale-115",
+                                (step.color || "#ffffff") === c.hex
+                                  ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                                  : ""
+                              )}
+                              style={{ backgroundColor: c.hex }}
+                              title={c.label}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-[1px] h-3.5 bg-zinc-700/80 mx-0.5" />
+
+                    {/* Duplicate */}
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => handleDuplicateStep(step.id)}
+                      className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-30"
+                      title="Duplicate shape"
+                    >
+                      <Copy size={13} />
+                    </button>
+
+                    {/* Lock */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLock(step.id)}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors",
+                        isLocked
+                          ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      )}
+                      title={isLocked ? "Unlock shape" : "Lock shape"}
+                    >
+                      {isLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStep(step.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-zinc-800 transition-colors"
+                      title="Delete shape"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Floating Action Bar above selected standard flow node */}
+                {isSelected && step.type !== "note" && step.type !== "shape" && (
+                  <div
+                    className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1a1b22] border border-zinc-700 rounded-xl px-2 py-1 shadow-2xl z-30 select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
                     <button
@@ -2379,7 +3362,9 @@ export function WorkflowCanvas({
                       onClick={() => handleToggleLock(step.id)}
                       className={cn(
                         "p-1.5 rounded-lg transition-colors",
-                        isLocked ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20" : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                        isLocked
+                          ? "text-amber-400 bg-amber-500/10 hover:bg-amber-500/20"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800"
                       )}
                       title={isLocked ? "Unlock node" : "Lock node"}
                     >
@@ -2396,7 +3381,7 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Interactive Curved Corner Resize Handle (conforming to rounded-2xl bottom-right arc) */}
+                {/* Interactive Curved Corner Resize Handle */}
                 {isSelected && !isLocked && cfg.resizable && (
                   <div
                     onPointerDown={(e) =>
@@ -2412,7 +3397,12 @@ export function WorkflowCanvas({
                       height="15"
                       viewBox="0 0 15 15"
                       fill="none"
-                      className="text-white/85 group-hover/resize:text-white group-hover/resize:scale-110 group-active/resize:scale-125 transition-transform drop-shadow"
+                      className={cn(
+                        "transition-transform drop-shadow",
+                        step.type === "note"
+                          ? "text-zinc-900/60 group-hover/resize:text-zinc-900 group-hover/resize:scale-110"
+                          : "text-white/85 group-hover/resize:text-white group-hover/resize:scale-110"
+                      )}
                     >
                       <path
                         d="M 2 13 C 7 13 13 7 13 2"
@@ -2424,8 +3414,8 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Left Input Ports (Triggers, Notes, Sections, and Text labels have no left input ports) */}
-                {step.type !== "note" && step.type !== "trigger" && step.type !== "section" && step.type !== "text" && (
+                {/* Left Input Ports (Triggers, Notes, Shapes, Sections, and Text labels have no left input ports) */}
+                {step.type !== "note" && step.type !== "shape" && step.type !== "trigger" && step.type !== "section" && step.type !== "text" && (
                   <>
                     {step.type === "llm" || step.type === "agent" || step.type === "action" ? (
                       <>
@@ -2472,7 +3462,7 @@ export function WorkflowCanvas({
                               className={cn(
                                 "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
                                 isInvalid
-                                  ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                  ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
                                   : isValid
                                   ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
                                   : isReverseDraggingThis
@@ -2540,7 +3530,7 @@ export function WorkflowCanvas({
                               className={cn(
                                 "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
                                 isInvalid
-                                  ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                  ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
                                   : isValid
                                   ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
                                   : isReverseDraggingThis
@@ -2608,7 +3598,7 @@ export function WorkflowCanvas({
                               className={cn(
                                 "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 select-none shadow-md",
                                 isInvalid
-                                  ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                  ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
                                   : isValid
                                   ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
                                   : isReverseDraggingThis
@@ -2675,7 +3665,7 @@ export function WorkflowCanvas({
                             className={cn(
                               "absolute -left-[11px] -translate-y-1/2 w-[22px] h-[22px] rounded-full bg-[#18181b] border transition-all cursor-crosshair flex items-center justify-center z-20 text-[10px] font-mono font-bold select-none shadow-md",
                               isInvalid
-                                ? "border-zinc-300 ring-2 ring-white bg-zinc-800 text-white scale-125 shadow-lg"
+                                ? "border-red-400 bg-red-600 text-white scale-125 ring-4 ring-red-500/40 shadow-lg"
                                 : isValid
                                 ? "border-emerald-400 bg-emerald-950 text-emerald-300 scale-125 ring-4 ring-emerald-500/40 shadow-lg"
                                 : isReverseDraggingThis
@@ -3585,39 +4575,46 @@ export function WorkflowCanvas({
                   </div>
                 )}
 
-                {/* Sticky Note Form */}
+                {/* Note Node Body (Pastel Paper matching reference design) */}
                 {step.type === "note" && (
-                  <div className="flex-1 min-h-0 flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-white/10 shrink-0">
-                      <span className="font-semibold text-xs opacity-75 flex items-center gap-1.5">
-                        <StickyNote size={13} />
-                        <span>Sticky Note</span>
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {(["amber", "neutral", "emerald", "rose", "blue"] as const).map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => handleUpdateStep(step.id, { color: c })}
-                            className={cn(
-                              "w-3 h-3 rounded-full transition-transform hover:scale-125",
-                              c === "amber" && "bg-amber-400",
-                              c === "neutral" && "bg-zinc-200",
-                              c === "emerald" && "bg-emerald-400",
-                              c === "rose" && "bg-rose-400",
-                              c === "blue" && "bg-blue-400",
-                              (step.color || "amber") === c ? "ring-2 ring-white scale-110" : "opacity-40"
-                            )}
-                            title={`Color ${c}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                  <div className="relative w-full h-full flex flex-col">
                     <textarea
-                      value={step.prompt || ""}
-                      placeholder="Type thoughts, instructions or documentation..."
-                      onChange={(e) => handleUpdateStep(step.id, { prompt: e.target.value })}
-                      className="flex-1 min-h-[70px] w-full bg-transparent border-none text-xs leading-relaxed focus:outline-none resize-none font-sans"
+                      value={step.text ?? step.prompt ?? ""}
+                      onChange={(e) =>
+                        handleUpdateStep(step.id, { text: e.target.value, prompt: e.target.value })
+                      }
+                      placeholder="Write a note"
+                      style={{
+                        color: step.ink || NOTE_TONE_CONFIG[step.tone || "orange"]?.ink || "#7c2d12",
+                        fontSize: step.size ? `${step.size}px` : "18px",
+                        fontFamily:
+                          step.font === "mono"
+                            ? "ui-monospace, monospace"
+                            : step.font === "serif"
+                            ? "Georgia, serif"
+                            : "inherit",
+                        textAlign: (step.align as any) || "left",
+                        fontWeight: step.bold ? "bold" : "normal",
+                      }}
+                      className="w-full h-full bg-transparent border-none outline-none resize-none p-4 placeholder-black/35 font-sans leading-relaxed select-text"
+                    />
+                  </div>
+                )}
+
+                {/* Shape Node Body */}
+                {step.type === "shape" && (
+                  <div className="relative w-full h-full flex items-center justify-center p-3 select-none">
+                    <ShapeSurfaceSvg
+                      shape={step.shape || "rectangle"}
+                      color={step.color || "#ffffff"}
+                      width={nodeW}
+                      height={nodeH || 128}
+                    />
+                    <textarea
+                      value={step.text || ""}
+                      onChange={(e) => handleUpdateStep(step.id, { text: e.target.value })}
+                      placeholder="Add text..."
+                      className="relative z-10 w-full h-full bg-transparent border-none outline-none resize-none flex items-center justify-center text-center font-medium text-white placeholder-zinc-500 leading-normal p-2 select-text"
                     />
                   </div>
                 )}
@@ -4019,7 +5016,7 @@ export function WorkflowCanvas({
                       );
                     })()}
                   </>
-                ) : step.type !== "end" && step.type !== "note" && step.type !== "section" && step.type !== "text" ? (
+                ) : step.type !== "end" && step.type !== "note" && step.type !== "shape" && step.type !== "section" && step.type !== "text" ? (
                   (() => {
                     const isOutActive =
                       (draggingWire?.fromDirection !== "input" &&
@@ -4423,6 +5420,175 @@ export function WorkflowCanvas({
           </button>
         </div>
 
+        {/* Draw Tool Sub-Bar (Matching benchmark pencil toolbar) */}
+        {tool === "draw" && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none">
+            <button
+              type="button"
+              onClick={() => setDrawMode("pen")}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl font-medium transition-all",
+                drawMode === "pen"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+              )}
+              title="Draw (P)"
+            >
+              <Pencil size={13} />
+              <span>Draw <span className="text-[10px] text-zinc-500 font-mono">P</span></span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDrawMode("eraser")}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl font-medium transition-all",
+                drawMode === "eraser"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+              )}
+              title="Eraser (E)"
+            >
+              <Eraser size={13} />
+              <span>Eraser <span className="text-[10px] text-zinc-500 font-mono">E</span></span>
+            </button>
+
+            <span className="w-px h-4 bg-zinc-800 mx-1" />
+
+            <div className="flex items-center gap-1.5">
+              {CANVAS_COLOR_PALETTE.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => setDrawColor(c.hex)}
+                  className={cn(
+                    "w-5 h-5 rounded-full transition-transform hover:scale-115 relative cursor-pointer",
+                    drawColor === c.hex
+                      ? "ring-2 ring-white ring-offset-2 ring-offset-[#16171d] scale-110"
+                      : ""
+                  )}
+                  style={{ backgroundColor: c.hex }}
+                  title={c.label}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Shape Tool Sub-Bar (Matching benchmark shape toolbar) */}
+        {tool === "shape" && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none">
+            {/* Color picker dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowShapeColorMenu(!showShapeColorMenu)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-xl hover:bg-zinc-800 text-zinc-300 transition-colors"
+                title="Pick Shape Color"
+              >
+                <span
+                  className="w-4 h-4 rounded-full border border-white/20"
+                  style={{ backgroundColor: activeShapeColor }}
+                />
+                <ChevronDown size={11} className="text-zinc-500" />
+              </button>
+              {showShapeColorMenu && (
+                <div className="absolute bottom-full mb-2.5 left-0 p-1.5 rounded-xl bg-[#18181b] border border-zinc-700 shadow-2xl z-50 flex items-center gap-1.5 animate-in fade-in duration-100">
+                  {CANVAS_COLOR_PALETTE.map((c) => (
+                    <button
+                      key={c.name}
+                      type="button"
+                      onClick={() => {
+                        setActiveShapeColor(c.hex);
+                        setShowShapeColorMenu(false);
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded-full transition-transform hover:scale-115 cursor-pointer",
+                        activeShapeColor === c.hex
+                          ? "ring-2 ring-white ring-offset-2 ring-offset-[#18181b] scale-110"
+                          : ""
+                      )}
+                      style={{ backgroundColor: c.hex }}
+                      title={c.label}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <span className="w-px h-4 bg-zinc-800 mx-1" />
+
+            {/* Shape Buttons */}
+            {(
+              [
+                "rectangle",
+                "circle",
+                "diamond",
+                "triangle",
+                "inverted",
+                "oval",
+                "star",
+              ] as ShapeKind[]
+            ).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setActiveShapeKind(kind)}
+                className={cn(
+                  "p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer",
+                  activeShapeKind === kind
+                    ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+                )}
+                title={`Shape ${kind}`}
+              >
+                {kind === "rectangle" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3" /></svg>
+                )}
+                {kind === "circle" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /></svg>
+                )}
+                {kind === "diamond" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 22,12 12,22 2,12" /></svg>
+                )}
+                {kind === "triangle" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,3 22,21 2,21" /></svg>
+                )}
+                {kind === "inverted" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="2,3 22,3 12,21" /></svg>
+                )}
+                {kind === "oval" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="6" /></svg>
+                )}
+                {kind === "star" && (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" /></svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Note Tool Sub-Bar (Matching benchmark note tones toolbar) */}
+        {tool === "note" && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[#16171d]/95 border border-zinc-700/80 shadow-2xl backdrop-blur-xl px-2.5 py-1.5 rounded-2xl z-40 text-xs animate-in fade-in slide-in-from-bottom-2 duration-150 select-none">
+            <span className="text-[11px] text-zinc-400 font-medium px-1">Note tone:</span>
+            {Object.entries(NOTE_TONE_CONFIG).map(([toneKey, cfg]) => (
+              <button
+                key={toneKey}
+                type="button"
+                onClick={() => setActiveNoteTone(toneKey)}
+                className={cn(
+                  "w-5 h-5 rounded-full transition-transform hover:scale-115 cursor-pointer",
+                  activeNoteTone === toneKey
+                    ? "ring-2 ring-white ring-offset-2 ring-offset-[#16171d] scale-110"
+                    : ""
+                )}
+                style={{ backgroundColor: cfg.preview }}
+                title={cfg.label}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Main Floating Dock: Tools, Shapes, Search, Add Node */}
         <div className="ui-dock-main fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#16171d]/95 border border-zinc-700/60 shadow-2xl backdrop-blur-xl px-3 py-2 rounded-2xl z-40">
           <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
@@ -4451,40 +5617,66 @@ export function WorkflowCanvas({
           </div>
 
           <div className="flex items-center gap-1 pr-1.5 border-r border-zinc-800">
+            {/* Draw / Pencil Tool Button */}
             <button
               type="button"
-              onClick={() => setTool(tool === "draw" ? "select" : "draw")}
+              onClick={() => {
+                setTool(tool === "draw" ? "select" : "draw");
+                setShowAddMenu(false);
+              }}
               className={cn(
-                "group p-2 rounded-xl transition-all",
+                "group p-1.5 rounded-xl transition-all relative",
                 tool === "draw"
-                  ? "bg-purple-950/80 ring-1 ring-purple-500/80 text-white shadow-lg shadow-purple-500/20"
-                  : "hover:bg-zinc-800/60"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               )}
-              title="Pencil / Draw"
+              title="Pencil / Draw (P)"
             >
-              <DockPencilIcon active={tool === "draw"} />
+              <DrawArt color={drawColor} eraser={drawMode === "eraser"} />
             </button>
+
+            {/* Sticky Note Tool Button */}
             <button
               type="button"
-              onClick={() => handleAddNode("note", "amber")}
-              className="group p-2 rounded-xl hover:bg-zinc-800/60 transition-colors"
-              title="Add Orange Sticky Note"
+              onClick={() => {
+                setTool(tool === "note" ? "select" : "note");
+                setShowAddMenu(false);
+              }}
+              className={cn(
+                "group p-1.5 rounded-xl transition-all relative",
+                tool === "note"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+              )}
+              title="Sticky Note (N)"
             >
-              <DockNoteIcon />
+              <StickyArt tone={NOTE_TONE_CONFIG[activeNoteTone]?.preview || "#ff9412"} />
             </button>
+
+            {/* Shapes Tool Button */}
             <button
               type="button"
-              onClick={() => handleAddNode("section")}
-              className="group p-2 rounded-xl hover:bg-zinc-800/60 transition-colors"
-              title="Add Section Frame"
+              onClick={() => {
+                setTool(tool === "shape" ? "select" : "shape");
+                setShowAddMenu(false);
+              }}
+              className={cn(
+                "group p-1.5 rounded-xl transition-all relative",
+                tool === "shape"
+                  ? "bg-zinc-800 text-white ring-1 ring-zinc-600"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+              )}
+              title="Shapes (R)"
             >
-              <DockShapeIcon />
+              <ShapesArt shape={activeShapeKind} color={activeShapeColor} />
             </button>
+
+            {/* Text Label Tool Button */}
             <button
               type="button"
               onClick={() => handleAddNode("text")}
-              className="p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors font-serif font-bold text-base leading-none w-8 h-8 flex items-center justify-center"
-              title="Add Text Label"
+              className="p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors font-serif font-bold text-base leading-none w-8 h-8 flex items-center justify-center select-none"
+              title="Add Text Label (T)"
             >
               T
             </button>
