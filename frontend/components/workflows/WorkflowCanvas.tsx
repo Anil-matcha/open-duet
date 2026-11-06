@@ -7,7 +7,6 @@ import {
   AlignLeft,
   AlignRight,
   ArrowLeft,
-  Bold,
   Bot,
   Check,
   CheckCircle2,
@@ -23,17 +22,14 @@ import {
   Image as ImageIcon,
   Lock,
   Map,
-  Maximize2,
   Minus,
   MousePointer2,
   PenTool,
   Pencil,
   Play,
   Plus,
-  RotateCcw,
   Scan,
   Search,
-  Shapes,
   ShieldAlert,
   Sparkles,
   StickyNote,
@@ -48,8 +44,6 @@ import {
   MessageSquare,
   RefreshCw,
   Zap,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import React, {
   useCallback,
@@ -263,15 +257,15 @@ export function hasPathInWorkflow(
 }
 
 export function getOutputPortDataType(
-  step: WorkflowStep,
-  port: "out" | "true" | "false" | "approve" | "reject"
+  _step: WorkflowStep,
+  _port: "out" | "true" | "false" | "approve" | "reject"
 ): WorkflowPortType {
   // Trigger, LLM, Agent, Action, Condition, and Approval output text data
   return "text";
 }
 
 export function getInputPortDataType(
-  step: WorkflowStep,
+  _step: WorkflowStep,
   port: "text" | "image" | "file"
 ): WorkflowPortType {
   return port;
@@ -635,6 +629,7 @@ function ShapesArt({
   shape?: string;
   color?: string;
 }) {
+  void shape;
   return (
     <svg
       width="18"
@@ -981,7 +976,6 @@ export function WorkflowCanvas({
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(workflow.name);
-  const [expandedOutputStepIds, setExpandedOutputStepIds] = useState<Set<string>>(new Set());
   const [expandedSystemPromptStepIds, setExpandedSystemPromptStepIds] = useState<Set<string>>(new Set());
   const [nodeSearch, setNodeSearch] = useState("");
   const [executionNotice, setExecutionNotice] = useState<string | null>(null);
@@ -2207,13 +2201,11 @@ export function WorkflowCanvas({
         ...prev,
         [stepId]: res.output || "Step completed.",
       }));
-      setExpandedOutputStepIds((prev) => new Set(prev).add(stepId));
     } catch (err) {
       setStepOutputs((prev) => ({
         ...prev,
         [stepId]: `Error: ${err instanceof Error ? err.message : String(err)}`,
       }));
-      setExpandedOutputStepIds((prev) => new Set(prev).add(stepId));
     } finally {
       setRunningStepId(null);
     }
@@ -2772,7 +2764,6 @@ export function WorkflowCanvas({
             const stepRunState = liveRun?.step_states?.[step.id];
             const isCompleted = stepRunState?.status === "completed";
             const outputText = stepOutputs[step.id] || stepRunState?.output;
-            const isOutputExpanded = expandedOutputStepIds.has(step.id);
             const isTargetSnapped = draggingWire?.snappedTargetId === step.id;
             const { width: nodeW, height: nodeH, cfg } = getNodeSize(step);
             const isResizingThis = resizingNode?.stepId === step.id;
@@ -4663,7 +4654,7 @@ export function WorkflowCanvas({
                             : step.font === "serif"
                             ? "Georgia, serif"
                             : "inherit",
-                        textAlign: (step.align as any) || "left",
+                        textAlign: (step.align as "left" | "center" | "right" | "justify") || "left",
                         fontWeight: step.bold ? "bold" : "normal",
                       }}
                       className="w-full h-full bg-transparent border-none outline-none resize-none p-4 placeholder-black/35 font-sans leading-relaxed select-text"
