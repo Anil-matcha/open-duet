@@ -144,9 +144,9 @@ TOOLS: tuple[Tool, ...] = (
           {"owner": OWNER, "repo": REPO, "per_page": PER_PAGE}, ("owner", "repo"),
           list_key="*", fields=("name", "protected", "commit.sha")),
     _read("github_get_file", "GITHUB_GET_REPOSITORY_CONTENT", "Read one text file of a repository, or list a folder.",
-          {"owner": OWNER, "repo": REPO, "path": _text(500, "The file or folder path, for example \"README.md\".", "path"),
+          {"owner": OWNER, "repo": REPO, "path": _text(500, "The file or folder path, for example \"README.md\" or \"docs\". Leave it out to list the top level of the repository; do not send \".\".", "path"),
            "ref": _text(200, "A branch name, tag or commit id (default: the main branch).", "ref")},
-          ("owner", "repo", "path"), special="file"),
+          ("owner", "repo"), special="file"),
     _read("github_search_issues", "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
           "Search issues and pull requests with GitHub's search words, for example \"repo:octocat/hello-world is:open label:bug\".",
           {"q": _text(256, "The search text.", "line"), "per_page": PER_PAGE}, ("q",),
@@ -442,6 +442,8 @@ def _check(name: str, spec: dict, value: object):
         raise BadArguments(f"{name} must be a campaign/ branch, or owner:campaign/ branch on a fork.")
     if fmt == "sha" and not _SHA.match(value):
         raise BadArguments(f"{name} must be a full 40-character commit id.")
+    if fmt == "path" and any(part == "." for part in value.split("/")):
+        raise BadArguments(f"{name} cannot contain a \".\" segment. Leave {name} out to list the top level of the repository.")
     if fmt == "path" and _bad_path(value):
         raise BadArguments(f"{name} is not a valid path.")
     if fmt == "line" and _LINE_BAD.search(value):
