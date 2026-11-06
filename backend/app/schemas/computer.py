@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 Network = Literal["none", "default"]
-ComputerProviderKey = Literal["docker", "boat"]
+ComputerProviderKey = Literal["docker", "boat", "boxd"]
 
 
 class ComputerSettings(BaseModel):

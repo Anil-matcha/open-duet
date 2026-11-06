@@ -28,6 +28,13 @@ dependencies = [
     "av>=14,<19",
 ]
 
+[project.optional-dependencies]
+# Cloud computers on boxd (app/computers/boxd_provider.py). Imported only when
+# a boxd computer is used, so the app starts without it.
+boxd = [
+    "boxd>=0.3.0",
+]
+
 [tool.fastapi]
 entrypoint = "app.main:app"
 

@@ -41,7 +41,8 @@ run("Building the page", process.execPath, [path.join(__dirname, "build.js")], p
 run(
   "Freezing the backend",
   "uv",
-  ["run", "--with", "pyinstaller", "python", "build.py"],
+  // The boxd extra carries the SDK the optional boxd cloud computers use.
+  ["run", "--extra", "boxd", "--with", "pyinstaller", "python", "build.py"],
   paths.backend,
 );
 if (!fs.existsSync(frozen)) fail(`The frozen backend is missing from ${frozen}.`);
