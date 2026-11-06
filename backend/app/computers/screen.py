@@ -161,7 +161,7 @@ class Screen:
             if name == "wait":
                 time.sleep(args["seconds"])
                 return _text(f"Waited {args['seconds']} seconds.")
-            if getattr(s, "provider", "docker") == "boat":
+            if getattr(s, "provider", "docker") in ("boat", "muapi"):
                 result = s._provider_tool(name, args)
                 if name == "screenshot" and not result.get("isError"):
                     self.observed_epoch = epoch
