@@ -69,6 +69,15 @@ export default function Pair() {
         </Text>
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
+        <View style={styles.hosted}>
+          <Text style={styles.hostedTitle}>Use my hosted workspace</Text>
+          <Text style={styles.hostedText}>Your agents run in the cloud, so you can use them from here without your computer on.</Text>
+          <Pressable accessibilityRole="button" style={({ pressed }) => [styles.primary, pressed && styles.pressed]} onPress={() => router.push('/hosted')}>
+            <Text style={styles.primaryText}>Connect to my hosted workspace</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.or}>or connect to a server you run</Text>
+
         <View style={styles.steps}>
           {STEPS.map((step, index) => (
             <View key={step} style={styles.step}>
@@ -154,6 +163,9 @@ const createStyles = (p: Palette) =>
     container: { padding: 20, gap: 8 },
     heading: { fontSize: 24, fontWeight: '700', color: p.text },
     notice: { fontSize: 15, color: p.notice, marginTop: 4 },
+    hosted: { gap: 8, marginTop: 8, padding: 16, borderWidth: 1, borderColor: p.border, borderRadius: radius.field, backgroundColor: p.surface },
+    hostedTitle: { fontSize: 17, fontWeight: '700', color: p.text },
+    hostedText: { fontSize: 14, color: p.muted },
     steps: { gap: 10, marginTop: 8, marginBottom: 12 },
     step: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
     number: { width: 26, height: 26, borderRadius: radius.round, backgroundColor: p.surface, alignItems: 'center', justifyContent: 'center', marginTop: 1 },

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { useRouter } from 'expo-router';
 
 import { Text } from '@/components/text';
 import { canManageAgents } from '@/lib/agents';
 import { useAuth } from '@/lib/auth-context';
+import { HOSTED_ORIGIN } from '@/lib/hosted';
 import { isPlainHttp, NOT_ENCRYPTED_NOTICE, serverLabel } from '@/lib/server-url';
 import { radius, useStyles, type Palette } from '@/lib/theme';
 
@@ -16,8 +17,12 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   if (state.status !== 'paired') return null;
 
+  const hosted = state.hosted;
   const confirmSignOut = () => {
-    Alert.alert('Sign out and forget this server?', 'This phone will be signed out on your server and forget its address. You can pair again with a new code.', [
+    Alert.alert(
+      hosted ? 'Sign out of your hosted workspace?' : 'Sign out and forget this server?',
+      hosted ? 'This phone will be signed out of your workspace. Your agents and conversations stay in the cloud; sign in again to use them.' : 'This phone will be signed out on your server and forget its address. You can pair again with a new code.',
+      [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out',
@@ -32,9 +37,20 @@ export default function Settings() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Server address</Text>
-      <Text style={styles.value}>{serverLabel(state.server)}</Text>
-      {isPlainHttp(state.server) ? <Text style={styles.notice}>{NOT_ENCRYPTED_NOTICE}</Text> : null}
+      {hosted ? (
+        <>
+          <Text style={styles.label}>Workspace</Text>
+          <Text style={styles.value}>Hosted ({serverLabel(state.server)})</Text>
+          <Text style={styles.label}>Account</Text>
+          <Text style={styles.value}>{hosted.email}</Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.label}>Server address</Text>
+          <Text style={styles.value}>{serverLabel(state.server)}</Text>
+          {isPlainHttp(state.server) ? <Text style={styles.notice}>{NOT_ENCRYPTED_NOTICE}</Text> : null}
+        </>
+      )}
       <Text style={styles.label}>Device name</Text>
       <Text style={styles.value}>{state.label || 'Phone'}</Text>
       <Text style={styles.label}>Access</Text>
@@ -45,8 +61,14 @@ export default function Settings() {
           <Text style={styles.value}>Create and edit</Text>
         </Pressable>
       ) : null}
+      {hosted ? (
+        <Pressable accessibilityRole="link" style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={() => void Linking.openURL(`${HOSTED_ORIGIN}/account/phones`)}>
+          <Text style={styles.rowText}>Connected phones</Text>
+          <Text style={styles.value}>Manage on suparagent.ai</Text>
+        </Pressable>
+      ) : null}
       <Pressable accessibilityRole="button" style={[styles.danger, busy && styles.disabled]} disabled={busy} onPress={confirmSignOut}>
-        <Text style={styles.dangerText}>Sign out and forget this server</Text>
+        <Text style={styles.dangerText}>{hosted ? 'Sign out of the hosted workspace' : 'Sign out and forget this server'}</Text>
       </Pressable>
     </View>
   );

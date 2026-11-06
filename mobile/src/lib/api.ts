@@ -77,7 +77,7 @@ async function errorFrom(response: Response): Promise<ApiError> {
   return new ApiError(response.status, code, message);
 }
 
-export function createApi(session: Session, options: { onRevoked?: () => void; fetchImpl?: FetchLike } = {}) {
+export function createApi(session: Session, options: { onRevoked?: () => void; onUnavailable?: () => void; fetchImpl?: FetchLike } = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   // The token goes only to an https:// server or a plain http:// one on the person's own network.
   const serverAllowed = normalizeServerUrl(session.server).ok;
@@ -109,6 +109,12 @@ export function createApi(session: Session, options: { onRevoked?: () => void; f
     if (response.status === 401) {
       options.onRevoked?.();
       throw new ApiError(401, 'session_invalid', '');
+    }
+    // A hosted workspace that went to sleep answers 503. Report it (the gate shows the sleeping screen); this call
+    // never wakes it, and the person decides.
+    if (response.status === 503 && options.onUnavailable) {
+      options.onUnavailable();
+      throw new ApiError(503, 'workspace_unavailable', '');
     }
     if (!response.ok) throw await errorFrom(response);
     // A delete answers 204 with no body.

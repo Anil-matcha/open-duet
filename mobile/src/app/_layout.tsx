@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, useColorScheme, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
+import { HostedGate } from '@/components/hosted-gate';
 import { PairingLinkHandler } from '@/components/pairing-link-handler';
 import { FontsLoadedContext, Text, useFont } from '@/components/text';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
@@ -41,6 +42,7 @@ function RootStack({ ready }: { ready: boolean }) {
   }
   const paired = state.status === 'paired';
   return (
+    <HostedGate>
     <Stack screenOptions={{ headerTitleStyle }}>
       <Stack.Protected guard={paired}>
         <Stack.Screen name="index" options={{ title: 'Conversations', headerLeft: RoomsLink, headerRight: SettingsLink }} />
@@ -59,9 +61,11 @@ function RootStack({ ready }: { ready: boolean }) {
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
         <Stack.Screen name="pair" options={{ title: 'Suparagent' }} />
+        <Stack.Screen name="hosted" options={{ title: 'Hosted workspace' }} />
         <Stack.Screen name="scan" options={{ title: 'Scan QR code', presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>
+    </HostedGate>
   );
 }
 

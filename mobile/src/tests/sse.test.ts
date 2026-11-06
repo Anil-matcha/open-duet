@@ -56,7 +56,7 @@ function streamResponse(chunks: string[], status = 200) {
 
 const session = { server: 'https://dots.example.com', token: 'ods_t' };
 
-function run(replies: (Response | Error)[], extra: { after?: number } = {}) {
+function run(replies: (Response | Error)[], extra: { after?: number; onUnavailable?: () => void } = {}) {
   const controller = new AbortController();
   const urls: string[] = [];
   const headers: Record<string, string>[] = [];
@@ -82,6 +82,7 @@ function run(replies: (Response | Error)[], extra: { after?: number } = {}) {
     onRevoked: () => {
       revoked++;
     },
+    onUnavailable: extra.onUnavailable,
     fetchImpl,
     // Yield to the timer that aborts the run; a sleep that resolved at once would never let it fire.
     sleep: () => new Promise((resolve) => setTimeout(resolve, 0)),
@@ -128,6 +129,22 @@ describe('followThread', () => {
     const t = run([{ status: 503, ok: false, body: null } as unknown as Response, streamResponse([frame(1, 'turn.started')])]);
     await t.done;
     expect(t.seen.map((e) => e.seq)).toEqual([1]);
+  });
+
+  it('reports a hosted workspace that answers 503, keeps only retrying, and never treats it as a revoked session', async () => {
+    const onUnavailable = jest.fn();
+    const t = run([{ status: 503, ok: false, body: null } as unknown as Response, streamResponse([frame(1, 'turn.started')])], { onUnavailable });
+    await t.done;
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+    expect(t.revoked()).toBe(0);
+    expect(t.seen.map((e) => e.seq)).toEqual([1]); // it went on retrying and read the stream once it was back
+  });
+
+  it('does not report other refusals as the workspace being unavailable', async () => {
+    const onUnavailable = jest.fn();
+    const t = run([{ status: 500, ok: false, body: null } as unknown as Response, { status: 404, ok: false, body: null } as unknown as Response, streamResponse([frame(1, 'turn.started')])], { onUnavailable });
+    await t.done;
+    expect(onUnavailable).not.toHaveBeenCalled();
   });
 
   it('pages through the events instead when the response cannot be streamed', async () => {

@@ -5,8 +5,12 @@ import * as SecureStore from 'expo-secure-store';
 
 const KEY = 'paired_server';
 
-/** `scopes` is what the server said at pairing, kept so the app can show what this phone may do before it is online. */
-export type Credentials = { server: string; token: string; label: string; scopes: string[] };
+/**
+ * `scopes` is what the server said at pairing, kept so the app can show what this phone may do before it is online.
+ * `hosted` is set when this is the phone's own token for the hosted workspace (the account it signed in with); the
+ * account's own session is kept apart, in `hosted-credentials`.
+ */
+export type Credentials = { server: string; token: string; label: string; scopes: string[]; hosted?: { email: string } };
 
 // Kept on this device only: not included in backups or moved to a new phone.
 const OPTIONS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
@@ -27,7 +31,8 @@ export async function loadCredentials(): Promise<Credentials | null> {
     const value = JSON.parse(raw) as Partial<Credentials> | null;
     if (value && typeof value.server === 'string' && typeof value.token === 'string' && value.server && value.token) {
       const scopes = Array.isArray(value.scopes) ? value.scopes.filter((scope): scope is string => typeof scope === 'string') : [];
-      return { server: value.server, token: value.token, label: typeof value.label === 'string' ? value.label : '', scopes };
+      const hosted = value.hosted && typeof value.hosted === 'object' && typeof value.hosted.email === 'string' ? { email: value.hosted.email } : undefined;
+      return { server: value.server, token: value.token, label: typeof value.label === 'string' ? value.label : '', scopes, ...(hosted ? { hosted } : {}) };
     }
   } catch {
     // fall through: a damaged entry counts as not paired

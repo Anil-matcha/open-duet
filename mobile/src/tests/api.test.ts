@@ -33,6 +33,33 @@ async function failure(promise: Promise<unknown>): Promise<ApiError> {
 }
 
 describe('createApi', () => {
+  it('reports a hosted workspace that answers 503 and says so, without waking or revoking anything', async () => {
+    const { impl } = fakeFetch({ status: 503, body: { availability: 'sleeping', step: 'asleep' } });
+    const onUnavailable = jest.fn();
+    const onRevoked = jest.fn();
+    const error = await failure(createApi(session, { fetchImpl: impl, onUnavailable, onRevoked }).listThreads());
+    expect(error.status).toBe(503);
+    expect(error.errorCode).toBe('workspace_unavailable');
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+    expect(onRevoked).not.toHaveBeenCalled();
+  });
+
+  it('leaves a 503 from a self-hosted server as the ordinary error it was', async () => {
+    const { impl } = fakeFetch({ status: 503, body: { detail: 'try later' } });
+    const error = await failure(createApi(session, { fetchImpl: impl }).listThreads());
+    expect(error.status).toBe(503);
+    expect(error.errorCode).not.toBe('workspace_unavailable');
+  });
+
+  it('does not call the unavailable report for other failures', async () => {
+    const onUnavailable = jest.fn();
+    for (const status of [400, 403, 404, 409, 500]) {
+      const { impl } = fakeFetch({ status, body: { detail: 'no' } });
+      await failure(createApi(session, { fetchImpl: impl, onUnavailable }).listThreads());
+    }
+    expect(onUnavailable).not.toHaveBeenCalled();
+  });
+
   it('sends the bearer token and a JSON body, and returns the decoded answer', async () => {
     const { impl, calls } = fakeFetch({ status: 202, body: { id: 4 } });
     const api = createApi(session, { fetchImpl: impl });

@@ -72,6 +72,8 @@ export type FollowOptions = {
   onEvents: (events: ThreadEvent[]) => void;
   onConnection: (state: Connection) => void;
   onRevoked: () => void;
+  /** A hosted workspace answered 503 (it is asleep): report it. The stream still only retries; it never wakes it. */
+  onUnavailable?: () => void;
   fetchImpl?: FetchLike;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 };
@@ -87,7 +89,7 @@ export async function followThread(options: FollowOptions): Promise<void> {
   const { session, threadId, signal, onEvents, onConnection } = options;
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? wait;
-  const api = createApi(session, { onRevoked: options.onRevoked, fetchImpl });
+  const api = createApi(session, { onRevoked: options.onRevoked, onUnavailable: options.onUnavailable, fetchImpl });
   let after = options.after;
   let attempt = 0;
   let polling = false;
@@ -122,6 +124,7 @@ export async function followThread(options: FollowOptions): Promise<void> {
         options.onRevoked();
         return;
       }
+      if (response.status === 503) options.onUnavailable?.();
       if (!response.ok) throw new Error(`stream refused: ${response.status}`);
       if (!response.body) {
         // This platform cannot read a response as it arrives: page through the events instead.
